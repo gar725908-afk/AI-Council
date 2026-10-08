@@ -1,0 +1,10 @@
+PySide6
+pyqtdarktheme
+python-dotenv
+openai
+PyMuPDF
+Pillow
+python-docx
+openpyxl
+python-pptx
+opencv-python-headless
