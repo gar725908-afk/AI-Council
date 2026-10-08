@@ -1,6 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0bridge"
+set "AI_COUNCIL_ROOT=%~dp0"
 py -3 -c "import sys; print(sys.version)"
 if errorlevel 1 (
   echo Python 3 not found in PATH.

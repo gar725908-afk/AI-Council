@@ -1,10 +1,11 @@
 @echo off
 setlocal
-cd /d "C:\AI-Council"
+cd /d "%~dp0"
+set "PROJECT_ROOT=%~dp0"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 if exist ".venv\Scripts\python.exe" (
-  set "PY=C:\AI-Council\.venv\Scripts\python.exe"
+  set "PY=%~dp0.venv\Scripts\python.exe"
 ) else (
   where py >nul 2>&1
   if errorlevel 1 (
@@ -17,13 +18,8 @@ if exist ".venv\Scripts\python.exe" (
 if "%PY%"=="PYLAUNCHER" (
   py -3 -c "import PySide6, qdarktheme" >nul 2>&1
   if errorlevel 1 (
-    echo Required Python packages are missing. Run INSTALL_AND_LAUNCH.bat first.
-    pause
-    exit /b 1
-  )
-  py -3 VERIFY_INSTALL.py
-  if errorlevel 1 (
-    echo Verification failed.
+    echo Required Python packages are missing.
+    echo Run INSTALL_AND_LAUNCH.bat first.
     pause
     exit /b 1
   )
@@ -31,13 +27,8 @@ if "%PY%"=="PYLAUNCHER" (
 ) else (
   "%PY%" -c "import PySide6, qdarktheme" >nul 2>&1
   if errorlevel 1 (
-    echo Required Python packages are missing. Run INSTALL_AND_LAUNCH.bat first.
-    pause
-    exit /b 1
-  )
-  "%PY%" VERIFY_INSTALL.py
-  if errorlevel 1 (
-    echo Verification failed.
+    echo Required Python packages are missing.
+    echo Run INSTALL_AND_LAUNCH.bat first.
     pause
     exit /b 1
   )
