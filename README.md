@@ -29,7 +29,7 @@ python main.py
 
 ## Android edition — OllamaHybrid
 
-В репозиторий добавлена отдельная Android-ветвь проекта: [android/OllamaHybrid](android/OllamaHybrid/README.md). Настольная Python-версия выше сохранена без изменений.
+В репозиторий добавлены Android-спецификация и начальный Bridge-каркас: [android/OllamaHybrid](android/OllamaHybrid/README.md). Настольная Python-версия выше сохранена без изменений. Полная синхронизация всех Android-исходников в этот каталог ещё не завершена.
 
 - Единая мастер-спецификация: [PROJECT_MASTER_SPEC_RU.md](android/OllamaHybrid/docs/PROJECT_MASTER_SPEC_RU.md)
 - Архитектура расширенного Android Bridge / Root Mode: [ANDROID_BRIDGE_ARCHITECTURE_RU.md](android/OllamaHybrid/docs/ANDROID_BRIDGE_ARCHITECTURE_RU.md)
