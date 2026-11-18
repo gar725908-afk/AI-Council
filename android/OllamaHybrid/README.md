@@ -1,23 +1,21 @@
-# OllamaHybrid — Android AI Command Center
+# OllamaHybrid — Android edition materials
 
-Android Studio project (Kotlin + Jetpack Compose). This folder is the Android edition alongside the existing Python desktop AI-Council; desktop files are not replaced.
+This directory currently contains the Android architecture/specification and the first Bridge foundation files alongside the existing Python desktop AI-Council. It is **not yet a complete, independently buildable Android Studio project mirror**.
 
-## Product decisions
-- On-device local AI runtime and multi-agent AI Council.
-- Shared persistent Council context, parallel agents, watchdog and material retrieval.
-- Native-first Android Bridge: API/Intent/app adapters before Accessibility or screen gestures.
-- Standard, Extended (Shizuku/ADB), and Root profiles. Root is the maximum optional privilege profile, not a blanket consent grant.
-- AI agents call typed tools only; model-generated arbitrary shell commands are prohibited.
-- Recovery Core remains outside the AI-editable workspace.
-- Source code and documentation belong in Git; verified APK binaries belong in GitHub Releases.
+## Committed in this directory
+- Product master specification and accumulated decisions.
+- Hybrid Android Bridge architecture, including Standard / Shizuku Extended / Root profiles.
+- Test plan and device matrix.
+- Initial Kotlin Bridge contracts, risk policy, tool registry/router and Root UID probe.
+- Android app Gradle configuration snapshot for version 0.5.0.
 
-## Current status
-The project source scaffold includes Council, Material Library, Recovery Core, Accessibility phone controls and initial Android Bridge contracts/Root UID probe. Full Shizuku/Sui integration, Root command service, Permission Center UI, all native adapters, local llama.cpp runtime and APK build are still pending.
+## Full working project
+The full current Android working tree is maintained separately as the OllamaHybrid project archive supplied with this update. The remaining existing Android application sources, resources and root Gradle project files still need to be synchronized into this GitHub directory before it can be built directly from GitHub.
 
-See:
-- docs/PROJECT_MASTER_SPEC_RU.md
-- docs/ANDROID_BRIDGE_ARCHITECTURE_RU.md
-- docs/ANDROID_BRIDGE_TEST_PLAN_RU.md
+## Status
+- Architecture and Bridge foundation committed.
+- Static validation and isolated Kotlin/JVM smoke tests passed.
+- Full Android Gradle build, APK install and Root/Shizuku device tests are **not** claimed.
+- Full Shizuku/Sui integration, Direct Root command service, Permission Center UI, native adapters, local llama.cpp runtime and Council tool wiring remain future implementation work.
 
-## Build honesty
-Do not claim an APK is ready until Gradle assemble succeeds, the APK installs and launches, and device tests pass. The current working environment has no Gradle wrapper/Gradle executable or Android SDK, so no APK build is claimed.
+APK binaries belong in GitHub Releases only after a real build, device verification and checksum generation.
