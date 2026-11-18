@@ -14,24 +14,26 @@ data class RootProbeResult(
  * Android has no install-time permission that silently grants superuser access.
  */
 object RootAccessProbe {
-    fun check(timeoutSeconds: Long = 8): RootProbeResult = try {
-        val process = ProcessBuilder("su", "-c", "id -u")
-            .redirectErrorStream(true)
-            .start()
-        val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-        if (!finished) {
-            process.destroyForcibly()
-            return RootProbeResult(false, null, "timeout", "Root manager did not answer within ${timeoutSeconds}s")
+    fun check(timeoutSeconds: Long = 8): RootProbeResult {
+        return try {
+            val process = ProcessBuilder("su", "-c", "id -u")
+                .redirectErrorStream(true)
+                .start()
+            val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                return RootProbeResult(false, null, "timeout", "Root manager did not answer within ${timeoutSeconds}s")
+            }
+            val output = process.inputStream.bufferedReader().use { it.readText().take(4096).trim() }
+            val uid = output.lineSequence().lastOrNull()?.trim()?.toIntOrNull()
+            val granted = process.exitValue() == 0 && uid == 0
+            RootProbeResult(
+                granted, uid, output,
+                if (granted) "Superuser identity confirmed (uid=0)" else "Root denied, unavailable, or non-root identity"
+            )
+        } catch (error: Exception) {
+            RootProbeResult(false, null, error.javaClass.simpleName, error.message ?: "su unavailable")
         }
-        val output = process.inputStream.bufferedReader().use { it.readText().take(4096).trim() }
-        val uid = output.lineSequence().lastOrNull()?.trim()?.toIntOrNull()
-        val granted = process.exitValue() == 0 && uid == 0
-        RootProbeResult(
-            granted, uid, output,
-            if (granted) "Superuser identity confirmed (uid=0)" else "Root denied, unavailable, or non-root identity"
-        )
-    } catch (error: Exception) {
-        RootProbeResult(false, null, error.javaClass.simpleName, error.message ?: "su unavailable")
     }
 }
 
