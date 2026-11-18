@@ -26,3 +26,13 @@ python main.py
 
 Публичная версия содержит только исходный код и технические файлы.
 Аккаунты, пароли, cookies, данные профилей, личные переписки, `.env`, документы и журналы не публикуются.
+
+## Android edition — OllamaHybrid
+
+В репозиторий добавлена отдельная Android-ветвь проекта: [android/OllamaHybrid](android/OllamaHybrid/README.md). Настольная Python-версия выше сохранена без изменений.
+
+- Единая мастер-спецификация: [PROJECT_MASTER_SPEC_RU.md](android/OllamaHybrid/docs/PROJECT_MASTER_SPEC_RU.md)
+- Архитектура расширенного Android Bridge / Root Mode: [ANDROID_BRIDGE_ARCHITECTURE_RU.md](android/OllamaHybrid/docs/ANDROID_BRIDGE_ARCHITECTURE_RU.md)
+- План проверок: [ANDROID_BRIDGE_TEST_PLAN_RU.md](android/OllamaHybrid/docs/ANDROID_BRIDGE_TEST_PLAN_RU.md)
+
+Текущая версия Android scaffold: 0.5.0. Ветка содержит архитектурные документы, начальные Kotlin-контракты Bridge и Root UID probe. Полная интеграция Shizuku/Root, локальный llama.cpp runtime и выпуск APK ещё требуют реализации и проверки на устройстве. APK публикуется в GitHub Releases только после успешной сборки и тестирования.
