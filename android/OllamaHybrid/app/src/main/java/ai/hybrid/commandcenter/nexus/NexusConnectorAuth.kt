@@ -45,10 +45,14 @@ class NexusConnectorAuthService(context: Context) {
             }
             val account = verifyBlocking(connector, normalized)
             vault.put(connector.secretId, normalized)
-            check(metadata.edit()
+            val persisted = metadata.edit()
                 .putString(connector.name + ".identity", account.identity)
                 .putString(connector.name + ".detail", account.detail)
-                .commit()) { "Не удалось сохранить состояние коннектора." }
+                .commit()
+            if (!persisted) {
+                vault.remove(connector.secretId)
+                throw IllegalStateException("Не удалось сохранить состояние коннектора; ключ удалён из хранилища.")
+            }
             account
         }
 
