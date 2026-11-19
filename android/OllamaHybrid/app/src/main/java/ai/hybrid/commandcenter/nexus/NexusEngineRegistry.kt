@@ -162,12 +162,11 @@ class NexusLocalCouncilManager(
         }
 
     private fun parseDecision(raw: String, context: LocalCouncilContext): LocalCouncilDecision {
-        val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
-        require(start >= 0 && end > start) {
-            "The local Manager returned no valid JSON decision."
+        val normalizedJson = raw.trim()
+        require(normalizedJson.startsWith("{") && normalizedJson.endsWith("}")) {
+            "The local Manager must return one JSON object without Markdown or surrounding text."
         }
-        val json = JSONObject(raw.substring(start, end + 1))
+        val json = JSONObject(normalizedJson)
         val actionValue = json.opt("action")
         require(actionValue is String) {
             "The local Manager decision must contain a string action."
@@ -189,6 +188,9 @@ class NexusLocalCouncilManager(
             val normalized = value.trim()
             require(normalized.isNotBlank() && normalized.length <= maxLength) {
                 "Manager field '$key' must contain 1 to $maxLength characters."
+            }
+            require(normalized.none { (it.code < 0x20 && it !in setOf('\\n', '\\r', '\\t')) || it.code == 0x7f }) {
+                "Manager field '$key' contains unsupported control characters."
             }
             return normalized
         }
