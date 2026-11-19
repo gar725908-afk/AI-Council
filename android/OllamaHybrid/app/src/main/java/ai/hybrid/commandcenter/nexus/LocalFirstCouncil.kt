@@ -322,7 +322,8 @@ class LocalFirstCouncilOrchestrator(
                                     val adapter = adapters.getValue(assignment.participantId)
                                     try {
                                         val rawOutput = adapter.execute(assignment, results.toList())
-                                        val wasTruncated = rawOutput.length > MAX_PARTICIPANT_OUTPUT_CHARS
+                                        val wasTruncated = rawOutput.length > MAX_PARTICIPANT_OUTPUT_CHARS ||
+                                            rawOutput.endsWith("\n[output truncated]")
                                         val output = rawOutput.take(
                                             if (wasTruncated) MAX_PARTICIPANT_OUTPUT_CHARS - OUTPUT_TRUNCATION_MARKER.length
                                             else MAX_PARTICIPANT_OUTPUT_CHARS
@@ -433,7 +434,8 @@ class LocalFirstCouncilOrchestrator(
         }
         return try {
             val rawOutput = adapter.execute(CouncilAssignment(participantId, task), emptyList())
-            val wasTruncated = rawOutput.length > MAX_PARTICIPANT_OUTPUT_CHARS
+            val wasTruncated = rawOutput.length > MAX_PARTICIPANT_OUTPUT_CHARS ||
+                rawOutput.endsWith("\n[output truncated]")
             val output = rawOutput.take(
                 if (wasTruncated) MAX_PARTICIPANT_OUTPUT_CHARS - OUTPUT_TRUNCATION_MARKER.length
                 else MAX_PARTICIPANT_OUTPUT_CHARS
