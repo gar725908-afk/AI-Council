@@ -488,6 +488,7 @@ fun AiStudioScreen(
         OutlinedTextField(
             value = prompt,
             onValueChange = { prompt = it.take(32_000) },
+            enabled = !isRunning,
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Задача") },
             placeholder = { Text("Опишите, что должна сделать система…") },
