@@ -36,6 +36,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import ai.hybrid.commandcenter.nexus.AndroidCredentialVault
+import ai.hybrid.commandcenter.nexus.CouncilAgentEvent
+import ai.hybrid.commandcenter.nexus.CouncilAgentPhase
 import ai.hybrid.commandcenter.nexus.CouncilMissionRunner
 import ai.hybrid.commandcenter.nexus.CouncilOrchestrator
 import ai.hybrid.commandcenter.nexus.CouncilModelRoute
@@ -114,6 +116,7 @@ fun AiStudioScreen(
     var isRunning by remember { mutableStateOf(false) }
     var activeRun by remember { mutableStateOf<Job?>(null) }
     var recentMissions by remember { mutableStateOf(emptyList<ai.hybrid.commandcenter.nexus.MissionRecord>()) }
+    var liveAgentEvents by remember { mutableStateOf(emptyMap<String, CouncilAgentEvent>()) }
     var activeConversationId by remember { mutableStateOf<String?>(null) }
     var conversationMessages by remember { mutableStateOf(emptyList<ChatMessageRecord>()) }
     LaunchedEffect(settingsStore) {
@@ -529,6 +532,7 @@ fun AiStudioScreen(
                     isRunning = true
                     answer = ""
                     status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
+                    if (councilMode) liveAgentEvents = emptyMap()
                     var missionId: String? = null
                     try {
                         require(submittedPrompt.isNotBlank() && submittedPrompt.length <= 32_000) {
@@ -596,7 +600,10 @@ fun AiStudioScreen(
                                     model = model,
                                     apiKey = activeKey.orEmpty(),
                                     agents = councilAgents,
-                                    useOnDeviceModel = usesOnDeviceModel
+                                    useOnDeviceModel = usesOnDeviceModel,
+                                    onAgentEvent = { event ->
+                                        liveAgentEvents = liveAgentEvents + (event.agentId to event)
+                                    }
                                 )
                             )
                             answer = outcome.answer
@@ -694,6 +701,22 @@ fun AiStudioScreen(
                 Text("Остановить текущую задачу")
             }
         }
+        if (councilMode && liveAgentEvents.isNotEmpty()) {
+            Text(
+                "СОБЫТИЯ АГЕНТОВ (из оркестратора)",
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            councilAgents.forEach { agent ->
+                val event = liveAgentEvents[agent.id]
+                if (event != null) {
+                    Text(
+                        "${agent.name}: " + agentPhaseLabel(event),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
         Text(status, style = MaterialTheme.typography.labelMedium)
         if (recentMissions.isNotEmpty()) {
             Text("ИСТОРИЯ МИССИЙ", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
@@ -755,6 +778,13 @@ fun AiStudioScreen(
 }
 
 
+
+private fun agentPhaseLabel(event: CouncilAgentEvent): String = when (event.phase) {
+    CouncilAgentPhase.ASSIGNED -> "назначен"
+    CouncilAgentPhase.RUNNING -> "выполняется…"
+    CouncilAgentPhase.COMPLETED -> "выполнено"
+    CouncilAgentPhase.FAILED -> "ошибка" + (event.detail?.let { ": " + it.take(60) } ?: "")
+}
 
 private fun defaultProviderEndpoint(kind: ProviderKind): String =
     ai.hybrid.commandcenter.nexus.defaultProviderEndpoint(kind)

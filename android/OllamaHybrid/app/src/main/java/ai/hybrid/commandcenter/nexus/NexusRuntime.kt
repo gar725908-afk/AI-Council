@@ -191,6 +191,17 @@ data class CouncilRunResult(
     val paused: Boolean = false
 )
 
+/** Real orchestrator lifecycle phases of one agent; emitted only when they actually happen. */
+enum class CouncilAgentPhase { ASSIGNED, RUNNING, COMPLETED, FAILED }
+
+data class CouncilAgentEvent(
+    val agentId: String,
+    val agentName: String,
+    val phase: CouncilAgentPhase,
+    val detail: String?,
+    val atEpochMillis: Long
+)
+
 data class CouncilModelRoute(
     val gateway: ModelGateway,
     val endpoint: String,
@@ -217,7 +228,8 @@ class CouncilOrchestrator(
         endpoint: String,
         model: String,
         apiKey: String,
-        agents: List<CouncilAgent> = defaultAgents()
+        agents: List<CouncilAgent> = defaultAgents(),
+        onEvent: ((CouncilAgentEvent) -> Unit)? = null
     ): CouncilRunResult {
         require(goal.isNotBlank()) { "Задача не может быть пустой." }
         require(goal.length <= MAX_GOAL_CHARS) { "Задача превышает лимит $MAX_GOAL_CHARS символов." }
@@ -227,10 +239,12 @@ class CouncilOrchestrator(
             "ID участников Council должны быть уникальными."
         }
 
+        agents.forEach { agent -> notify(onEvent, agent, CouncilAgentPhase.ASSIGNED, null) }
         val results = coroutineScope {
             agents.map { agent ->
                 async(Dispatchers.IO) {
                     semaphore.withPermit {
+                        notify(onEvent, agent, CouncilAgentPhase.RUNNING, null)
                         try {
                             val route = routeResolver?.invoke(agent)
                             val selectedGateway = route?.gateway ?: gateway
@@ -255,23 +269,28 @@ class CouncilOrchestrator(
                                 selectedGateway.stream(request).collectBounded(MAX_AGENT_OUTPUT_CHARS)
                             }
                             if (output == null) {
+                                val timeoutMessage = "Агент превысил лимит времени ${agentTimeoutMillis} мс."
+                                notify(onEvent, agent, CouncilAgentPhase.FAILED, timeoutMessage)
                                 AgentRunResult(
                                     agent = agent,
                                     status = AgentRunStatus.FAILED,
                                     output = "",
-                                    error = "Агент превысил лимит времени ${agentTimeoutMillis} мс."
+                                    error = timeoutMessage
                                 )
                             } else {
+                                notify(onEvent, agent, CouncilAgentPhase.COMPLETED, null)
                                 AgentRunResult(agent, AgentRunStatus.COMPLETED, output)
                             }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (error: Exception) {
+                            val message = error.message ?: error::class.java.simpleName
+                            notify(onEvent, agent, CouncilAgentPhase.FAILED, message)
                             AgentRunResult(
                                 agent = agent,
                                 status = AgentRunStatus.FAILED,
                                 output = "",
-                                error = error.message ?: error::class.java.simpleName
+                                error = message
                             )
                         }
                     }
@@ -354,6 +373,27 @@ class CouncilOrchestrator(
                 synthesis = null,
                 completed = false,
                 error = "Синтез не выполнен: ${error.message ?: error::class.java.simpleName}"
+            )
+        }
+    }
+
+    /** Event delivery must never break the run: listener errors are swallowed. */
+    private fun notify(
+        onEvent: ((CouncilAgentEvent) -> Unit)?,
+        agent: CouncilAgent,
+        phase: CouncilAgentPhase,
+        detail: String?
+    ) {
+        if (onEvent == null) return
+        runCatching {
+            onEvent(
+                CouncilAgentEvent(
+                    agentId = agent.id,
+                    agentName = agent.name,
+                    phase = phase,
+                    detail = detail,
+                    atEpochMillis = System.currentTimeMillis()
+                )
             )
         }
     }

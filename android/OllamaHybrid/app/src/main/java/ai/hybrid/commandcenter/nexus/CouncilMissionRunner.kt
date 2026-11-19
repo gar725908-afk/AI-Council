@@ -30,7 +30,9 @@ class CouncilMissionRunner(
         val apiKey: String,
         val agents: List<CouncilAgent>,
         val useOnDeviceModel: Boolean,
-        val maxParallelAgents: Int = 3
+        val maxParallelAgents: Int = 3,
+        /** Live orchestrator events; not supported on the on-device path yet. */
+        val onAgentEvent: ((CouncilAgentEvent) -> Unit)? = null
     )
 
     data class Outcome(
@@ -63,7 +65,8 @@ class CouncilMissionRunner(
                 endpoint = request.endpoint,
                 model = request.model,
                 apiKey = request.apiKey,
-                agents = request.agents
+                agents = request.agents,
+                onEvent = request.onAgentEvent
             )
         }
 
