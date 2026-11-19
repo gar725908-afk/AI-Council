@@ -39,6 +39,7 @@ data class AgentJournalRecord(
 class MissionJournal(context: Context) : SQLiteOpenHelper(
     context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION
 ) {
+    private val contentCipher = MissionDataCipher()
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         db.setForeignKeyConstraintsEnabled(true)
@@ -85,7 +86,7 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
         db.beginTransaction()
         try {
             db.insertOrThrow("missions", null, ContentValues().apply {
-                put("id", id); put("goal", goal); put("endpoint", endpoint); put("model", model)
+                put("id", id); put("goal", contentCipher.encrypt(goal)); put("endpoint", endpoint); put("model", model)
                 put("state", MissionStatus.DRAFT.name); put("created_at", now); put("updated_at", now)
             })
             db.insertOrThrow("mission_events", null, ContentValues().apply {
@@ -113,13 +114,13 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
             MissionStateMachine.requireTransition(current, next)
             val values = ContentValues().apply {
                 put("state", next.name); put("updated_at", System.currentTimeMillis())
-                if (result != null) put("result", result)
-                if (error != null) put("error", error)
+                if (result != null) put("result", contentCipher.encrypt(result))
+                if (error != null) put("error", contentCipher.encrypt(error))
             }
             check(db.update("missions", values, "id = ?", arrayOf(missionId)) == 1)
             db.insertOrThrow("mission_events", null, ContentValues().apply {
                 put("mission_id", missionId); put("event", "STATE_${next.name}")
-                put("detail", detail); put("created_at", System.currentTimeMillis())
+                put("detail", contentCipher.encrypt(detail)); put("created_at", System.currentTimeMillis())
             })
             db.setTransactionSuccessful()
         } finally {
@@ -136,11 +137,11 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
                 put("id", UUID.randomUUID().toString()); put("mission_id", missionId)
                 put("agent_id", result.agent.id); put("agent_name", result.agent.name)
                 put("role", result.agent.role.name); put("status", result.status.name)
-                put("output", result.output); put("error", result.error); put("created_at", now)
+                put("output", contentCipher.encrypt(result.output)); put("error", contentCipher.encrypt(result.error)); put("created_at", now)
             })
             db.insertOrThrow("mission_events", null, ContentValues().apply {
                 put("mission_id", missionId); put("event", "AGENT_${result.status.name}")
-                put("detail", "${result.agent.name}: ${result.error ?: "результат сохранён"}")
+                put("detail", contentCipher.encrypt("${result.agent.name}: ${result.error ?: "результат сохранён"}"))
                 put("created_at", now)
             })
             db.setTransactionSuccessful()
@@ -157,8 +158,8 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
         ).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) add(MissionRecord(
-                    cursor.getString(0), cursor.getString(1), MissionStatus.valueOf(cursor.getString(2)),
-                    cursor.getLong(3), cursor.getLong(4), cursor.getString(5), cursor.getString(6)
+                    cursor.getString(0), contentCipher.decrypt(cursor.getString(1)).orEmpty(), MissionStatus.valueOf(cursor.getString(2)),
+                    cursor.getLong(3), cursor.getLong(4), contentCipher.decrypt(cursor.getString(5)), contentCipher.decrypt(cursor.getString(6))
                 ))
             }
         }
@@ -173,8 +174,8 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
             buildList {
                 while (cursor.moveToNext()) add(AgentJournalRecord(
                     cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3),
-                    cursor.getString(4), cursor.getString(5), cursor.getString(6),
-                    cursor.getString(7), cursor.getLong(8)
+                    cursor.getString(4), cursor.getString(5), contentCipher.decrypt(cursor.getString(6)),
+                    contentCipher.decrypt(cursor.getString(7)), cursor.getLong(8)
                 ))
             }
         }
@@ -194,7 +195,7 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
                 val now = System.currentTimeMillis()
                 db.update("missions", ContentValues().apply {
                     put("state", MissionStatus.INTERRUPTED.name); put("updated_at", now)
-                    put("error", "Процесс приложения завершился до подтверждения результата.")
+                    put("error", contentCipher.encrypt("Процесс приложения завершился до подтверждения результата."))
                 }, "id = ?", arrayOf(missionId))
                 db.insertOrThrow("mission_events", null, ContentValues().apply {
                     put("mission_id", missionId); put("event", "STATE_INTERRUPTED")
