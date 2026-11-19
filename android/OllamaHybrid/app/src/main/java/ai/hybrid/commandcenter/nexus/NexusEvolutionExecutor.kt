@@ -113,8 +113,16 @@ class NexusEvolutionExecutor(context: Context) {
             .associateBy { it.proposal.proposedVersion }
         var version = activeVersion()
         while (version > 0L) {
-            val record = activeRecords[version] ?: return ""
-            if (record.proposal.kind == kind) return record.payload
+            val record = activeRecords[version]
+                ?: throw IllegalStateException("Evolution history is missing active version $version.")
+            check(record.proposal.beforeVersion in 0 until version) {
+                "Evolution history contains an invalid parent link at version $version."
+            }
+            val verifiedPayload = verifiedVersionPayload(version)
+            check(verifiedPayload == record.payload) {
+                "Evolution proposal payload does not match archived version $version."
+            }
+            if (record.proposal.kind == kind) return verifiedPayload
             version = record.proposal.beforeVersion
         }
         return ""
@@ -124,8 +132,13 @@ class NexusEvolutionExecutor(context: Context) {
     fun activeRecord(): NexusEvolutionRecord? {
         val active = activeVersion()
         if (active == 0L) return null
-        return readRecord(proposalFileForVersion(active))
+        val record = readRecord(proposalFileForVersion(active))
             ?.takeIf { it.status == NexusEvolutionProposalStatus.ACTIVE }
+            ?: throw IllegalStateException("Active Evolution version $active has no active proposal record.")
+        check(verifiedVersionPayload(active) == record.payload) {
+            "Active Evolution record does not match its archived payload."
+        }
+        return record
     }
 
     @Synchronized
@@ -178,9 +191,9 @@ class NexusEvolutionExecutor(context: Context) {
     @Synchronized
     fun rollbackTo(version: Long): Result<Long> = runCatching {
         require(version >= 0L) { "Номер версии не может быть отрицательным." }
-        verifiedVersionPayload(version)
         val previous = activeVersion()
         require(version <= previous) { "Нельзя откатить систему вперёд по истории версий." }
+        verifiedVersionPayload(version)
         if (previous == version) return@runCatching version
         writeJsonAtomic(activeFile, JSONObject().put("version", version))
         appendAudit("ROLLBACK", "rollback", previous, version, "Пользователь восстановил сохранённую версию.")
