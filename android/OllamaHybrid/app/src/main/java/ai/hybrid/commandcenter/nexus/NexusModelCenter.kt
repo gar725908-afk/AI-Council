@@ -129,7 +129,7 @@ data class EvolutionProposal(
 ) {
     fun validationErrors(): List<String> = buildList {
         if (id.isBlank() || title.isBlank() || rationale.isBlank()) add("Предложение должно иметь ID, название и обоснование.")
-        if (beforeVersion < 0 || proposedVersion != beforeVersion + 1) add("Версия изменения должна увеличиваться ровно на единицу.")
+        if (beforeVersion < 0 || proposedVersion <= beforeVersion) add("Номер версии должен быть больше родительской версии.")
         if (!contentSha256.matches(Regex("[a-fA-F0-9]{64}"))) add("Не указан корректный SHA-256 содержимого.")
         if (createdAtEpochMs <= 0) add("Некорректное время создания предложения.")
     }
