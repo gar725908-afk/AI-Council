@@ -253,8 +253,15 @@ class NexusModelStorage(context: Context) {
         check(prefs.getString(ACTIVE_ID, null) != id) {
             "Сначала переключите активную модель, затем удаляйте эту."
         }
-        File(record.path).delete()
-        prefs.edit().remove(recordKey(id)).apply()
+        val artifact = File(record.path)
+        if (artifact.exists()) {
+            check(artifact.delete()) {
+                "Не удалось удалить файл модели; запись в каталоге сохранена."
+            }
+        }
+        check(prefs.edit().remove(recordKey(id)).commit()) {
+            "Файл удалён, но запись каталога не удалось обновить. Обновите Model Center."
+        }
     }
 
     private fun saveRecord(record: InstalledNexusModel) {
