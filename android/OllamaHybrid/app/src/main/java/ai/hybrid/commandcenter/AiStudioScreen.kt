@@ -131,6 +131,7 @@ fun AiStudioScreen(
     var recentMissions by remember { mutableStateOf(emptyList<ai.hybrid.commandcenter.nexus.MissionRecord>()) }
     var activeConversationId by remember { mutableStateOf<String?>(null) }
     var conversationMessages by remember { mutableStateOf(emptyList<ChatMessageRecord>()) }
+    var pendingFollowUpMissionId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(journal) {
         val initial = withContext(Dispatchers.IO) {
             val id = journal.getLatestConversationId() ?: journal.createConversation()
@@ -448,6 +449,7 @@ fun AiStudioScreen(
                         conversationMessages = emptyList()
                         answer = ""
                         prompt = ""
+                        pendingFollowUpMissionId = null
                         status = "Создан новый диалог"
                     }
                 }
@@ -767,6 +769,29 @@ fun AiStudioScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         mission.error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        if (mission.status == MissionStatus.AWAITING_INPUT) {
+                            TextButton(
+                                enabled = !isRunning,
+                                onClick = {
+                                    pendingFollowUpMissionId = mission.id
+                                    prompt = buildString {
+                                        appendLine("FOLLOW-UP TO MISSION ${mission.id}")
+                                        appendLine("Original task:")
+                                        appendLine(mission.goal)
+                                        if (!mission.result.isNullOrBlank()) {
+                                            appendLine()
+                                            appendLine("Manager clarification request:")
+                                            appendLine(mission.result)
+                                        }
+                                        appendLine()
+                                        append("User clarification:")
+                                    }
+                                    status = "Add your clarification, then send it as a new mission with the prior context."
+                                }
+                            ) {
+                                Text("Continue with clarification")
+                            }
+                        }
                     }
                 }
             }
