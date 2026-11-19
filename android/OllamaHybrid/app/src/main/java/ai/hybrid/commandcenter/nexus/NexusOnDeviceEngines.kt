@@ -14,6 +14,7 @@ import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -167,6 +168,7 @@ private fun interface LlamaTokenSink {
 class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
     private val storage = NexusModelStorage(context.applicationContext)
     private val mutex = Mutex()
+    private val handleLock = ReentrantReadWriteLock()
     private val closed = AtomicBoolean(false)
     private val generation = AtomicLong(0L)
     @Volatile private var handle: Long = 0L
@@ -179,7 +181,12 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
         val prompt = buildQwenStylePrompt(request.messages)
         val requestGeneration = generation.incrementAndGet()
         val job = launch(Dispatchers.IO) {
+            val readLock = handleLock.readLock()
+            readLock.lock()
             try {
+                check(!closed.get() && handle == nativeHandle) {
+                    "llama.cpp gateway closed before generation started."
+                }
                 NativeLlamaBridge.nativeGenerate(
                     nativeHandle, prompt, 512, request.temperature.toFloat(),
                     object : LlamaTokenSink {
@@ -196,6 +203,8 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
                 close()
             } catch (error: Throwable) {
                 close(error)
+            } finally {
+                readLock.unlock()
             }
         }
         awaitClose {
@@ -206,25 +215,36 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
     }
 
     private suspend fun getOrCreateHandle(): Long = mutex.withLock {
-        check(!closed.get()) { "llama.cpp gateway уже закрыт." }
-        val modelPath = storage.activeModelPath(ModelRuntimeKind.LLAMA_CPP)
-        check(File(modelPath).isFile) { "Файл активной GGUF-модели не найден." }
-        if (handle != 0L && loadedModelPath == modelPath) return@withLock handle
-        val previous = handle
-        handle = 0L
-        if (previous != 0L) withContext(Dispatchers.IO) {
-            NativeLlamaBridge.nativeDestroy(previous)
+        withContext(Dispatchers.IO) {
+            val writeLock = handleLock.writeLock()
+            writeLock.lock()
+            try {
+                check(!closed.get()) { "llama.cpp gateway уже закрыт." }
+                val modelPath = storage.activeModelPath(ModelRuntimeKind.LLAMA_CPP)
+                check(File(modelPath).isFile) { "Файл активной GGUF-модели не найден." }
+                if (handle != 0L && loadedModelPath == modelPath) return@withContext handle
+
+                val previous = handle
+                handle = 0L
+                loadedModelPath = null
+                if (previous != 0L) NativeLlamaBridge.nativeDestroy(previous)
+
+                val created = NativeLlamaBridge.nativeCreate(
+                    modelPath, 4096,
+                    (Runtime.getRuntime().availableProcessors() - 1).coerceIn(2, 6)
+                )
+                check(created != 0L) { "llama.cpp не смог открыть GGUF-модель." }
+                if (closed.get()) {
+                    NativeLlamaBridge.nativeDestroy(created)
+                    throw IllegalStateException("llama.cpp gateway закрыт во время инициализации.")
+                }
+                handle = created
+                loadedModelPath = modelPath
+                created
+            } finally {
+                writeLock.unlock()
+            }
         }
-        val created = withContext(Dispatchers.IO) {
-            NativeLlamaBridge.nativeCreate(
-                modelPath, 4096,
-                (Runtime.getRuntime().availableProcessors() - 1).coerceIn(2, 6)
-            )
-        }
-        check(created != 0L) { "llama.cpp не смог открыть GGUF-модель." }
-        handle = created
-        loadedModelPath = modelPath
-        created
     }
 
     @Volatile private var loadedModelPath: String? = null
@@ -236,23 +256,22 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
         if (!closed.compareAndSet(false, true)) return
         generation.incrementAndGet()
         val current = handle
-        handle = 0L
-        loadedModelPath = null
-        if (current != 0L) {
-            // nativeDestroy waits for any in-flight generation mutex; never block the UI thread.
-            runCatching { NativeLlamaBridge.nativeCancel(current) }
-            runCatching {
-                cleanupExecutor.execute {
-                    try {
-                        NativeLlamaBridge.nativeDestroy(current)
-                    } finally {
-                        cleanupExecutor.shutdown()
-                    }
+        if (current != 0L) runCatching { NativeLlamaBridge.nativeCancel(current) }
+        runCatching {
+            cleanupExecutor.execute {
+                val writeLock = handleLock.writeLock()
+                writeLock.lock()
+                try {
+                    val ownedHandle = handle
+                    handle = 0L
+                    loadedModelPath = null
+                    if (ownedHandle != 0L) NativeLlamaBridge.nativeDestroy(ownedHandle)
+                } finally {
+                    writeLock.unlock()
+                    cleanupExecutor.shutdown()
                 }
-            }.onFailure { cleanupExecutor.shutdown() }
-        } else {
-            cleanupExecutor.shutdown()
-        }
+            }
+        }.onFailure { cleanupExecutor.shutdown() }
     }
 
     private fun buildQwenStylePrompt(messages: List<ProviderMessage>): String {
