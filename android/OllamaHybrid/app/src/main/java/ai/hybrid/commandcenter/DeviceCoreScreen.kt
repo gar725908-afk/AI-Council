@@ -6,6 +6,7 @@ import ai.hybrid.commandcenter.androidbridge.CapabilityState
 import ai.hybrid.commandcenter.androidbridge.DeviceDiagnostics
 import ai.hybrid.commandcenter.androidbridge.DeviceInspector
 import ai.hybrid.commandcenter.androidbridge.RootAccessProbe
+import android.os.Build
 import ai.hybrid.commandcenter.androidbridge.RootProbeResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -190,6 +191,17 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                 } else {
                     capabilityStates.forEach { state -> CapabilityRow(state) }
                 }
+            }
+        }
+
+        item {
+            SectionCard(title = "СБОРКА И СРЕДА", accent = Violet) {
+                DiagnosticRow("Версия NEXUS", BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")")
+                DiagnosticRow("Пакет", BuildConfig.APPLICATION_ID)
+                DiagnosticRow("Тип сборки", if (BuildConfig.DEBUG) "debug" else "release")
+                DiagnosticRow("Android", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")")
+                DiagnosticRow("Устройство", Build.MANUFACTURER + " " + Build.MODEL)
+                DiagnosticRow("ABI", Build.SUPPORTED_ABIS.firstOrNull() ?: "неизвестно")
             }
         }
 

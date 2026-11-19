@@ -71,6 +71,7 @@ fun CouncilScreen(
     onInitialPromptConsumed: () -> Unit = {}
 ) {
     var tab by remember { mutableIntStateOf(0) }
+    var repeatPrompt by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(initialPrompt) {
         if (!initialPrompt.isNullOrBlank()) tab = 1
     }
@@ -92,19 +93,31 @@ fun CouncilScreen(
             }
         }
         when (tab) {
-            0 -> CouncilCommandCenter(Modifier.fillMaxSize())
+            0 -> CouncilCommandCenter(
+                onRepeatMission = { goal ->
+                    repeatPrompt = goal
+                    tab = 1
+                },
+                modifier = Modifier.fillMaxSize()
+            )
             else -> AiStudioScreen(
                 councilMode = true,
                 modifier = Modifier.fillMaxSize(),
-                initialPrompt = initialPrompt,
-                onInitialPromptConsumed = onInitialPromptConsumed
+                initialPrompt = repeatPrompt ?: initialPrompt,
+                onInitialPromptConsumed = {
+                    repeatPrompt = null
+                    onInitialPromptConsumed()
+                }
             )
         }
     }
 }
 
 @Composable
-private fun CouncilCommandCenter(modifier: Modifier = Modifier) {
+private fun CouncilCommandCenter(
+    onRepeatMission: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val agents = remember { CouncilOrchestrator.defaultAgents() }
@@ -194,6 +207,7 @@ private fun CouncilCommandCenter(modifier: Modifier = Modifier) {
                 mission = mission,
                 expanded = expandedMissionId == mission.id,
                 results = agentResults[mission.id],
+                onRepeat = onRepeatMission,
                 onToggle = {
                     if (expandedMissionId == mission.id) {
                         expandedMissionId = null
@@ -267,7 +281,8 @@ private fun MissionCard(
     mission: MissionRecord,
     expanded: Boolean,
     results: List<AgentJournalRecord>?,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onRepeat: (String) -> Unit
 ) {
     val (label, color) = missionStatusLabel(mission.status)
     Surface(
@@ -307,6 +322,10 @@ private fun MissionCard(
                     Text("ИТОГ", color = SignalGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     Text(result.take(400), color = PrimaryText, fontSize = 11.sp)
                 }
+                OutlinedButton(
+                    onClick = { onRepeat(mission.goal) },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
+                ) { Text("Повторить задачу", fontSize = 11.sp) }
             } else {
                 Text("Нажмите, чтобы раскрыть результаты агентов", color = SecondaryText, fontSize = 10.sp)
             }
