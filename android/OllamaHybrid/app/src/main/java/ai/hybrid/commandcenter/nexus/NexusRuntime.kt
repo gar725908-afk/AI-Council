@@ -11,6 +11,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -57,9 +58,9 @@ class OpenAiCompatibleGateway(
         .build()
 ) : ModelGateway {
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun stream(request: CompletionRequest): Flow<String> = callbackFlow {
         require(request.model.isNotBlank()) { "Не указана модель." }
-        require(request.apiKey.isNotBlank()) { "Не указан API-ключ." }
         val url = buildUrl(request.endpoint)
         val messages = JSONArray().apply {
             request.messages.forEach { message ->
