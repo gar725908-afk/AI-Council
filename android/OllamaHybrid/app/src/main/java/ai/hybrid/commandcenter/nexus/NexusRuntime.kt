@@ -5,7 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.Flow
@@ -243,7 +243,7 @@ class CouncilOrchestrator(
                             val selectedEndpoint = route?.endpoint ?: endpoint
                             val selectedModel = route?.model ?: model
                             val selectedApiKey = route?.apiKey ?: apiKey
-                            val output = withTimeout(agentTimeoutMillis) {
+                            val output = withTimeoutOrNull(agentTimeoutMillis) {
                                 val request = CompletionRequest(
                                     endpoint = selectedEndpoint,
                                     model = selectedModel,
@@ -262,7 +262,16 @@ class CouncilOrchestrator(
                                 selectedGateway.stream(request).collect { chunk -> chunks += chunk }
                                 chunks.joinToString("")
                             }
-                            AgentRunResult(agent, AgentRunStatus.COMPLETED, output)
+                            if (output == null) {
+                                AgentRunResult(
+                                    agent = agent,
+                                    status = AgentRunStatus.FAILED,
+                                    output = "",
+                                    error = "Агент превысил лимит времени ${agentTimeoutMillis} мс."
+                                )
+                            } else {
+                                AgentRunResult(agent, AgentRunStatus.COMPLETED, output)
+                            }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (error: Exception) {
@@ -305,7 +314,7 @@ class CouncilOrchestrator(
                     failures.forEach { appendLine("- ${it.agent.name}: ${it.error}") }
                 }
             }
-            val synthesis = withTimeout(synthesisTimeoutMillis) {
+            val synthesis = withTimeoutOrNull(synthesisTimeoutMillis) {
                 val chunks = mutableListOf<String>()
                 gateway.stream(
                     CompletionRequest(
@@ -327,14 +336,23 @@ class CouncilOrchestrator(
                 ).collect { chunk -> chunks += chunk }
                 chunks.joinToString("")
             }
-            CouncilRunResult(
-                agentResults = results,
-                synthesis = synthesis,
-                completed = synthesis.isNotBlank(),
-                error = if (results.any { it.status == AgentRunStatus.FAILED }) {
-                    "Часть агентов завершилась с ошибкой; итог сформирован по доступным результатам."
-                } else null
-            )
+            if (synthesis == null) {
+                CouncilRunResult(
+                    agentResults = results,
+                    synthesis = null,
+                    completed = false,
+                    error = "Синтез превысил лимит времени ${synthesisTimeoutMillis} мс."
+                )
+            } else {
+                CouncilRunResult(
+                    agentResults = results,
+                    synthesis = synthesis,
+                    completed = synthesis.isNotBlank(),
+                    error = if (results.any { it.status == AgentRunStatus.FAILED }) {
+                        "Часть агентов завершилась с ошибкой; итог сформирован по доступным результатам."
+                    } else null
+                )
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
