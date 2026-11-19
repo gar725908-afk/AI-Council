@@ -1,46 +1,73 @@
-# NEXUS — инженерный аудит Android-каркаса
+# NEXUS — инженерный аудит Android-реализации
 
 **Дата:** 19 ноября 2026 года  
-**Ветка:** `nexus/genesis-foundation`
+**Ветка:** `nexus/genesis-foundation`  
+**Статус:** исходная интеграция расширена; сборка и выполнение на устройстве ещё не подтверждены.
 
-## 1. Подтверждённые проверки
+## 1. Реализовано в исходном коде
 
-### Bridge contracts
-`BridgeContracts.kt`, `RootAccessProbe.kt` и `BridgeContractSmokeTest.kt` отдельно скомпилированы Kotlin/JVM compiler 1.9.0 и smoke test завершился PASS. Это проверяет только Kotlin-контракты и тестовые assertions, не Android APK.
+### Runtime и Model Center
+- Реестры LiteRT-LM и llama.cpp с выбором активной локальной модели.
+- Каталог моделей, импорт GGUF/LiteRT-LM и загрузка проверенных артефактов.
+- SHA-256-проверка файлов перед активацией; импорт и загрузка проходят через временные файлы.
+- Уникальные неизменяемые имена артефактов: повторная загрузка не перезаписывает файл, который может быть открыт активным inference runtime.
+- Проверка, что зарегистрированный путь находится внутри app-private model storage.
+- Длительная файловая проверка и операции Evolution выполняются на IO dispatcher, а не на UI thread.
 
-### Genesis Android scaffold
-В ветку добавлены:
-- корневые `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`;
-- Android Manifest;
-- стартовый Jetpack Compose `MainActivity`;
-- CI workflow для Gradle 8.13 / JDK 17;
-- Android README с ограничениями и инструкциями.
+### Council
+- Локальный Manager и восемь исполнительных ролей; Manager выбирает необходимые роли через структурированные JSON-решения.
+- Валидация action-specific схемы, разрешённых participant ID, типов полей, размеров и отсутствия Markdown/обрамляющего текста.
+- Локальный Council использует выбранную LiteRT-LM или llama.cpp модель последовательно, чтобы не создавать конкурирующие native inference contexts.
+- Для удалённого Council ограничены размер задачи, ответы исполнителей, контекст синтеза и итоговый ответ.
+- Provider SSE использует общий транспорт с bounded backpressure; фрагменты ответа не должны молча теряться при замедлении consumer.
 
-Compose экран показывает только честные статусы незапущенных подсистем. AI runtime, Council, Browser и Bridge execution не имитируются.
+### Provider security и credentials
+- Общая проверка endpoint: HTTP допускается только для localhost/частной сети; публичные endpoint требуют HTTPS.
+- API credentials хранятся отдельно от настроек и маршрутов, шифруются AES-GCM с Android Keystore.
+- Новые записи vault используют secret ID как AES-GCM AAD; старые записи читаются и мигрируют в новый формат при успешном чтении.
+- Evolution routing policy не принимает endpoint, API key или произвольные поля.
 
-## 2. Что ещё не подтверждено
-- Успешная Android Gradle сборка и выпуск APK в этом окружении.
-- Установка и запуск на физическом устройстве.
-- Android Studio sync на чистой машине.
-- Полная функциональность AI Studio, Council, Browser, provider registry и local inference.
-- Room/DataStore persistence, WorkManager lifecycle и recovery.
-- Реальная интеграция Shizuku/Sui, Root service и Android tool execution.
-- Полный Material Library, voice и Evolution pipeline.
+### Mission Journal и Evolution
+- SQLite-журнал миссий, событий, результатов агентов и чатов.
+- Содержимое миссий и чатов шифруется Android Keystore; незавершённые миссии после перезапуска помечаются INTERRUPTED и не запускаются автоматически.
+- Evolution хранит версионированные конфигурационные payloads, audit trail, контрольные суммы и пользовательское подтверждение активации.
+- Активный указатель версии проверяется строго; повреждённая история не сбрасывается молча к версии 0.
+- Перед активацией конфигурации и откатом проверяется вся цепочка версий, статусы записей, родительские ссылки и SHA-256 архивных payloads.
 
-## 3. Ограничения сборки
-- CI использует установленный Gradle 8.13; Gradle Wrapper scripts/JAR ещё не добавлены.
-- Для локальной сборки нужен JDK 17 и Android SDK Platform 36.
-- Текущий Compose экран — минимальный runnable target, не финальный дизайн.
-- Namespace и applicationId остаются `ai.hybrid.commandcenter` для сохранения совместимости.
+## 2. Что намеренно не реализовано как рабочая функция
 
-## 4. Следующие обязательные этапы
-1. Добавить Gradle Wrapper и добиться успешного CI build.
-2. Восстановить/сверить полный Android source tree, если он существует отдельно.
-3. Ввести domain/data/feature слои и Room/DataStore.
-4. Реализовать Provider API и рабочий AI Studio с безопасным хранением секретов.
-5. Реализовать durable Mission Runtime и Council с лимитами параллелизма.
-6. Подключить Browser и Material Library.
-7. Реализовать единый Tool Gateway и Android Bridge с approval, audit и verifier.
-8. Только затем — local inference JNI, Shizuku/Root и Evolution pipeline.
+- Browser automation и управление произвольными сайтами.
+- Универсальный Tool Gateway/MCP с исполнением инструментов.
+- Полноценный Android Bridge для Accessibility, Shizuku/Sui или Root-команд.
+- Автоматическое выполнение Evolution-кода, изменение системных разрешений или модификация весов моделей.
+- Реальное управление устройством от имени локальной модели без отдельного approval/verifier контура.
 
-**Статус:** создана стартовая Android Gradle/Compose структура. Полноценная сборка и интеграция на устройстве пока не заявляются.
+Текущие Android Bridge contracts и Root capability probe — только контракты/проверочные заготовки; они не означают наличие рабочего Root или Shizuku execution.
+
+## 3. Ограничения и незакрытые риски
+
+- Успешная Gradle-сборка APK не подтверждена.
+- Совместимость JNI, NDK, ABI и реальных native-библиотек не подтверждена сборкой.
+- Реальная загрузка LiteRT-LM/llama.cpp моделей, стабильность долгой генерации и переключение моделей не проверены на устройстве.
+- Не проверены отмена загрузок, восстановление после process death, low-storage, тепловые ограничения, память, энергопотребление и latency.
+- Поведение сетевых провайдеров, включая SSE backpressure, требует интеграционной проверки.
+- Требуется проверка миграции старых записей credential vault и зашифрованных данных на реальном Android Keystore.
+
+## 4. Следующий этап проверки
+
+Когда будет дано отдельное разрешение на тестирование:
+
+1. Gradle sync и clean debug APK assembly на JDK 17 / Android SDK Platform 36.
+2. Проверка arm64-v8a JNI и native linking.
+3. Импорт, загрузка, проверка и запуск небольшой GGUF и LiteRT-LM модели на физическом устройстве.
+4. Проверка Model Center: смена активной модели, удаление, повторная загрузка и восстановление после отмены.
+5. Проверка Council: JSON-валидация Manager, dispatch, лимиты вывода, timeout и cancellation.
+6. Проверка credential vault, миграции legacy-ключей и Mission Journal на Android Keystore.
+7. Проверка Evolution: повреждённый указатель, нарушенная цепочка версий, rollback, прерванная запись.
+8. Профилирование RAM, latency, thermal throttling и battery drain при длительной генерации.
+
+**Важно:** до завершения этого этапа нельзя заявлять, что Android-приложение собрано, установлено или проверено на устройстве. Текущая оценка основана на статическом чтении исходников и структуре GitHub-ветки.
+
+## 5. Границы изменений
+
+Работа ведётся в `nexus/genesis-foundation`. Ветка `main`, desktop Python/PySide6 application и рабочая директория пользователя не затрагивались. Веса моделей и пользовательские секреты в Git не добавляются.
