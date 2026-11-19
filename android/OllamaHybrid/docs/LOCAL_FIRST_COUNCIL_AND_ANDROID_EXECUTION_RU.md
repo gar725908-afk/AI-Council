@@ -110,6 +110,8 @@ NEXUS не должен зависеть от платных API нейросе�
 - профиль участников и валидацию opt-in для API и Desktop Link;
 - типизированные решения локального Manager;
 - интерфейсы `LocalCouncilManager` и `CouncilParticipantAdapter`;
+- runtime metadata Manager (model ID и ON_DEVICE/NETWORK_ENDPOINT); автоматический режим отклоняет сетевую модель, даже если её назвали локальной;
+- явное согласие на передачу контекста внешним WebView/API участникам перед автономной отправкой;
 - provider-neutral `LocalFirstCouncilOrchestrator`;
 - повторные раунды: результаты участников поступают Manager как контекст следующего решения;
 - ограничение параллельности, ограничение количества ходов, защита от неизвестных/выключенных участников;
@@ -157,7 +159,9 @@ PC Agent должен работать по принципу deny-by-default. З
 - [ ] Запустить CI и исправить ошибки компиляции/тестов.
 
 ### LFC-1 — On-device Local Manager
-- выбрать inference backend после оценки целевого Android устройства;
+- первый кандидат для benchmark — LiteRT-LM: у Google есть стабильный Kotlin API для Android/JVM, потоковая генерация и tool use, CPU/GPU/NPU backend; необходимо проверить поддержку конкретных моделей, ABI и устройства ([Android guide](https://developers.google.com/edge/litert-lm/android), [overview](https://developers.google.com/edge/litert-lm/overview));
+- альтернативный кандидат — llama.cpp через Android NDK, особенно если нужен импорт GGUF ([Android build guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/android.md));
+- сравнить cold-start, decode speed, RAM peak, thermal/power, supported model formats, structured output/tool calling и размер APK до выбора; не подключать динамический latest.release в production;
 - добавить Model Runtime, model catalog, download/verification, load/unload;
 - адаптер `LocalCouncilManager`;
 - проверить latency, RAM peak, thermal throttling и энергопотребление;
