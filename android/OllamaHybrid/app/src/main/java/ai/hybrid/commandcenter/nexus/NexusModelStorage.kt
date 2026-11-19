@@ -38,7 +38,7 @@ data class InstalledNexusModel(
  */
 class NexusModelStorage(context: Context) {
     private val appContext = context.applicationContext
-    private val root = File(appContext.filesDir, "nexus-models").apply { mkdirs() }
+    private val root = File(appContext.filesDir, "nexus-models")
     private val prefs = appContext.getSharedPreferences("nexus_model_registry", Context.MODE_PRIVATE)
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -97,6 +97,7 @@ class NexusModelStorage(context: Context) {
         onProgress: (Long, Long) -> Unit = { _, _ -> },
         onCallCreated: (Call) -> Unit = {}
     ): InstalledNexusModel = withContext(Dispatchers.IO) {
+        ensureRoot()
         val manifest = model.artifact
             ?: throw IllegalStateException("Для выбранной модели пока нет проверенного файла для загрузки.")
         val available = StatFs(root.absolutePath).availableBytes
@@ -193,6 +194,7 @@ class NexusModelStorage(context: Context) {
     }
 
     suspend fun importArtifact(uri: Uri): InstalledNexusModel = withContext(Dispatchers.IO) {
+        ensureRoot()
         val resolver = appContext.contentResolver
         val displayName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { cursor ->
@@ -324,6 +326,12 @@ class NexusModelStorage(context: Context) {
         val actual = digest.digest().joinToString("") { "%02x".format(it) }
         check(actual.equals(record.sha256, ignoreCase = true)) {
             "SHA-256 файла модели не совпадает с реестром. Модель не будет активирована."
+        }
+    }
+
+    private fun ensureRoot() {
+        check(root.mkdirs() || root.isDirectory) {
+            "Не удалось создать приватное хранилище моделей NEXUS."
         }
     }
 
