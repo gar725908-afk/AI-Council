@@ -60,6 +60,7 @@ data class NexusExtensionManifest(
             }
             val actionJson = root.optJSONArray("actions") ?: JSONArray()
             require(actionJson.length() in 0..20) { "Расширение может содержать не более 20 действий." }
+            val seenActionIds = mutableSetOf<String>()
             val actions = buildList {
                 for (index in 0 until actionJson.length()) {
                     val item = actionJson.optJSONObject(index) ?: throw IllegalArgumentException("Некорректное действие.")
@@ -78,13 +79,15 @@ data class NexusExtensionManifest(
                     }
                     require(capability in capabilities) { "Для действия требуется разрешение " + capability }
                     if (type == "open_url") {
-                        val uri = Uri.parse(payload)
-                        require(uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null && uri.port == -1) {
+                        val uri = runCatching { java.net.URI(payload) }
+                            .getOrElse { throw IllegalArgumentException("Некорректная HTTPS-ссылка.", it) }
+                        require(uri.scheme.equals("https", ignoreCase = true) &&
+                            !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.port == -1) {
                             "Разрешены только HTTPS-ссылки без логина и нестандартного порта."
                         }
                     }
                     if (type == "show_message") require(payload.length <= 240) { "Сообщение длиннее 240 символов." }
-                    require(none { it.id == actionId }) { "ID действий должны быть уникальными." }
+                    require(seenActionIds.add(actionId)) { "ID действий должны быть уникальными." }
                     add(NexusExtensionAction(actionId, title, type, payload))
                 }
             }
