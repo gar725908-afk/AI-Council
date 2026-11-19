@@ -66,7 +66,7 @@ data class NexusEvolutionRoutingPolicy(
                     require(modelId.isNotBlank() && modelId.length <= 200) {
                         "Model override for $agentId must contain 1–200 characters."
                     }
-                    require(modelId.none { it.isISOControl() }) {
+                    require(modelId.none { it.code < 0x20 || it.code == 0x7f }) {
                         "Model override for $agentId contains control characters."
                     }
                     overrides[agentId] = modelId
