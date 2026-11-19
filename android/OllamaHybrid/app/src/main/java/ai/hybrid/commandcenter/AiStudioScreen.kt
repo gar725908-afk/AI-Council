@@ -604,7 +604,8 @@ fun AiStudioScreen(
 }
 
 private fun defaultProviderEndpoint(kind: ProviderKind): String = when (kind) {
-    ProviderKind.OPENAI_COMPATIBLE, ProviderKind.OPENAI -> "https://api.openai.com/v1"
+    ProviderKind.OPENAI_COMPATIBLE -> ""
+    ProviderKind.OPENAI -> "https://api.openai.com/v1"
     ProviderKind.DEEPSEEK -> "https://api.deepseek.com"
     ProviderKind.OPENROUTER -> "https://openrouter.ai/api/v1"
     ProviderKind.GROQ -> "https://api.groq.com/openai/v1"
