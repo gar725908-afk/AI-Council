@@ -6,7 +6,8 @@
 
 ## Документы NEXUS
 - [NEXUS CODEX — история, канон, имена и визуальный язык](docs/NEXUS_CODEX_RU.md)
-- [План технического перехода и реализации](docs/NEXUS_TECHNICAL_ROADMAP_RU.md)
+- [Техническая дорожная карта](docs/NEXUS_TECHNICAL_ROADMAP_RU.md)
+- [Инженерный аудит Android-каркаса и результаты проверок](docs/NEXUS_ENGINEERING_AUDIT_RU.md)
 
 ## Базовая архитектура
 NEXUS продолжает Android-архитектуру, ранее разработанную под рабочим названием **OllamaHybrid**. Каталог `android/OllamaHybrid/`, namespace `ai.hybrid.commandcenter` и текущие технические identifiers пока сохраняются для совместимости. Массовое переименование будет отдельным этапом после восстановления полного проекта и проверки сборки.
