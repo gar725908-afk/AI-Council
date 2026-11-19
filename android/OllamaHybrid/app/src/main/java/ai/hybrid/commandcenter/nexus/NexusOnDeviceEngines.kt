@@ -263,16 +263,16 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         generation.incrementAndGet()
-        val readLock = handleLock.readLock()
-        readLock.lock()
-        try {
-            val current = handle
-            if (current != 0L) runCatching { NativeLlamaBridge.nativeCancel(current) }
-        } finally {
-            readLock.unlock()
-        }
         runCatching {
             cleanupExecutor.execute {
+                val readLock = handleLock.readLock()
+                readLock.lock()
+                try {
+                    val current = handle
+                    if (current != 0L) runCatching { NativeLlamaBridge.nativeCancel(current) }
+                } finally {
+                    readLock.unlock()
+                }
                 val writeLock = handleLock.writeLock()
                 writeLock.lock()
                 try {
