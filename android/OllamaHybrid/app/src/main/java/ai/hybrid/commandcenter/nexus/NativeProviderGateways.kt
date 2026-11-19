@@ -59,8 +59,9 @@ fun createModelGateway(kind: ProviderKind, context: Context? = null): ModelGatew
     ProviderKind.FIREWORKS,
     ProviderKind.XAI,
     ProviderKind.CEREBRAS,
-    ProviderKind.NVIDIA,
-    ProviderKind.OLLAMA -> OpenAiCompatibleGateway()
+    ProviderKind.NVIDIA -> OpenAiCompatibleGateway()
+    // Native Ollama LAN API per handoff section 10.3: /api/chat JSONL streaming.
+    ProviderKind.OLLAMA -> OllamaNativeGateway()
     ProviderKind.ON_DEVICE_LITERT -> LiteRtLmGateway(
         context ?: throw IllegalArgumentException("Для локального LiteRT-LM требуется Android Context.")
     )

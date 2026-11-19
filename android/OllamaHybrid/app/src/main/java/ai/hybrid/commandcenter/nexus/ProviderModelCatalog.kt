@@ -33,6 +33,17 @@ class ProviderModelCatalog(
                 "Укажите LAN IP компьютера, на котором запущен Ollama, например http://192.168.1.10:11434/v1."
             }
         }
+        if (kind == ProviderKind.OLLAMA) {
+            // Native API per handoff section 10.3: /api/tags is the actual model list.
+            val tagsRequest = Request.Builder()
+                .url(OllamaApi.tagsUrl(endpoint))
+                .get()
+                .header("Accept", "application/json")
+                .build()
+            val models = OllamaApi.parseTags(execute(tagsRequest), MAX_MODELS)
+            require(models.isNotEmpty()) { "Ollama не вернул ни одной модели (/api/tags пуст)." }
+            return models
+        }
         val base = parseBase(endpoint.ifBlank { defaultEndpoint(kind) })
         val url = modelsUrl(kind, base)
         val builder = Request.Builder().url(url).get().header("Accept", "application/json")

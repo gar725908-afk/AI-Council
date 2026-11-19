@@ -22,12 +22,16 @@ class ProviderGatewayFactoryTest {
             ProviderKind.FIREWORKS,
             ProviderKind.XAI,
             ProviderKind.CEREBRAS,
-            ProviderKind.NVIDIA,
-            ProviderKind.OLLAMA
+            ProviderKind.NVIDIA
         )
         compatibleProviders.forEach { provider ->
             assertTrue(createModelGateway(provider) is OpenAiCompatibleGateway)
         }
+    }
+
+    @Test
+    fun ollamaUsesTheNativeLanGateway() {
+        assertTrue(createModelGateway(ProviderKind.OLLAMA) is OllamaNativeGateway)
     }
 
     @Test
