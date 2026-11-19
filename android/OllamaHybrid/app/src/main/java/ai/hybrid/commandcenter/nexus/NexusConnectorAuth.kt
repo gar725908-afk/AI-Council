@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -109,8 +110,23 @@ class NexusConnectorAuthService(context: Context) {
                 }
                 throw IOException(message)
             }
-            val body = response.body?.string()?.take(512 * 1024)
-                ?: throw IOException("Провайдер вернул пустой ответ.")
+            val responseBody = response.body ?: throw IOException("Провайдер вернул пустой ответ.")
+            require(responseBody.contentLength() <= MAX_AUTH_RESPONSE_BYTES) {
+                "Ответ провайдера превышает допустимый размер."
+            }
+            val output = ByteArrayOutputStream()
+            responseBody.byteStream().use { input ->
+                val buffer = ByteArray(8 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    require(output.size() + count <= MAX_AUTH_RESPONSE_BYTES) {
+                        "Ответ провайдера превышает допустимый размер."
+                    }
+                    output.write(buffer, 0, count)
+                }
+            }
+            val body = output.toString(Charsets.UTF_8.name())
 
             return when (connector) {
                 NexusConnectorId.GITHUB -> {
@@ -131,5 +147,9 @@ class NexusConnectorAuthService(context: Context) {
                 }
             }
         }
+    }
+
+    private companion object {
+        const val MAX_AUTH_RESPONSE_BYTES = 512 * 1024
     }
 }
