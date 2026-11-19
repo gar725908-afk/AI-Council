@@ -528,3 +528,22 @@ Hybrid Mesh is a later V4+ project, after V3 reliability and security acceptance
 - Статические проверки и isolated Kotlin/JVM smoke tests для раннего Bridge foundation не заменяют Gradle build/device QA.
 
 Эта спецификация описывает целевое состояние и последовательность реализации. Каждый этап должен обновлять статус: Planned → In Progress → Implemented → Tested on Device → Released. Только последний проверенный статус показывается пользователю как готовая функция.
+
+## 14. Evolution Core — саморазвитие и оптимизация
+
+V3 включает отдельный cross-cutting Evolution Core. Подробная спецификация: [Evolution Core — архитектура саморазвития и самооптимизации](EVOLUTION_CORE_ARCHITECTURE_RU.md).
+
+Evolution Core связывает три контура:
+1. **Intelligence Evolution** — улучшение стратегий Cognitive Core и Council: выбор минимально достаточной модели, числа агентов, последовательности шагов, инструментов, кэша и retrieval.
+2. **Runtime Evolution** — оптимизация CPU/RAM, задержек, сетевого трафика, I/O, тепловой нагрузки и доступных оценок энергопотребления.
+3. **Software Evolution** — анализ исходников, создание patch в изолированной рабочей копии, сборка, тесты, benchmark, review и контролируемый rollout.
+
+Обязательный цикл: Observe → Analyze → Propose → Experiment → Verify → Approve/Publish → Monitor → Rollback if needed.
+
+**Новый архитектурный инвариант:** минимально необходимые ресурсы для наилучшего проверенного результата. Качество, безопасность, приватность и надёжность — жёсткие ограничения, а не метрики, которыми можно пожертвовать ради скорости.
+
+Local AI и AI Council используют общий Tool Gateway. MCP является поддерживаемым протоколом интеграции tools/resources, но не обходит внутреннюю валидацию, permissions, risk policy и approvals. Playwright применяется только в совместимой browser environment; он не заменяет Android Bridge. Android BrowserEngineAdapter выбирает WebView/GeckoView после технической проверки.
+
+Evolution Core начинает работу в режиме Observe. Затем включаются Recommend и ограниченный Controlled Auto только для заранее разрешённых низкорисковых стратегий. Автономное изменение исходного кода всегда выполняется в sandbox/ветке; Recovery Core, ApprovalManager, audit trust boundary, signing keys и update verification защищены от AI-editable workspace.
+
+Изменение весов моделей, бесконтрольное переписывание приложения и автоматическая публикация APK не входят в V3. Любая оптимизация принимается только по воспроизводимым benchmark и проверкам, с версионированием доказательств и rollback. Hybrid Mesh остаётся V4+.
