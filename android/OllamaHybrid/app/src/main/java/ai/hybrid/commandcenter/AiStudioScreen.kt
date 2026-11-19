@@ -129,6 +129,12 @@ fun AiStudioScreen(
     var activeConversationId by remember { mutableStateOf<String?>(null) }
     var conversationMessages by remember { mutableStateOf(emptyList<ChatMessageRecord>()) }
     LaunchedEffect(journal) {
+        val recovery = (context.applicationContext as NexusApplication).awaitStartupRecovery()
+        if (recovery.isFailure) {
+            status = "Не удалось восстановить журнал миссий: " +
+                (recovery.exceptionOrNull()?.message ?: "неизвестная ошибка")
+            return@LaunchedEffect
+        }
         val initial = withContext(Dispatchers.IO) {
             val id = journal.getLatestConversationId() ?: journal.createConversation()
             id to journal.getChatMessages(id, 100)
