@@ -602,24 +602,49 @@ fun AiStudioScreen(
                                 result.agentResults.forEach { journal.saveAgentResult(missionId!!, it) }
                             }
                             answer = result.synthesis.orEmpty()
-                            if (result.synthesis.isNullOrBlank()) {
-                                withContext(Dispatchers.IO) {
-                                    journal.transition(
-                                        missionId!!,
-                                        MissionStatus.FAILED,
-                                        "Council не сформировал проверенный итог",
-                                        error = result.error ?: "Пустой итог синтеза"
-                                    )
+                            when {
+                                result.needsUserInput -> {
+                                    answer = result.error ?: "The local Council needs additional input to continue."
+                                    withContext(Dispatchers.IO) {
+                                        journal.transition(
+                                            missionId!!,
+                                            MissionStatus.AWAITING_INPUT,
+                                            "Council requested additional user input",
+                                            result = answer
+                                        )
+                                    }
                                 }
-                            } else {
-                                withContext(Dispatchers.IO) {
-                                    journal.transition(missionId!!, MissionStatus.VERIFYING, "Результаты агентов собраны")
-                                    journal.transition(
-                                        missionId!!,
-                                        MissionStatus.COMPLETED,
-                                        "Синтез завершён",
-                                        result = result.synthesis
-                                    )
+                                result.paused -> {
+                                    answer = result.error ?: "The local Council paused and can be resumed later."
+                                    withContext(Dispatchers.IO) {
+                                        journal.transition(
+                                            missionId!!,
+                                            MissionStatus.INTERRUPTED,
+                                            "Council execution paused",
+                                            result = answer
+                                        )
+                                    }
+                                }
+                                result.synthesis.isNullOrBlank() -> {
+                                    withContext(Dispatchers.IO) {
+                                        journal.transition(
+                                            missionId!!,
+                                            MissionStatus.FAILED,
+                                            "Council did not produce a verified final result",
+                                            error = result.error ?: "Empty synthesis"
+                                        )
+                                    }
+                                }
+                                else -> {
+                                    withContext(Dispatchers.IO) {
+                                        journal.transition(missionId!!, MissionStatus.VERIFYING, "Council results collected")
+                                        journal.transition(
+                                            missionId!!,
+                                            MissionStatus.COMPLETED,
+                                            "Synthesis completed",
+                                            result = result.synthesis
+                                        )
+                                    }
                                 }
                             }
                             recentMissions = withContext(Dispatchers.IO) { journal.getRecentMissions(8) }
