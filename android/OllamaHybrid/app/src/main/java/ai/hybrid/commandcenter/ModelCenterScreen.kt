@@ -41,6 +41,7 @@ import ai.hybrid.commandcenter.nexus.NexusEvolutionRecord
 import ai.hybrid.commandcenter.nexus.NexusModelCatalog
 import ai.hybrid.commandcenter.nexus.NexusModelDescriptor
 import ai.hybrid.commandcenter.nexus.NexusModelStorage
+import okhttp3.Call
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,6 +65,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
     var downloadingId by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
     var progressLabel by remember { mutableStateOf("") }
+    var activeDownloadCall by remember { mutableStateOf<Call?>(null) }
     var acceptedLicenses by remember { mutableStateOf(setOf<String>()) }
     var proposalTitle by remember { mutableStateOf("") }
     var proposalReason by remember { mutableStateOf("") }
@@ -153,6 +155,8 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                             runCatching {
                                 storage.download(model, model.artifact?.licenseId?.takeIf { license ->
                                     license in acceptedLicenses
+                                }, onCallCreated = { call ->
+                                    activeDownloadCall = call
                                 }) { received, total ->
                                     scope.launch {
                                         progress = if (total > 0) received.toFloat() / total.toFloat() else 0f
