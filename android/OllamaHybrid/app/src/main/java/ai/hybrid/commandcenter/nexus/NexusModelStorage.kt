@@ -71,6 +71,15 @@ class NexusModelStorage(context: Context) {
         return active.path
     }
 
+    fun verifyActiveModelIntegrity(runtime: ModelRuntimeKind, expectedPath: String) {
+        val active = activeModel()
+            ?: throw IllegalStateException("В Model Center ещё не выбрана активная локальная модель.")
+        require(active.runtime == runtime && active.path == expectedPath) {
+            "Активная модель изменилась во время подготовки inference runtime."
+        }
+        verifyArtifactIntegrity(active)
+    }
+
     fun activate(id: String): InstalledNexusModel {
         val record = installed(id) ?: throw IllegalArgumentException("Модель не установлена или файл отсутствует.")
         verifyArtifactIntegrity(record)
