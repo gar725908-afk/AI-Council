@@ -75,7 +75,7 @@ class OpenAiCompatibleGateway(
 
         val httpRequest = Request.Builder()
             .url(url)
-            .header("Authorization", "Bearer \${request.apiKey}")
+            .header("Authorization", "Bearer ${request.apiKey}")
             .header("Accept", "text/event-stream")
             .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
@@ -230,8 +230,8 @@ class CouncilOrchestrator(
                                     messages = listOf(
                                         ProviderMessage(
                                             "system",
-                                            "Ты участник NEXUS COUNCIL. Роль: \${agent.name} (\${agent.role}). " +
-                                                "\${agent.instructions} Работай строго в рамках поставленной задачи. " +
+                                            "Ты участник NEXUS COUNCIL. Роль: ${agent.name} (${agent.role}). " +
+                                                "${agent.instructions} Работай строго в рамках поставленной задачи. " +
                                                 "Не утверждай, что выполнял действия или проверял источники, если этого не было."
                                         ),
                                         ProviderMessage("user", goal)
@@ -274,14 +274,14 @@ class CouncilOrchestrator(
                 appendLine()
                 appendLine("РЕЗУЛЬТАТЫ АГЕНТОВ:")
                 successful.forEach { result ->
-                    appendLine("### \${result.agent.name} / \${result.agent.role}")
+                    appendLine("### ${result.agent.name} / ${result.agent.role}")
                     appendLine(result.output)
                     appendLine()
                 }
                 val failures = results.filter { it.status == AgentRunStatus.FAILED }
                 if (failures.isNotEmpty()) {
                     appendLine("АГЕНТЫ С ОШИБКАМИ:")
-                    failures.forEach { appendLine("- \${it.agent.name}: \${it.error}") }
+                    failures.forEach { appendLine("- ${it.agent.name}: ${it.error}") }
                 }
             }
             val synthesis = withTimeout(synthesisTimeoutMillis) {
@@ -321,7 +321,7 @@ class CouncilOrchestrator(
                 agentResults = results,
                 synthesis = null,
                 completed = false,
-                error = "Синтез не выполнен: \${error.message ?: error::class.java.simpleName}"
+                error = "Синтез не выполнен: ${error.message ?: error::class.java.simpleName}"
             )
         }
     }
