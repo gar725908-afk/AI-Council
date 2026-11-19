@@ -225,7 +225,7 @@ fun AiStudioScreen(
                 }
                 OutlinedTextField(
                     value = endpoint,
-                    onValueChange = { endpoint = it },
+                    onValueChange = { endpoint = it.take(2_048).filter { ch -> ch.code >= 0x20 && ch.code != 0x7f } },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(if (usesOnDeviceModel) "Endpoint не используется для on-device модели" else "API endpoint") },
                     placeholder = {
@@ -234,11 +234,11 @@ fun AiStudioScreen(
                         })
                     },
                     singleLine = true,
-                    enabled = !usesOnDeviceModel
+                    enabled = settingsLoaded && !usesOnDeviceModel
                 )
                 OutlinedTextField(
                     value = if (usesOnDeviceModel) activeOnDeviceModel?.id.orEmpty() else model,
-                    onValueChange = { if (!usesOnDeviceModel) model = it },
+                    onValueChange = { if (!usesOnDeviceModel) model = it.take(200) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(if (usesOnDeviceModel) "Активная модель из Model Center" else "Имя модели") },
                     placeholder = {
@@ -264,7 +264,7 @@ fun AiStudioScreen(
                         )
                     },
                     singleLine = true,
-                    enabled = !usesOnDeviceModel
+                    enabled = settingsLoaded && !usesOnDeviceModel
                 )
                 if (usesOnDeviceModel) {
                     Text(
@@ -340,7 +340,7 @@ fun AiStudioScreen(
                 }
                 OutlinedTextField(
                     value = apiKey,
-                    onValueChange = { apiKey = it },
+                    onValueChange = { apiKey = it.take(16_384) },
                     modifier = Modifier.fillMaxWidth(),
                     label = {
                         Text(
@@ -350,7 +350,8 @@ fun AiStudioScreen(
                         )
                     },
                     visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true
+                    singleLine = true,
+                    enabled = settingsLoaded
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
@@ -449,9 +450,11 @@ fun AiStudioScreen(
                             OutlinedTextField(
                                 value = agentModelOverrides[agent.id].orEmpty(),
                                 onValueChange = { value ->
-                                    agentModelOverrides = agentModelOverrides + (agent.id to value)
-                                    routingStore.saveModelOverride(agent.id, value)
+                                    val bounded = value.take(200).filter { ch -> ch.code >= 0x20 && ch.code != 0x7f }
+                                    agentModelOverrides = agentModelOverrides + (agent.id to bounded)
+                                    routingStore.saveModelOverride(agent.id, bounded)
                                 },
+                                enabled = settingsLoaded,
                                 modifier = Modifier.fillMaxWidth(),
                                 label = { Text("Модель роли: " + agent.name) },
                                 placeholder = { Text("Пусто — использовать модель профиля") },
