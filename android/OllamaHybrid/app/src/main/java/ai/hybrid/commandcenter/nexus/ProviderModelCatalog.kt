@@ -106,6 +106,10 @@ class ProviderModelCatalog(
         }
     }
 
+    private companion object {
+        const val MAX_CATALOG_RESPONSE_BYTES = 1_048_576
+    }
+
     private suspend fun execute(request: Request): String =
         suspendCancellableCoroutine { continuation ->
             val call = client.newCall(request)
@@ -118,8 +122,13 @@ class ProviderModelCatalog(
                 override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
                     response.use {
                         try {
-                            val body = it.body?.string()
-                                ?: throw IOException("Провайдер вернул пустой ответ.")
+                            if (it.body == null) {
+                                throw IOException("Провайдер вернул пустой ответ.")
+                            }
+                            val body = it.peekBody(MAX_CATALOG_RESPONSE_BYTES + 1L).string()
+                            if (body.toByteArray(Charsets.UTF_8).size > MAX_CATALOG_RESPONSE_BYTES) {
+                                throw IOException("Ответ каталога моделей превышает лимит 1 МиБ.")
+                            }
                             if (!it.isSuccessful) {
                                 throw ProviderHttpException(it.code, body.take(2_000))
                             }
