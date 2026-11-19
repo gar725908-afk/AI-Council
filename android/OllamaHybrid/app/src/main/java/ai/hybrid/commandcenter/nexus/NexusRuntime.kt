@@ -73,10 +73,13 @@ class OpenAiCompatibleGateway(
             .put("temperature", request.temperature)
             .put("stream", true)
 
-        val httpRequest = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(url)
-            .header("Authorization", "Bearer ${request.apiKey}")
             .header("Accept", "text/event-stream")
+        if (request.apiKey.isNotBlank()) {
+            requestBuilder.header("Authorization", "Bearer ${request.apiKey}")
+        }
+        val httpRequest = requestBuilder
             .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
 
