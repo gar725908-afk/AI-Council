@@ -84,13 +84,23 @@ class NexusEvolutionExecutor(context: Context) {
             .sortedByDescending { it.proposal.createdAtEpochMs }
 
     @Synchronized
-    fun activeVersion(): Long = runCatching {
-        JSONObject(activeFile.readText()).getLong("version")
-    }.getOrDefault(0L)
+    fun activeVersion(): Long {
+        check(activeFile.isFile) { "Evolution active-version pointer is missing." }
+        val json = JSONObject(activeFile.readText())
+        require(json.keys().asSequence().toSet() == setOf("version")) {
+            "Evolution active-version pointer contains unsupported fields."
+        }
+        val rawVersion = json.opt("version")
+        require(rawVersion is Number) { "Evolution active version must be a JSON number." }
+        val numericVersion = rawVersion.toDouble()
+        require(numericVersion.isFinite() && numericVersion >= 0.0 &&
+            numericVersion == numericVersion.toLong().toDouble()
+        ) { "Evolution active version must be a non-negative integer." }
+        return numericVersion.toLong()
+    }
 
     @Synchronized
-    fun activePayload(): String = File(versionsDir, activeVersion().toString() + ".txt")
-        .takeIf { it.isFile }?.readText().orEmpty()
+    fun activePayload(): String = verifiedVersionPayload(activeVersion())
 
     /**
      * Resolves the most recent configuration of this kind on the active version's parent chain.
@@ -147,8 +157,10 @@ class NexusEvolutionExecutor(context: Context) {
         validatePayload(record.proposal.kind, record.payload)
         val activation = NexusEvolutionPolicy.activate(record.proposal, EvolutionApproval.Approved).getOrThrow()
         writeTextAtomic(versionFile(activation.activeVersion), record.payload)
-        writeJsonAtomic(activeFile, JSONObject().put("version", activation.activeVersion))
+        // Persist the immutable version record before moving the active pointer. If the final
+        // pointer write fails, the previous active version remains authoritative.
         saveRecord(record.copy(status = NexusEvolutionProposalStatus.ACTIVE))
+        writeJsonAtomic(activeFile, JSONObject().put("version", activation.activeVersion))
         appendAudit("VERSION_ACTIVATED", proposalId, activation.rollbackToVersion, activation.activeVersion, record.proposal.title)
         activation
     }
@@ -166,8 +178,7 @@ class NexusEvolutionExecutor(context: Context) {
     @Synchronized
     fun rollbackTo(version: Long): Result<Long> = runCatching {
         require(version >= 0L) { "Номер версии не может быть отрицательным." }
-        val target = versionFile(version)
-        require(target.isFile) { "Версия " + version + " не найдена в архиве Evolution." }
+        verifiedVersionPayload(version)
         val previous = activeVersion()
         require(version <= previous) { "Нельзя откатить систему вперёд по истории версий." }
         if (previous == version) return@runCatching version
@@ -192,6 +203,37 @@ class NexusEvolutionExecutor(context: Context) {
     }
 
     private fun versionFile(version: Long) = File(versionsDir, version.toString() + ".txt")
+
+    /**
+     * A version is trusted only when its immutable payload matches the proposal checksum and
+     * the proposal has an ACTIVE record. This prevents rollback to stray or modified files.
+     */
+    private fun verifiedVersionPayload(version: Long): String {
+        require(version >= 0L) { "Evolution version cannot be negative." }
+        val file = versionFile(version)
+        check(file.isFile) { "Evolution version $version is missing from the archive." }
+        val payload = file.readText(Charsets.UTF_8)
+        if (version == 0L) {
+            check(payload.isEmpty()) { "Evolution baseline version is corrupted." }
+            return payload
+        }
+
+        val recordFile = proposalFiles().firstOrNull { candidate ->
+            readRecord(candidate)?.proposal?.proposedVersion == version
+        } ?: throw IllegalStateException("Evolution proposal for version $version is missing.")
+        val record = readRecord(recordFile)
+            ?: throw IllegalStateException("Evolution proposal for version $version is unreadable.")
+        check(record.status == NexusEvolutionProposalStatus.ACTIVE) {
+            "Evolution version $version has no active proposal record."
+        }
+        check(record.proposal.proposedVersion == version && record.proposal.beforeVersion in 0 until version) {
+            "Evolution version $version has an invalid parent link."
+        }
+        check(sha256(record.payload) == record.proposal.contentSha256 &&
+            sha256(payload) == record.proposal.contentSha256
+        ) { "Evolution version $version failed its SHA-256 integrity check." }
+        return payload
+    }
 
     private fun saveRecord(record: NexusEvolutionRecord) {
         val p = record.proposal
