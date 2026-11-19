@@ -14,13 +14,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -28,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -35,8 +37,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import ai.hybrid.commandcenter.nexus.NexusConnectorAccount
+import ai.hybrid.commandcenter.nexus.NexusConnectorAuthService
+import ai.hybrid.commandcenter.nexus.NexusConnectorId
 import ai.hybrid.commandcenter.nexus.NexusExtensionManifest
+import ai.hybrid.commandcenter.nexus.NexusExtensionPackageReader
+import ai.hybrid.commandcenter.nexus.NexusExtensionPermissionStore
+import ai.hybrid.commandcenter.nexus.NexusExtensionRuntime
 import ai.hybrid.commandcenter.nexus.NexusExtensionStore
 import ai.hybrid.commandcenter.nexus.NexusRelease
 import ai.hybrid.commandcenter.nexus.NexusUpdateChecker
@@ -45,18 +54,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-
-private data class BuiltInConnectorCard(
-    val name: String,
-    val detail: String,
-    val capability: String
-)
-
-private val builtInConnectors = listOf(
-    BuiltInConnectorCard("GitHub", "Репозитории, исходный код и релизы NEXUS", "Коннектор ещё не подключён"),
-    BuiltInConnectorCard("Notion", "Общая база знаний и контекст агентов", "Коннектор ещё не подключён"),
-    BuiltInConnectorCard("TinyFish", "Браузерная автоматизация и веб-процессы", "Коннектор ещё не подключён")
-)
+import java.io.InputStream
 
 @Composable
 fun PlatformCenterScreen(modifier: Modifier = Modifier) {
@@ -73,10 +71,12 @@ fun PlatformCenterScreen(modifier: Modifier = Modifier) {
         )
         TabRow(selectedTabIndex = selectedTab) {
             Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Расширения") })
-            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Обновления") })
+            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Коннекторы") })
+            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Обновления") })
         }
         when (selectedTab) {
             0 -> ExtensionsPanel(Modifier.weight(1f))
+            1 -> ConnectorsPanel(Modifier.weight(1f))
             else -> UpdatesPanel(Modifier.weight(1f))
         }
     }
@@ -85,9 +85,12 @@ fun PlatformCenterScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun ExtensionsPanel(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val store = remember { NexusExtensionStore(context) }
-    val installed = remember { androidx.compose.runtime.mutableStateListOf<NexusExtensionManifest>() }
-    var message by remember { mutableStateOf("Можно импортировать локальный nexus-extension.json.") }
+    val permissionStore = remember { NexusExtensionPermissionStore(context) }
+    val runtime = remember { NexusExtensionRuntime(permissionStore) }
+    val installed = remember { mutableStateListOf<NexusExtensionManifest>() }
+    var message by remember { mutableStateOf("Импортируйте пакет .nex — ZIP с manifest.json и необязательным README.md.") }
 
     LaunchedEffect(Unit) {
         installed.clear()
@@ -98,77 +101,227 @@ private fun ExtensionsPanel(modifier: Modifier = Modifier) {
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
-            val result = runCatching {
-                val json = context.contentResolver.openInputStream(uri)?.use { readLimited(it, NexusExtensionManifest.MAX_MANIFEST_BYTES) }
-                    ?: error("Не удалось открыть выбранный файл.")
-                store.installManifest(json)
-            }
-            result.onSuccess { manifest ->
-                installed.removeAll { it.id == manifest.id }
-                installed.add(manifest)
-                message = "Манифест «${manifest.name}» добавлен. Исполняемый код не загружается."
-            }.onFailure { error ->
-                message = error.message ?: "Не удалось импортировать манифест."
+            scope.launch {
+                val result = runCatching {
+                    val bytes = withContext(Dispatchers.IO) {
+                        val stream = context.contentResolver.openInputStream(uri)
+                            ?: error("Не удалось открыть выбранный файл.")
+                        stream.use { readBoundedBytes(it, NexusExtensionPackageReader.MAX_ARCHIVE_BYTES) }
+                    }
+                    val isZip = bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4b.toByte()
+                    val manifestJson = if (isZip) {
+                        withContext(Dispatchers.IO) { NexusExtensionPackageReader.readManifest(bytes.inputStream()) }
+                    } else {
+                        bytes.toString(Charsets.UTF_8)
+                    }
+                    withContext(Dispatchers.IO) { store.installManifest(manifestJson) }
+                }
+                result.onSuccess { manifest ->
+                    installed.removeAll { it.id == manifest.id }
+                    installed.add(manifest)
+                    message = "Расширение «" + manifest.name + "» установлено. Каждое разрешение нужно выдать отдельно."
+                }.onFailure { error ->
+                    message = error.message ?: "Не удалось импортировать расширение."
+                }
             }
         }
     }
 
-    LazyColumn(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
+    LazyColumn(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Локальные расширения", fontWeight = FontWeight.SemiBold)
+                    Text("Каталог сторонних расширений", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "На первом этапе NEXUS принимает и проверяет манифесты. Запуск стороннего кода пока отключён — это защищает ядро и данные.",
+                        "NEXUS v1 запускает только ограниченные действия, описанные в манифесте: HTTPS-ссылки, копирование текста и сообщения. JavaScript, DEX, native-библиотеки и произвольный код не загружаются.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Button(onClick = { importLauncher.launch(arrayOf("application/json", "text/*")) }) {
-                        Text("Импортировать манифест")
-                    }
+                    Button(onClick = {
+                        importLauncher.launch(arrayOf("application/zip", "application/octet-stream", "application/json"))
+                    }) { Text("Установить пакет .nex") }
                     Text(message, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
-        item { Text("Каталог коннекторов", fontWeight = FontWeight.SemiBold) }
-        items(builtInConnectors) { connector ->
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(connector.name, fontWeight = FontWeight.SemiBold)
-                    Text(connector.detail, style = MaterialTheme.typography.bodySmall)
-                    Text(connector.capability, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                }
+        if (installed.isEmpty()) {
+            item {
+                Text("Пока нет установленных расширений. Пакет .nex должен содержать manifest.json в корне архива.", style = MaterialTheme.typography.bodySmall)
             }
         }
-        if (installed.isNotEmpty()) {
-            item { Text("Импортированные манифесты", fontWeight = FontWeight.SemiBold) }
-            items(installed, key = { it.id }) { manifest ->
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(manifest.name, fontWeight = FontWeight.SemiBold)
-                            Text("v${manifest.version}", style = MaterialTheme.typography.labelMedium)
-                        }
-                        Text(manifest.description.ifBlank { "Без описания" }, style = MaterialTheme.typography.bodySmall)
-                        Text(
-                            if (manifest.capabilities.isEmpty()) "Разрешения не запрошены"
-                            else "Запрошено: ${manifest.capabilities.joinToString()}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        OutlinedButton(onClick = {
-                            store.remove(manifest.id)
-                            installed.removeAll { it.id == manifest.id }
-                            message = "Расширение удалено из локального каталога."
-                        }) { Text("Удалить манифест") }
+        items(installed, key = { it.id }) { manifest ->
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(manifest.name, fontWeight = FontWeight.SemiBold)
+                        Text("v" + manifest.version, style = MaterialTheme.typography.labelMedium)
                     }
+                    Text(manifest.description.ifBlank { "Без описания" }, style = MaterialTheme.typography.bodySmall)
+                    Text("Разрешения расширения", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+                    if (manifest.capabilities.isEmpty()) {
+                        Text("Разрешения не запрошены", style = MaterialTheme.typography.bodySmall)
+                    }
+                    manifest.capabilities.forEach { capability ->
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = permissionStore.isGranted(manifest.id, capability),
+                                onCheckedChange = { granted ->
+                                    permissionStore.setGranted(manifest.id, capability, granted)
+                                    message = if (granted) "Разрешение " + capability + " выдано."
+                                        else "Разрешение " + capability + " отозвано."
+                                }
+                            )
+                            Text(capability, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    if (manifest.actions.isNotEmpty()) {
+                        Text("Действия", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+                        manifest.actions.forEach { action ->
+                            val capability = when (action.type) {
+                                "open_url" -> "open_url"
+                                "copy_text" -> "clipboard_write"
+                                else -> "show_message"
+                            }
+                            OutlinedButton(
+                                enabled = permissionStore.isGranted(manifest.id, capability),
+                                onClick = {
+                                    message = runCatching { runtime.execute(context, manifest, action) }
+                                        .getOrElse { it.message ?: "Действие не выполнено." }
+                                }
+                            ) { Text(action.title) }
+                        }
+                    } else {
+                        Text("В пакете нет действий.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    OutlinedButton(onClick = {
+                        permissionStore.revokeAll(manifest.id)
+                        store.remove(manifest.id)
+                        installed.removeAll { it.id == manifest.id }
+                        message = "Расширение удалено, все его разрешения отозваны."
+                    }) { Text("Удалить расширение") }
                 }
             }
         }
         item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun ConnectorsPanel(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val service = remember { NexusConnectorAuthService(context) }
+    LazyColumn(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Text(
+                "Подключение выполняется по токену провайдера. Секреты хранятся в Android Keystore и не попадают в настройки или журнал приложения.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        item {
+            ConnectorCard(
+                connector = NexusConnectorId.GITHUB,
+                service = service,
+                hint = "Fine-grained personal access token. Ограничьте его нужными репозиториями и только требуемыми read permissions.",
+                placeholder = "github_pat_…"
+            )
+        }
+        item {
+            ConnectorCard(
+                connector = NexusConnectorId.NOTION,
+                service = service,
+                hint = "Создайте Internal Integration в Notion и поделитесь с ней только теми страницами и базами, к которым NEXUS должен иметь доступ.",
+                placeholder = "ntn_… или secret_…"
+            )
+        }
+        item {
+            ConnectorCard(
+                connector = NexusConnectorId.TINYFISH,
+                service = service,
+                hint = "API key из TinyFish Dashboard. Проверка использует бесплатный Search API; платные Agent/Browser задачи не запускаются.",
+                placeholder = "TinyFish API key"
+            )
+        }
+        item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun ConnectorCard(
+    connector: NexusConnectorId,
+    service: NexusConnectorAuthService,
+    hint: String,
+    placeholder: String
+) {
+    val scope = rememberCoroutineScope()
+    var credential by remember { mutableStateOf("") }
+    var account by remember { mutableStateOf(service.account(connector)) }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("") }
+
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(connector.title, fontWeight = FontWeight.SemiBold)
+                Text(if (account == null) "Не подключён" else "Подключён", color = if (account == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+            }
+            Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (account != null) {
+                Text(account!!.identity, fontWeight = FontWeight.Medium)
+                Text(account!!.detail, style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        enabled = !busy,
+                        onClick = {
+                            busy = true
+                            scope.launch {
+                                val result = runCatching { service.verifyStored(connector) }
+                                status = result.fold({ "Проверка успешна: " + it.identity }, { it.message ?: "Проверка не пройдена." })
+                                busy = false
+                            }
+                        }
+                    ) { Text("Проверить") }
+                    OutlinedButton(onClick = {
+                        service.disconnect(connector)
+                        account = null
+                        credential = ""
+                        status = "Коннектор отключён. Секрет удалён из хранилища."
+                    }) { Text("Отключить") }
+                }
+            } else {
+                OutlinedTextField(
+                    value = credential,
+                    onValueChange = { credential = it.take(16 * 1024) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Ключ доступа") },
+                    placeholder = { Text(placeholder) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Button(
+                    enabled = !busy && credential.isNotBlank(),
+                    onClick = {
+                        busy = true
+                        status = "Проверяю доступ…"
+                        scope.launch {
+                            val result = runCatching { service.connect(connector, credential) }
+                            result.onSuccess {
+                                account = it
+                                credential = ""
+                                status = "Авторизация успешна."
+                            }.onFailure {
+                                status = it.message ?: "Авторизация не пройдена."
+                            }
+                            busy = false
+                        }
+                    }
+                ) {
+                    if (busy) CircularProgressIndicator()
+                    else Text("Проверить и подключить")
+                }
+            }
+            if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
@@ -182,13 +335,10 @@ private fun UpdatesPanel(modifier: Modifier = Modifier) {
             .getOrDefault("0.0.0")
     }
     var checking by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Установлена версия NEXUS $currentVersion. Проверьте GitHub Releases.") }
+    var status by remember { mutableStateOf("Установлена версия NEXUS " + currentVersion + ". Проверьте GitHub Releases.") }
     var release by remember { mutableStateOf<NexusRelease?>(null) }
 
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("GitHub Release", fontWeight = FontWeight.SemiBold)
@@ -206,14 +356,14 @@ private fun UpdatesPanel(modifier: Modifier = Modifier) {
                                 when (update) {
                                     is NexusUpdateResult.Available -> {
                                         release = update.release
-                                        status = "Доступна версия ${update.release.version}."
+                                        status = "Доступна версия " + update.release.version + "."
                                     }
                                     is NexusUpdateResult.UpToDate -> {
-                                        status = "Установлена актуальная версия ${update.currentVersion}."
+                                        status = "Установлена актуальная версия " + update.currentVersion + "."
                                     }
                                 }
                             }.onFailure { error ->
-                                status = "Проверка не выполнена: ${error.message ?: "ошибка сети"}"
+                                status = "Проверка не выполнена: " + (error.message ?: "ошибка сети")
                             }
                             checking = false
                         }
@@ -225,10 +375,8 @@ private fun UpdatesPanel(modifier: Modifier = Modifier) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(latest.title, fontWeight = FontWeight.SemiBold)
-                    Text("Версия ${latest.version}", color = MaterialTheme.colorScheme.secondary)
-                    if (latest.notes.isNotBlank()) {
-                        Text(latest.notes.take(1_200), style = MaterialTheme.typography.bodySmall)
-                    }
+                    Text("Версия " + latest.version, color = MaterialTheme.colorScheme.secondary)
+                    if (latest.notes.isNotBlank()) Text(latest.notes.take(1_200), style = MaterialTheme.typography.bodySmall)
                     Text(
                         when {
                             latest.apkUrl == null -> "В релизе пока нет APK-файла."
@@ -239,29 +387,28 @@ private fun UpdatesPanel(modifier: Modifier = Modifier) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Button(onClick = {
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(latest.pageUrl)))
-                        }.onFailure { status = "Не удалось открыть страницу релиза." }
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(latest.pageUrl))) }
+                            .onFailure { status = "Не удалось открыть страницу релиза." }
                     }) { Text("Открыть релиз GitHub") }
                 }
             }
         }
         Text(
-            "Сейчас NEXUS проверяет релиз и открывает его страницу. Установка APK выполняется только после проверки подписи Android и подтверждения пользователя; фоновая установка не заявляется.",
+            "В NEXUS разрешены только Android APK с проверяемым SHA-256 и подписью того же приложения. Установка выполняется через системный установщик Android с подтверждением пользователя.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
 
-private suspend fun readLimited(input: java.io.InputStream, maxBytes: Int): String = withContext(Dispatchers.IO) {
+private fun readBoundedBytes(input: InputStream, maxBytes: Int): ByteArray {
     val output = ByteArrayOutputStream()
     val buffer = ByteArray(8 * 1024)
     while (true) {
         val count = input.read(buffer)
         if (count < 0) break
-        require(output.size() + count <= maxBytes) { "Файл манифеста превышает допустимый размер." }
+        require(output.size() + count <= maxBytes) { "Файл превышает допустимый размер." }
         output.write(buffer, 0, count)
     }
-    output.toString(Charsets.UTF_8.name())
+    return output.toByteArray()
 }
