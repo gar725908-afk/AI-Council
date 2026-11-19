@@ -51,6 +51,7 @@ import ai.hybrid.commandcenter.nexus.ChatMessageRecord
 import ai.hybrid.commandcenter.nexus.ProviderModelCatalog
 import ai.hybrid.commandcenter.nexus.NexusEvolutionExecutor
 import ai.hybrid.commandcenter.nexus.NexusEngineRegistry
+import ai.hybrid.commandcenter.nexus.NexusEvolutionRoutingPolicy
 import ai.hybrid.commandcenter.nexus.runLocalCouncil
 import ai.hybrid.commandcenter.nexus.EvolutionChangeKind
 import kotlinx.coroutines.CancellationException
@@ -540,15 +541,18 @@ fun AiStudioScreen(
                             } else {
                                 val activeRoutingPolicy = withContext(Dispatchers.IO) {
                                     evolutionExecutor.activeConfiguration(EvolutionChangeKind.ROUTING_POLICY)
+                                        .takeIf { it.isNotBlank() }
+                                        ?.let(NexusEvolutionRoutingPolicy::parse)
                                 }
                                 CouncilOrchestrator(
                                     gateway = gateway,
                                     maxParallelAgents = 3,
                                     routeResolver = { agent ->
-                                        val routeKind = resolveEvolutionRoute(activeRoutingPolicy, agent.id)
+                                        val routeKind = activeRoutingPolicy?.routes?.get(agent.id)
                                             ?: routingStore.load(agent.id)
                                             ?: providerKind
-                                        val modelOverride = routingStore.loadModelOverride(agent.id)
+                                        val modelOverride = activeRoutingPolicy?.modelOverrides?.get(agent.id)
+                                            ?: routingStore.loadModelOverride(agent.id)
                                         if (routeKind == providerKind) {
                                             CouncilModelRoute(
                                                 gateway = gateway,
@@ -760,23 +764,6 @@ fun AiStudioScreen(
 }
 
 
-private fun resolveEvolutionRoute(payload: String, agentId: String): ProviderKind? {
-    if (payload.isBlank()) return null
-    val root = try {
-        org.json.JSONObject(payload)
-    } catch (error: Exception) {
-        throw IllegalArgumentException("The active Evolution routing policy is not valid JSON.", error)
-    }
-    val routes = root.optJSONObject("routes")
-        ?: throw IllegalArgumentException("The Evolution routing policy must contain a routes object.")
-    val value = routes.optString(agentId).trim()
-    if (value.isBlank()) return null
-    return try {
-        ProviderKind.valueOf(value)
-    } catch (error: Exception) {
-        throw IllegalArgumentException("Evolution routing policy contains an unsupported provider for agent $agentId.", error)
-    }
-}
 
 private fun defaultProviderEndpoint(kind: ProviderKind): String = when (kind) {
     ProviderKind.OPENAI_COMPATIBLE -> ""
