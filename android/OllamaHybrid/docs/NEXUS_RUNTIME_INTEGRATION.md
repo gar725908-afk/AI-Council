@@ -27,7 +27,7 @@ Model artifacts use unique immutable filenames, so a re-download cannot overwrit
 - `finish` — return the final summary
 - `yield_control` — pause execution
 
-The application validates every participant ID and task before dispatch. Model output cannot invoke tools, shell commands, Android APIs, or arbitrary code. The provider SSE transport now treats a failed bounded-channel send as a stream error rather than silently dropping generated fragments. This prevents apparently successful but truncated model output when a consumer cannot keep up.
+The application validates every participant ID and task before dispatch. Model output cannot invoke tools, shell commands, Android APIs, or arbitrary code. The provider SSE transport applies bounded backpressure to the OkHttp callback thread rather than silently dropping generated fragments when a consumer is briefly slower. A terminal delivery failure is surfaced as a stream error.
 
 OpenAI-compatible, Anthropic, and Gemini gateways now share one bounded SSE transport and the same endpoint security policy. The remote Council also caps mission goals at 32,000 characters, individual executor output at 12,000 characters, synthesis context at 110,000 characters, and synthesis output at 16,000 characters; exceeding an output cap cancels the upstream stream and marks the returned text as truncated.
 
