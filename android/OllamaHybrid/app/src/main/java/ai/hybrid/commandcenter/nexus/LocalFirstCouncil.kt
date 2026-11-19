@@ -168,7 +168,7 @@ class LocalFirstCouncilOrchestrator(
     maxParallelism: Int = 3
 ) {
     private val adapters = participantAdapters.associateBy { it.descriptor.id }
-    private val parallelism = Semaphore(maxParallelism.coerceIn(1, 8))
+    private val configuredMaxParallelism = maxParallelism.coerceIn(1, 8)
 
     suspend fun runManaged(
         profile: LocalCouncilProfile,
@@ -203,6 +203,7 @@ class LocalFirstCouncilOrchestrator(
         }
 
         val results = mutableListOf<CouncilParticipantResult>()
+        val missionParallelism = Semaphore(minOf(configuredMaxParallelism, profile.maxParallelParticipants))
         var turns = 0
         while (turns < profile.maxManagerTurns) {
             val decision = try {
@@ -283,7 +284,7 @@ class LocalFirstCouncilOrchestrator(
                     val batchResults = coroutineScope {
                         assignments.map { assignment ->
                             async(Dispatchers.IO) {
-                                parallelism.withPermit {
+                                missionParallelism.withPermit {
                                     val adapter = adapters.getValue(assignment.participantId)
                                     try {
                                         val output = adapter.execute(assignment, results.toList())
