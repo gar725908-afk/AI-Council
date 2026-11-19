@@ -68,7 +68,7 @@ fun createModelGateway(kind: ProviderKind, context: Context? = null): ModelGatew
     ProviderKind.GEMINI -> GeminiGenerateContentGateway()
 }
 
-private object ProviderEndpointPolicy {
+internal object ProviderEndpointPolicy {
     fun base(endpoint: String): HttpUrl {
         val parsed = endpoint.trim().trimEnd('/').toHttpUrlOrNull()
             ?: throw IllegalArgumentException("Некорректный URL провайдера.")
