@@ -90,7 +90,7 @@ private fun ExtensionsPanel(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val store = remember { NexusExtensionStore(context) }
     val permissionStore = remember { NexusExtensionPermissionStore(context) }
-    val runtime = remember { NexusExtensionRuntime(permissionStore) }
+    val runtime = remember { NexusExtensionRuntime(store, permissionStore) }
     val installed = remember { mutableStateListOf<NexusExtensionManifest>() }
     var message by remember { mutableStateOf("Импортируйте пакет .nex — ZIP с manifest.json и необязательным README.md.") }
 
