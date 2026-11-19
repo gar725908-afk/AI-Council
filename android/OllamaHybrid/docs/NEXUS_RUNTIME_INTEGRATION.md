@@ -52,6 +52,8 @@ Approved `ROUTING_POLICY` payloads are parsed by the strict `NexusEvolutionRouti
 
 Only the eight built-in Council role IDs and exact `ProviderKind` enum values are accepted. The schema version must be explicitly present as a numeric `1`; route values and model overrides must be JSON strings, and `modelOverrides`, when present, must be an object. Unknown root fields, unknown roles, invalid providers, blank/oversized model IDs, wrong JSON value types, and malformed JSON are rejected both when a proposal is created and again immediately before activation. Endpoints and credentials cannot be stored in a routing policy; they remain in provider settings and the credential vault. Evolution model overrides take precedence over saved per-agent model overrides. When no Evolution route exists for an agent, the saved per-agent route and then the selected default provider are used. Model Center includes a v1 template to reduce manual schema errors.
 
+Evolution storage fails closed: the active-version pointer must be a valid non-negative integer JSON value; malformed pointers are not silently reset to version zero. Before resolving active configuration or rolling back, the executor verifies the full version ancestry, active proposal records, parent links, and SHA-256 checksums for archived payloads. The immutable version record is persisted before the active pointer is moved, preserving the prior active version if the pointer update fails.
+
 Prompt profiles and skill packs continue to be injected into AI Studio and Council context. Tool-description and model-configuration proposals remain versioned Evolution data; they are not yet executable runtime controls.
 
 ## Dependency compatibility
