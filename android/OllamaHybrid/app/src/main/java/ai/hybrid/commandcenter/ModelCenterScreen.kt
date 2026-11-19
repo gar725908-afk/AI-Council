@@ -137,7 +137,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                     installed = installed.firstOrNull { it.id == model.id },
                     isActive = activeId == model.id,
                     isDownloading = downloadingId == model.id,
-                    acceptedLicense = model.artifact?.licenseId in acceptedLicenses,
+                    acceptedLicense = model.artifact?.licenseId?.let { it in acceptedLicenses } == true,
                     progress = if (downloadingId == model.id) progress else 0f,
                     progressLabel = if (downloadingId == model.id) progressLabel else "",
                     onLicenseChange = { accepted ->
@@ -151,8 +151,8 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                             progress = 0f
                             status = "Загрузка " + model.displayName + "…"
                             runCatching {
-                                storage.download(model, model.artifact?.licenseId.takeIf { acceptedLicense ->
-                                    acceptedLicense in acceptedLicenses
+                                storage.download(model, model.artifact?.licenseId?.takeIf { license ->
+                                    license in acceptedLicenses
                                 }) { received, total ->
                                     scope.launch {
                                         progress = if (total > 0) received.toFloat() / total.toFloat() else 0f
