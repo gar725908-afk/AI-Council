@@ -240,6 +240,26 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(), label = { Text("Причина и ожидаемый результат") }, minLines = 2)
             OutlinedTextField(value = proposalPayload, onValueChange = { proposalPayload = it },
                 modifier = Modifier.fillMaxWidth(), label = { Text("Содержимое конфигурации") }, minLines = 4)
+            if (proposalKind == EvolutionChangeKind.ROUTING_POLICY) {
+                Text(
+                    "Routing policy v1: routes maps Council role IDs to ProviderKind values. " +
+                        "Optional modelOverrides maps the same role IDs to exact model IDs. " +
+                        "Endpoints and API keys remain in provider settings.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                TextButton(onClick = {
+                    proposalPayload = """{
+  "version": 1,
+  "routes": {
+    "research": "OPENAI",
+    "analysis": "ON_DEVICE_LITERT"
+  },
+  "modelOverrides": {
+    "research": "gpt-model-id"
+  }
+}"""
+                }) { Text("Insert routing policy template") }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { proposalKind = EvolutionChangeKind.PROMPT_PROFILE }) {
                     Text(if (proposalKind == EvolutionChangeKind.PROMPT_PROFILE) "✓ Промпт" else "Промпт")
