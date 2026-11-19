@@ -107,6 +107,9 @@ class NexusModelStorage(context: Context) {
 
         try {
             client.newCall(request).execute().use { response ->
+                require(response.request.url.isHttps) {
+                    "Источник перенаправил загрузку на незашифрованный HTTP. Файл не будет сохранён."
+                }
                 if (!response.isSuccessful) {
                     throw IOException("Сервер загрузки вернул HTTP " + response.code + ".")
                 }
@@ -266,9 +269,6 @@ class NexusModelStorage(context: Context) {
         if (name.endsWith(".litertlm", true)) ".litertlm" else if (name.endsWith(".gguf", true)) ".gguf" else ".model"
 
     private fun promote(source: File, destination: File) {
-        if (destination.exists() && !destination.delete()) {
-            throw IOException("Не удалось заменить прежнюю версию модели.")
-        }
         try {
             java.nio.file.Files.move(
                 source.toPath(), destination.toPath(),
