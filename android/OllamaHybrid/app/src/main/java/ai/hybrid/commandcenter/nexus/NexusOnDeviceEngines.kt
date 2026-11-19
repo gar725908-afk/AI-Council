@@ -209,7 +209,13 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
         }
         awaitClose {
             generation.incrementAndGet()
-            NativeLlamaBridge.nativeCancel(nativeHandle)
+            val readLock = handleLock.readLock()
+            readLock.lock()
+            try {
+                if (handle == nativeHandle) NativeLlamaBridge.nativeCancel(nativeHandle)
+            } finally {
+                readLock.unlock()
+            }
             job.cancel()
         }
     }
