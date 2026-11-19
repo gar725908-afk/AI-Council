@@ -176,6 +176,7 @@ class NexusModelStorage(context: Context) {
         val target = File(root, targetName)
         val digest = MessageDigest.getInstance("SHA-256")
         var total = 0L
+        val availableAtStart = StatFs(root.absolutePath).availableBytes
         try {
             val input = resolver.openInputStream(uri) ?: throw IOException("Не удалось открыть выбранный файл.")
             input.use { source ->
@@ -186,7 +187,7 @@ class NexusModelStorage(context: Context) {
                         val count = source.read(buffer)
                         if (count < 0) break
                         total += count
-                        if (total > StatFs(root.absolutePath).availableBytes + total) {
+                        if (total > availableAtStart) {
                             throw IOException("Недостаточно места для копирования модели.")
                         }
                         digest.update(buffer, 0, count)
