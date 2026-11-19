@@ -87,6 +87,19 @@ class NexusEvolutionExecutor(context: Context) {
     fun activePayload(): String = File(versionsDir, activeVersion().toString() + ".txt")
         .takeIf { it.isFile }?.readText().orEmpty()
 
+    /** Returns the latest approved configuration of this kind that is still part of the active lineage. */
+    @Synchronized
+    fun activeConfiguration(kind: EvolutionChangeKind): String =
+        history()
+            .filter {
+                it.status == NexusEvolutionProposalStatus.ACTIVE &&
+                    it.proposal.kind == kind &&
+                    it.proposal.proposedVersion <= activeVersion()
+            }
+            .maxByOrNull { it.proposal.proposedVersion }
+            ?.payload
+            .orEmpty()
+
     @Synchronized
     fun approveAndActivate(proposalId: String): Result<EvolutionActivation> = runCatching {
         val file = proposalFile(proposalId)
@@ -206,13 +219,18 @@ class NexusEvolutionExecutor(context: Context) {
             output.write(text.toByteArray(Charsets.UTF_8))
             output.fd.sync()
         }
-        if (file.exists() && !file.delete()) {
-            tmp.delete()
-            throw IOException("Не удалось заменить файл состояния Evolution.")
-        }
-        if (!tmp.renameTo(file)) {
-            tmp.delete()
-            throw IOException("Не удалось атомарно сохранить файл Evolution.")
+        try {
+            java.nio.file.Files.move(
+                tmp.toPath(), file.toPath(),
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch (_: Exception) {
+            // On Android's private filesystem rename is performed within the same directory.
+            if (!tmp.renameTo(file)) {
+                tmp.delete()
+                throw IOException("Не удалось атомарно сохранить файл Evolution.")
+            }
         }
     }
 
