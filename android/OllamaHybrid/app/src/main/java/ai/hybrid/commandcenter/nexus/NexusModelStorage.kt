@@ -44,7 +44,7 @@ class NexusModelStorage(context: Context) {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .callTimeout(0, TimeUnit.MILLISECONDS)
-        .followRedirects(false)
+        .followRedirects(true)
         .followSslRedirects(false)
         .build()
 
@@ -116,9 +116,6 @@ class NexusModelStorage(context: Context) {
             call.execute().use { response ->
                 require(response.request.url.isHttps) {
                     "Источник перенаправил загрузку на незашифрованный HTTP. Файл не будет сохранён."
-                }
-                if (response.isRedirect) {
-                    throw IOException("Источник вернул redirect. Для безопасности требуется закреплённый прямой HTTPS URL.")
                 }
                 if (!response.isSuccessful) {
                     throw IOException("Сервер загрузки вернул HTTP " + response.code + ".")
