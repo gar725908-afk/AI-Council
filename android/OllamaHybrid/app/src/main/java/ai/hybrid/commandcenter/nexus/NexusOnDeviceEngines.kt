@@ -228,6 +228,9 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
     }
 
     @Volatile private var loadedModelPath: String? = null
+    private val cleanupExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "nexus-llama-cleanup").apply { isDaemon = true }
+    }
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
@@ -235,7 +238,21 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
         val current = handle
         handle = 0L
         loadedModelPath = null
-        if (current != 0L) runCatching { NativeLlamaBridge.nativeDestroy(current) }
+        if (current != 0L) {
+            // nativeDestroy waits for any in-flight generation mutex; never block the UI thread.
+            runCatching { NativeLlamaBridge.nativeCancel(current) }
+            runCatching {
+                cleanupExecutor.execute {
+                    try {
+                        NativeLlamaBridge.nativeDestroy(current)
+                    } finally {
+                        cleanupExecutor.shutdown()
+                    }
+                }
+            }.onFailure { cleanupExecutor.shutdown() }
+        } else {
+            cleanupExecutor.shutdown()
+        }
     }
 
     private fun buildQwenStylePrompt(messages: List<ProviderMessage>): String {
