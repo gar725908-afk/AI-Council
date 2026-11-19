@@ -20,7 +20,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.Call
 import okhttp3.Callback
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -167,46 +166,13 @@ class OpenAiCompatibleGateway(
     }
 
     private fun buildUrl(endpoint: String): String {
-        val base = endpoint.trim().trimEnd('/').toHttpUrlOrNull()
-            ?: throw IllegalArgumentException("Некорректный URL провайдера.")
-        require(base.username.isEmpty() && base.password.isEmpty()) {
-            "Не указывайте логин или пароль внутри URL endpoint."
-        }
-        require(base.query == null && base.fragment == null) {
-            "Укажите базовый endpoint без query-параметров и fragment."
-        }
-        if (base.scheme == "http") {
-            require(isPrivateHost(base.host)) {
-                "Незащищённый HTTP разрешён только для localhost и частной локальной сети. Для внешнего сервера используйте HTTPS."
-            }
-        }
-        require(base.scheme == "https" || base.scheme == "http") {
-            "Поддерживаются только HTTP и HTTPS endpoint."
-        }
+        val base = ProviderEndpointPolicy.base(endpoint)
         val target = if (base.encodedPath.endsWith("/chat/completions")) {
             base
         } else {
             base.newBuilder().addPathSegments("chat/completions").build()
         }
         return target.toString()
-    }
-
-    private fun isPrivateHost(host: String): Boolean {
-        val normalized = host.lowercase()
-        if (normalized == "localhost" || normalized.endsWith(".localhost") || normalized.endsWith(".local")) {
-            return true
-        }
-        if (normalized == "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") ||
-            normalized.startsWith("fe80:")) return true
-
-        val octets = normalized.split(".").mapNotNull { it.toIntOrNull() }
-        if (octets.size != 4 || octets.any { it !in 0..255 }) return false
-        val a = octets[0]
-        val b = octets[1]
-        return a == 10 || a == 127 ||
-            (a == 192 && b == 168) ||
-            (a == 172 && b in 16..31) ||
-            (a == 169 && b == 254)
     }
 }
 
