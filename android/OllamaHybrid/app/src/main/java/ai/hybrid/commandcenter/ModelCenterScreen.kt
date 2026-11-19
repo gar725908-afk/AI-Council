@@ -164,7 +164,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                                 storage.download(model, model.artifact?.licenseId?.takeIf { license ->
                                     license in acceptedLicenses
                                 }, onCallCreated = { call ->
-                                    activeDownloadCall = call
+                                    scope.launch { activeDownloadCall = call }
                                 }) { received, total ->
                                     scope.launch {
                                         progress = if (total > 0) received.toFloat() / total.toFloat() else 0f
