@@ -13,10 +13,12 @@ data class ModelArtifactManifest(
     val artifactFileName: String,
     val sizeBytes: Long,
     val sha256: String,
-    val runtime: ModelRuntimeKind
+    val runtime: ModelRuntimeKind,
+    val downloadUrl: String = ""
 ) {
     fun validationErrors(): List<String> = buildList {
         if (source.isBlank()) add("Не указан источник модели.")
+        if (!downloadUrl.startsWith("https://")) add("Для артефакта должен быть указан проверенный HTTPS URL.")
         if (immutableRevision.isBlank()) add("Не зафиксирована неизменяемая ревизия модели.")
         if (licenseId.isBlank()) add("Не указана лицензия модели.")
         if (artifactFileName.isBlank() || artifactFileName.contains('/') || artifactFileName.contains('\\')) {
@@ -46,14 +48,24 @@ data class NexusModelDescriptor(
 }
 
 object NexusModelCatalog {
-    /** Candidate metadata only. No weights are bundled or claimed to be downloadable yet. */
+    /** Verified starter artifacts are pinned to immutable upstream revisions and SHA-256 hashes. */
     val starterModels = listOf(
         NexusModelDescriptor(
             "google-gemma-4-e2b-it", "Gemma 4 E2B", "Google",
             ModelExecutionTarget.ANDROID_ON_DEVICE, setOf(ModelRuntimeKind.LITERT_LM),
             setOf(ModelTaskCapability.CHAT, ModelTaskCapability.REASONING, ModelTaskCapability.MULTILINGUAL,
                 ModelTaskCapability.IMAGE_INPUT, ModelTaskCapability.AUDIO_INPUT),
-            "effective 2B", recommendedForBalancedProfile = true
+            "effective 2B", recommendedForBalancedProfile = true,
+            artifact = ModelArtifactManifest(
+                source = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm",
+                immutableRevision = "cccc664ea93091c52eeb7867ad4e5466357e14f3",
+                licenseId = "Apache-2.0",
+                artifactFileName = "gemma-4-E2B-it-gpu.litertlm",
+                sizeBytes = 2_340_870_772L,
+                sha256 = "d3cfec6ae2e027a994e51366d44dbf522ec7531a4a35fbbfcd3e9cc9b927afc1",
+                runtime = ModelRuntimeKind.LITERT_LM,
+                downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/cccc664ea93091c52eeb7867ad4e5466357e14f3/gemma-4-E2B-it-gpu.litertlm"
+            )
         ),
         NexusModelDescriptor(
             "qwen3-0.6b", "Qwen3 0.6B", "Qwen",
