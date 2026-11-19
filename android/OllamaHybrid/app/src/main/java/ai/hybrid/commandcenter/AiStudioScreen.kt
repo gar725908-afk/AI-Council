@@ -43,6 +43,7 @@ import ai.hybrid.commandcenter.nexus.ProviderSettings
 import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
 import ai.hybrid.commandcenter.nexus.MissionJournal
 import ai.hybrid.commandcenter.nexus.MissionStatus
+import ai.hybrid.commandcenter.nexus.ProviderModelCatalog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
@@ -63,6 +64,7 @@ fun AiStudioScreen(
         )
     }
     val gateway = remember(providerKind) { createModelGateway(providerKind) }
+    val modelCatalog = remember { ProviderModelCatalog() }
     val journal = remember(context) { (context.applicationContext as NexusApplication).missionJournal }
     val scope = rememberCoroutineScope()
 
@@ -71,6 +73,9 @@ fun AiStudioScreen(
     }
     var model by remember { mutableStateOf(initialSettings.model) }
     var providerMenuExpanded by remember { mutableStateOf(false) }
+    var modelMenuExpanded by remember { mutableStateOf(false) }
+    var isCheckingModels by remember { mutableStateOf(false) }
+    var discoveredModels by remember(providerKind) { mutableStateOf(emptyList<String>()) }
     var apiKey by remember { mutableStateOf("") }
     var hasSavedKey by remember(providerKind) {
         mutableStateOf(
@@ -136,6 +141,8 @@ fun AiStudioScreen(
                                         AndroidCredentialVault.providerKeyId(kind.name)
                                     ) != null
                                     apiKey = ""
+                                    discoveredModels = emptyList()
+                                    modelMenuExpanded = false
                                     providerMenuExpanded = false
                                     status = "Провайдер выбран: " + kind.displayName
                                 }
@@ -167,6 +174,65 @@ fun AiStudioScreen(
                     },
                     singleLine = true
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = !isCheckingModels,
+                        onClick = {
+                            scope.launch {
+                                isCheckingModels = true
+                                status = "Проверяю endpoint и получаю список моделей…"
+                                try {
+                                    val candidateKey = if (apiKey.isNotBlank()) {
+                                        apiKey
+                                    } else {
+                                        credentialVault.get(providerKeyId).orEmpty()
+                                    }
+                                    discoveredModels = modelCatalog.listModels(
+                                        kind = providerKind,
+                                        endpoint = endpoint,
+                                        apiKey = candidateKey
+                                    )
+                                    if (model.isBlank()) model = discoveredModels.first()
+                                    modelMenuExpanded = true
+                                    status = "Подключение подтверждено. Найдено моделей: " + discoveredModels.size
+                                } catch (error: Exception) {
+                                    status = error.message ?: "Не удалось проверить провайдера"
+                                } finally {
+                                    isCheckingModels = false
+                                }
+                            }
+                        }
+                    ) {
+                        if (isCheckingModels) {
+                            CircularProgressIndicator(strokeWidth = 2.dp)
+                            Text("Проверка…")
+                        } else {
+                            Text("Проверить и загрузить модели")
+                        }
+                    }
+                    Box {
+                        TextButton(
+                            enabled = discoveredModels.isNotEmpty(),
+                            onClick = { modelMenuExpanded = true }
+                        ) {
+                            Text("Выбрать модель")
+                        }
+                        DropdownMenu(
+                            expanded = modelMenuExpanded,
+                            onDismissRequest = { modelMenuExpanded = false }
+                        ) {
+                            discoveredModels.take(60).forEach { modelId ->
+                                DropdownMenuItem(
+                                    text = { Text(modelId) },
+                                    onClick = {
+                                        model = modelId
+                                        modelMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
