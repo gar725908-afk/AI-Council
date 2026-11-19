@@ -87,18 +87,39 @@ class NexusEvolutionExecutor(context: Context) {
     fun activePayload(): String = File(versionsDir, activeVersion().toString() + ".txt")
         .takeIf { it.isFile }?.readText().orEmpty()
 
-    /** Returns the latest approved configuration of this kind that is still part of the active lineage. */
+    /**
+     * Returns the configuration of this kind that belongs to the exact active version.
+     * A rollback therefore cannot accidentally keep later configuration changes alive.
+     */
     @Synchronized
-    fun activeConfiguration(kind: EvolutionChangeKind): String =
-        history()
-            .filter {
-                it.status == NexusEvolutionProposalStatus.ACTIVE &&
-                    it.proposal.kind == kind &&
-                    it.proposal.proposedVersion <= activeVersion()
-            }
-            .maxByOrNull { it.proposal.proposedVersion }
-            ?.payload
-            .orEmpty()
+    fun activeConfiguration(kind: EvolutionChangeKind): String {
+        val active = activeVersion()
+        if (active == 0L) return ""
+        return readRecord(proposalFileForVersion(active))
+            ?.takeIf { it.status == NexusEvolutionProposalStatus.ACTIVE && it.proposal.kind == kind }
+            ?.payload.orEmpty()
+    }
+
+    @Synchronized
+    fun activeRecord(): NexusEvolutionRecord? {
+        val active = activeVersion()
+        if (active == 0L) return null
+        return readRecord(proposalFileForVersion(active))
+            ?.takeIf { it.status == NexusEvolutionProposalStatus.ACTIVE }
+    }
+
+    @Synchronized
+    fun auditTrail(): List<String> = auditFile.takeIf { it.isFile }
+        ?.readLines(Charsets.UTF_8)
+        .orEmpty()
+
+    private fun proposalFileForVersion(version: Long): File {
+        val record = proposalFiles().firstOrNull { file ->
+            val parsed = readRecord(file)
+            parsed?.proposal?.proposedVersion == version
+        } ?: throw IllegalStateException("Не найдена запись Evolution для версии " + version)
+        return record
+    }
 
     @Synchronized
     fun approveAndActivate(proposalId: String): Result<EvolutionActivation> = runCatching {
