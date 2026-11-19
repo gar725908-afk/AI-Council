@@ -428,9 +428,17 @@ fun AiStudioScreen(
                                         val routeEndpoint = profile.endpoint.ifBlank {
                                             defaultProviderEndpoint(routeKind)
                                         }
+                                        require(routeEndpoint.isNotBlank()) {
+                                            "Для роли " + agent.name + " не указан endpoint провайдера " +
+                                                routeKind.displayName + ". Укажите адрес сервера и сохраните профиль."
+                                        }
                                         val routeKey = credentialVault.get(
                                             AndroidCredentialVault.providerKeyId(routeKind.name)
                                         ).orEmpty()
+                                        require(!routeKind.requiresApiKey() || routeKey.isNotBlank()) {
+                                            "Для роли " + agent.name + " не сохранён API-ключ профиля " +
+                                                routeKind.displayName + "."
+                                        }
                                         CouncilModelRoute(
                                             gateway = createModelGateway(routeKind),
                                             endpoint = routeEndpoint,
