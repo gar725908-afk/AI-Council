@@ -111,86 +111,152 @@ class NexusModelStorage(context: Context) {
             "Загрузчик принимает только HTTPS-источники."
         }
 
-        // Immutable, unique artifact names prevent a re-download from overwriting a model
-        // that may still be loaded by the active inference engine.
-        val artifactToken = UUID.randomUUID().toString()
-        val destination = File(root, safeId(model.id) + "-" + artifactToken + extensionFor(manifest.artifactFileName))
-        val partial = File(root, safeId(model.id) + "-" + artifactToken + ".download")
-        val request = Request.Builder()
-            .url(verified.downloadUrl)
-            .header("Accept", "application/octet-stream")
-            .get()
-            .build()
-        val call = client.newCall(request)
-        val cancelled = AtomicBoolean(false)
+        // Deterministic partial name per model enables resume; the final artifact
+        // still gets an immutable unique name at promote time, so a re-download
+        // can never overwrite a file mapped by the active inference engine.
+        val partial = File(root, safeId(model.id) + ".download")
+        val metaFile = File(root, safeId(model.id) + ".download.meta")
+        val expectedMeta = ModelResumePolicy.Meta(verified.downloadUrl, verified.sha256, verified.sizeBytes)
+        val storedMeta = ModelResumePolicy.parseMeta(
+            runCatching { if (metaFile.exists()) metaFile.readText() else null }.getOrNull()
+        )
+        var plan = ModelResumePolicy.plan(
+            storedMeta, expectedMeta, if (partial.exists()) partial.length() else 0L
+        )
+        if (plan is ModelResumePolicy.Plan.StartOver) {
+            partial.delete()
+            metaFile.delete()
+        }
+        metaFile.writeText(ModelResumePolicy.metaJson(expectedMeta))
 
-        try {
-            onCallCreated(call)
-            call.execute().use { response ->
-                require(response.request.url.isHttps) {
-                    "Источник перенаправил загрузку на незашифрованный HTTP. Файл не будет сохранён."
-                }
-                if (!response.isSuccessful) {
-                    throw IOException("Сервер загрузки вернул HTTP " + response.code + ".")
-                }
-                val body = response.body ?: throw IOException("Источник вернул пустое тело файла.")
-                val declaredLength = body.contentLength()
-                if (declaredLength >= 0L && declaredLength != verified.sizeBytes) {
-                    throw IOException("Размер источника не совпадает с манифестом.")
-                }
-                val digest = MessageDigest.getInstance("SHA-256")
-                var received = 0L
-                var lastProgressReported = 0L
-                FileOutputStream(partial).use { output ->
-                    val input = body.byteStream()
+        fun discardPartial() {
+            partial.delete()
+            metaFile.delete()
+        }
+
+        val digest = MessageDigest.getInstance("SHA-256")
+        var received = 0L
+
+        // Re-hash already downloaded bytes so a resumed file passes the exact
+        // same end-to-end SHA-256 verification as a fresh download.
+        if (plan !is ModelResumePolicy.Plan.StartOver) {
+            try {
+                FileInputStream(partial).use { input ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
                     while (true) {
-                        if (cancelled.get()) throw kotlinx.coroutines.CancellationException("Загрузка отменена пользователем.")
                         currentCoroutineContext().ensureActive()
                         val count = input.read(buffer)
                         if (count < 0) break
-                        received += count
-                        if (received > verified.sizeBytes) {
-                            throw IOException("Файл больше указанного размера; загрузка остановлена.")
-                        }
                         digest.update(buffer, 0, count)
-                        output.write(buffer, 0, count)
-                        if (received - lastProgressReported >= PROGRESS_REPORT_INTERVAL_BYTES ||
-                            received == verified.sizeBytes
-                        ) {
-                            onProgress(received, verified.sizeBytes)
-                            lastProgressReported = received
+                        received += count
+                    }
+                }
+                onProgress(received, verified.sizeBytes)
+            } catch (error: Throwable) {
+                discardPartial()
+                throw error
+            }
+        }
+
+        if (received < verified.sizeBytes) {
+            val requestBuilder = Request.Builder()
+                .url(verified.downloadUrl)
+                .header("Accept", "application/octet-stream")
+                .get()
+            if (received > 0L) {
+                requestBuilder.header("Range", "bytes=" + received + "-")
+            }
+            val call = client.newCall(requestBuilder.build())
+            try {
+                onCallCreated(call)
+                call.execute().use { response ->
+                    require(response.request.url.isHttps) {
+                        "Источник перенаправил загрузку на незашифрованный HTTP. Файл не будет сохранён."
+                    }
+                    if (received > 0L) {
+                        when (val verdict = ModelResumePolicy.rangeVerdict(
+                            response.code, response.header("Content-Range"), received, verified.sizeBytes
+                        )) {
+                            is ModelResumePolicy.RangeVerdict.Append -> Unit
+                            is ModelResumePolicy.RangeVerdict.Restart -> {
+                                partial.delete()
+                                digest.reset()
+                                received = 0L
+                                onProgress(0L, verified.sizeBytes)
+                            }
+                            is ModelResumePolicy.RangeVerdict.Fail ->
+                                throw IOException(verdict.reason)
                         }
                     }
-                    output.fd.sync()
+                    if (!response.isSuccessful && response.code != 206) {
+                        throw IOException("Сервер загрузки вернул HTTP " + response.code + ".")
+                    }
+                    val body = response.body ?: throw IOException("Источник вернул пустое тело файла.")
+                    val declaredLength = body.contentLength()
+                    val expectedBody = verified.sizeBytes - received
+                    if (declaredLength >= 0L && declaredLength != expectedBody) {
+                        throw CorruptDownloadException("Размер источника не совпадает с манифестом.")
+                    }
+                    var lastProgressReported = received
+                    FileOutputStream(partial, received > 0L).use { output ->
+                        val input = body.byteStream()
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            received += count
+                            if (received > verified.sizeBytes) {
+                                throw CorruptDownloadException("Файл больше указанного размера; загрузка остановлена.")
+                            }
+                            digest.update(buffer, 0, count)
+                            output.write(buffer, 0, count)
+                            if (received - lastProgressReported >= PROGRESS_REPORT_INTERVAL_BYTES ||
+                                received == verified.sizeBytes
+                            ) {
+                                onProgress(received, verified.sizeBytes)
+                                lastProgressReported = received
+                            }
+                        }
+                        output.fd.sync()
+                    }
+                    if (received != verified.sizeBytes) {
+                        throw IOException(
+                            "Неполная загрузка: получено " + received + " из " + verified.sizeBytes +
+                                " байт. Повторный запуск продолжит с этого места."
+                        )
+                    }
                 }
-                if (received != verified.sizeBytes) {
-                    throw IOException("Неполная загрузка: получено " + received + " из " + verified.sizeBytes + " байт.")
-                }
-                val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
-                if (!actualHash.equals(verified.sha256, ignoreCase = true)) {
-                    throw IOException("SHA-256 не совпал. Файл удалён и не будет активирован.")
-                }
-                promote(partial, destination)
-                val record = InstalledNexusModel(
-                    id = model.id,
-                    displayName = model.displayName,
-                    path = destination.absolutePath,
-                    runtime = verified.runtime,
-                    sizeBytes = received,
-                    sha256 = actualHash,
-                    imported = false
-                )
-                saveRecord(record)
-                record
+            } catch (error: Throwable) {
+                call.cancel()
+                // A corrupt partial can never be resumed; an interrupted one can.
+                if (error is CorruptDownloadException) discardPartial()
+                throw error
             }
-        } catch (error: Throwable) {
-            cancelled.set(true)
-            call.cancel()
-            partial.delete()
-            destination.delete()
-            throw error
         }
+
+        val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
+        if (!actualHash.equals(verified.sha256, ignoreCase = true)) {
+            discardPartial()
+            throw IOException("SHA-256 не совпал. Файл удалён и не будет активирован.")
+        }
+        val destination = File(
+            root,
+            safeId(model.id) + "-" + UUID.randomUUID().toString() + extensionFor(manifest.artifactFileName)
+        )
+        promote(partial, destination)
+        metaFile.delete()
+        val record = InstalledNexusModel(
+            id = model.id,
+            displayName = model.displayName,
+            path = destination.absolutePath,
+            runtime = verified.runtime,
+            sizeBytes = received,
+            sha256 = actualHash,
+            imported = false
+        )
+        saveRecord(record)
+        record
     }
 
     suspend fun importArtifact(uri: Uri): InstalledNexusModel = withContext(Dispatchers.IO) {
@@ -361,3 +427,5 @@ class NexusModelStorage(context: Context) {
         private const val PROGRESS_REPORT_INTERVAL_BYTES = 1L * 1024L * 1024L
     }
 }
+
+private class CorruptDownloadException(message: String) : IOException(message)
