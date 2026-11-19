@@ -106,14 +106,14 @@ class NexusLocalCouncilManager(
                         JSONObject()
                             .put("participantId", result.participantId)
                             .put("succeeded", result.succeeded)
-                            .put("output", result.output.take(4_000))
+                            .put("output", result.output.take(2_000))
                             .put("error", result.error.orEmpty().take(500))
                     )
                 }
             }
 
             val payload = JSONObject()
-                .put("goal", context.goal.take(12_000))
+                .put("goal", context.goal)
                 .put("managerTurn", context.managerTurn)
                 .put("maxManagerTurns", context.maxManagerTurns)
                 .put("availableParticipants", participantJson)
@@ -140,8 +140,7 @@ class NexusLocalCouncilManager(
                 - Return at most 8 assignments. Each task must be concrete and self-contained.
             """.trimIndent()
 
-            val chunks = StringBuilder()
-            engines.activeLocalGateway().stream(
+            val response = engines.activeLocalGateway().stream(
                 CompletionRequest(
                     endpoint = "",
                     model = runtime.modelId,
@@ -152,13 +151,9 @@ class NexusLocalCouncilManager(
                     ),
                     temperature = 0.1
                 )
-            ).collect { chunk ->
-                if (chunks.length < MAX_MANAGER_RESPONSE_CHARS) {
-                    chunks.append(chunk.take(MAX_MANAGER_RESPONSE_CHARS - chunks.length))
-                }
-            }
+            ).collectBounded(MAX_MANAGER_RESPONSE_CHARS)
 
-            parseDecision(chunks.toString(), context)
+            parseDecision(response, context)
         }
 
     private fun parseDecision(raw: String, context: LocalCouncilContext): LocalCouncilDecision {
@@ -279,7 +274,6 @@ class NexusLocalModelParticipantAdapter(
             }
         }
         val runtime = engines.activeManagerRuntimeInfo()
-        val output = StringBuilder()
         engines.activeLocalGateway().stream(
             CompletionRequest(
                 endpoint = "",
@@ -297,12 +291,7 @@ class NexusLocalModelParticipantAdapter(
                 ),
                 temperature = 0.2
             )
-        ).collect { chunk ->
-            if (output.length < MAX_AGENT_RESPONSE_CHARS) {
-                output.append(chunk.take(MAX_AGENT_RESPONSE_CHARS - output.length))
-            }
-        }
-        output.toString()
+        ).collectBounded(MAX_AGENT_RESPONSE_CHARS)
     }
 
     private companion object {
