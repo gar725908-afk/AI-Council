@@ -28,7 +28,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * One serialized owner for LiteRT-LM's Engine and Conversation lifecycle.
- * All blocking SDK calls (initialize, stream collection, cancel, close) share one executor.
+ * All SDK operations are serialized. Model initialization is performed off the main thread.
  */
 class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
     private val appContext = context.applicationContext
@@ -42,14 +42,15 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
     @Volatile private var conversation: Conversation? = null
     @Volatile private var loadedPath: String? = null
     private val closed = AtomicBoolean(false)
+    private val generation = AtomicLong(0)
 
     override fun stream(request: CompletionRequest): Flow<String> = callbackFlow {
         check(!closed.get()) { "LiteRT-LM gateway уже закрыт." }
         require(request.apiKey.isBlank()) { "Локальный LiteRT-LM не использует API-ключ." }
-        val lastUserIndex = request.messages.indexOfLast { it.role == "user" }
-        require(lastUserIndex >= 0) { "Для локальной модели необходимо user-сообщение." }
-
-        val cancelled = AtomicBoolean(false)
+        require(request.messages.any { it.role == "user" }) {
+            "Для локальной модели необходимо user-сообщение."
+        }
+        val requestGeneration = generation.incrementAndGet()
         val job = launch {
             try {
                 withContext(dispatcher) {
@@ -57,9 +58,13 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
                         check(!closed.get()) { "LiteRT-LM gateway уже закрыт." }
                         val modelPath = storage.activeModelPath(ModelRuntimeKind.LITERT_LM)
                         ensureEngine(modelPath)
-                        val currentConversation = ensureConversation(request, lastUserIndex)
-                        currentConversation.sendMessageAsync(request.messages[lastUserIndex].content).collect { chunk ->
-                            if (!cancelled.get()) trySend(chunk.toString())
+                        // Each gateway request carries complete chat history. Recreate the conversation
+                        // when the history changes so old model state cannot leak between AI Studio turns.
+                        replaceConversation(request)
+                        val current = checkNotNull(conversation)
+                        val lastUser = request.messages.last { it.role == "user" }
+                        current.sendMessageAsync(lastUser.content).collect { chunk ->
+                            if (generation.get() == requestGeneration) trySend(chunk.toString())
                         }
                     }
                 }
@@ -71,11 +76,11 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
             }
         }
         awaitClose {
-            cancelled.set(true)
+            generation.incrementAndGet()
             job.cancel()
-            // cancelProcess is serialized with the active stream to avoid concurrent SDK calls.
-            executor.execute {
-                runCatching { conversation?.cancelProcess() }
+            // Schedule cancellation behind any in-progress SDK operation on the owner executor.
+            runCatching {
+                executor.execute { runCatching { conversation?.cancelProcess() } }
             }
         }
     }
@@ -91,14 +96,17 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
                 cacheDir = appContext.cacheDir.absolutePath
             )
         )
-        // Do not call close() on an Engine whose initialize() failed.
+        // Per LiteRT-LM Android guidance, do not close an Engine if initialize() throws.
         candidate.initialize()
         engine = candidate
         loadedPath = modelPath
     }
 
-    private fun ensureConversation(request: CompletionRequest, lastUserIndex: Int): Conversation {
-        conversation?.let { return it }
+    private fun replaceConversation(request: CompletionRequest) {
+        val previous = conversation
+        conversation = null
+        previous?.close()
+        val lastUserIndex = request.messages.indexOfLast { it.role == "user" }
         val systemText = request.messages.filter { it.role == "system" }
             .joinToString("\n\n") { it.content }
         val initial = request.messages.take(lastUserIndex).mapNotNull { message ->
@@ -113,7 +121,7 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
             initialMessages = initial,
             samplerConfig = SamplerConfig(temperature = request.temperature)
         )
-        return checkNotNull(engine).createConversation(config).also { conversation = it }
+        conversation = checkNotNull(engine).createConversation(config)
     }
 
     private fun releaseOwnedObjects() {
@@ -128,17 +136,21 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        executor.execute {
-            lifecycle.withLockBlocking {
-                releaseOwnedObjects()
+        generation.incrementAndGet()
+        runCatching {
+            executor.execute {
+                runCatching {
+                    val oldConversation = conversation
+                    conversation = null
+                    runCatching { oldConversation?.close() }
+                    val oldEngine = engine
+                    engine = null
+                    loadedPath = null
+                    runCatching { oldEngine?.close() }
+                }
+                dispatcher.close()
             }
-            dispatcher.close()
         }
-    }
-
-    private fun Mutex.withLockBlocking(block: () -> Unit) {
-        // This helper runs only on the single owner executor; no coroutine is holding this mutex.
-        block()
     }
 }
 
@@ -148,14 +160,14 @@ private fun interface LlamaTokenSink {
 
 /**
  * llama.cpp JNI runtime built from the pinned upstream source tag.
- * The first Android slice targets arm64-v8a CPU inference; GPU offload is not claimed.
+ * The initial Android target is arm64-v8a CPU inference. GPU offload is not claimed.
  */
 class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
     private val storage = NexusModelStorage(context.applicationContext)
     private val mutex = Mutex()
     private val closed = AtomicBoolean(false)
-    @Volatile private var handle: Long = 0L
     private val generation = AtomicLong(0L)
+    @Volatile private var handle: Long = 0L
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun stream(request: CompletionRequest): Flow<String> = callbackFlow {
@@ -188,9 +200,14 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
 
     private suspend fun getOrCreateHandle(): Long = mutex.withLock {
         check(!closed.get()) { "llama.cpp gateway уже закрыт." }
-        if (handle != 0L) return@withLock handle
         val modelPath = storage.activeModelPath(ModelRuntimeKind.LLAMA_CPP)
         check(File(modelPath).isFile) { "Файл активной GGUF-модели не найден." }
+        if (handle != 0L && loadedModelPath == modelPath) return@withLock handle
+        val previous = handle
+        handle = 0L
+        if (previous != 0L) withContext(Dispatchers.IO) {
+            NativeLlamaBridge.nativeDestroy(previous)
+        }
         val created = withContext(Dispatchers.IO) {
             NativeLlamaBridge.nativeCreate(
                 modelPath, 4096,
@@ -199,13 +216,18 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
         }
         check(created != 0L) { "llama.cpp не смог открыть GGUF-модель." }
         handle = created
+        loadedModelPath = modelPath
         created
     }
 
+    @Volatile private var loadedModelPath: String? = null
+
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        generation.incrementAndGet()
         val current = handle
         handle = 0L
+        loadedModelPath = null
         if (current != 0L) runCatching { NativeLlamaBridge.nativeDestroy(current) }
     }
 
