@@ -1,80 +1,46 @@
 # NEXUS — инженерный аудит Android-каркаса
-## Проверка исходников Bridge и воспроизводимости текущего Git snapshot
 
-**Дата проверки:** 19 ноября 2026 года  
-**Проверенная база:** GitHub `main`, Android-каталог `android/OllamaHybrid/`  
-**Назначение:** зафиксировать факты и ограничения до дальнейшей реализации.
+**Дата:** 19 ноября 2026 года  
+**Ветка:** `nexus/genesis-foundation`
 
----
+## 1. Подтверждённые проверки
 
-## 1. Результат проверки Kotlin-каркаса
+### Bridge contracts
+`BridgeContracts.kt`, `RootAccessProbe.kt` и `BridgeContractSmokeTest.kt` отдельно скомпилированы Kotlin/JVM compiler 1.9.0 и smoke test завершился PASS. Это проверяет только Kotlin-контракты и тестовые assertions, не Android APK.
 
-Файлы `BridgeContracts.kt`, `RootAccessProbe.kt` и `BridgeContractSmokeTest.kt` проверены отдельно от Android-приложения.
+### Genesis Android scaffold
+В ветку добавлены:
+- корневые `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`;
+- Android Manifest;
+- стартовый Jetpack Compose `MainActivity`;
+- CI workflow для Gradle 8.13 / JDK 17;
+- Android README с ограничениями и инструкциями.
 
-Использован локальный Kotlin/JVM compiler 1.9.0 на JRE 21.0.12.1. Команда:
+Compose экран показывает только честные статусы незапущенных подсистем. AI runtime, Council, Browser и Bridge execution не имитируются.
 
-```bash
-kotlinc BridgeContracts.kt RootAccessProbe.kt BridgeContractSmokeTest.kt \
-  -include-runtime -d bridge-smoke.jar
-java -jar bridge-smoke.jar
-```
+## 2. Что ещё не подтверждено
+- Успешная Android Gradle сборка и выпуск APK в этом окружении.
+- Установка и запуск на физическом устройстве.
+- Android Studio sync на чистой машине.
+- Полная функциональность AI Studio, Council, Browser, provider registry и local inference.
+- Room/DataStore persistence, WorkManager lifecycle и recovery.
+- Реальная интеграция Shizuku/Sui, Root service и Android tool execution.
+- Полный Material Library, voice и Evolution pipeline.
 
-**Результат: PASS** — исходники компилируются как отдельный Kotlin/JVM набор, smoke test завершился успешно.
+## 3. Ограничения сборки
+- CI использует установленный Gradle 8.13; Gradle Wrapper scripts/JAR ещё не добавлены.
+- Для локальной сборки нужен JDK 17 и Android SDK Platform 36.
+- Текущий Compose экран — минимальный runnable target, не финальный дизайн.
+- Namespace и applicationId остаются `ai.hybrid.commandcenter` для сохранения совместимости.
 
-Проверенные assertions:
-- регистрация инструмента и отклонение дублирующего ID;
-- выбор транспорта с максимальным приоритетом среди доступных;
-- отказ, если подходящий транспорт недоступен;
-- разрешение read-only операции при наличии capability;
-- отказ destructive операции без подтверждения;
-- отказ при approval, привязанном к другому request ID;
-- принятие approval, привязанного к текущим request ID и tool ID.
+## 4. Следующие обязательные этапы
+1. Добавить Gradle Wrapper и добиться успешного CI build.
+2. Восстановить/сверить полный Android source tree, если он существует отдельно.
+3. Ввести domain/data/feature слои и Room/DataStore.
+4. Реализовать Provider API и рабочий AI Studio с безопасным хранением секретов.
+5. Реализовать durable Mission Runtime и Council с лимитами параллелизма.
+6. Подключить Browser и Material Library.
+7. Реализовать единый Tool Gateway и Android Bridge с approval, audit и verifier.
+8. Только затем — local inference JNI, Shizuku/Root и Evolution pipeline.
 
-Это ограниченная проверка Bridge-контрактов. Она **не является** Gradle-сборкой Android-приложения, проверкой APK или device test.
-
-## 2. Что пока не проверено
-
-- Полная Gradle-сборка проекта.
-- AndroidManifest и запуск Activity.
-- Установка и запуск на физическом Android-устройстве.
-- Root Manager prompt и подтверждение фактического UID 0 на устройстве.
-- Shizuku/Sui Binder lifecycle.
-- Выполнение Android Bridge tools через настоящий executor.
-- Вызовы инструментов из AI Council.
-- Производительность, энергопотребление и поведение после process death.
-
-Текущий Git tree не содержит необходимых корневых Gradle-файлов/Wrapper, AndroidManifest и полноценной точки входа приложения. Поэтому Gradle build на основании текущей копии репозитория не подтверждён.
-
-## 3. Замечания к Bridge-контрактам перед production
-
-Это не утверждение о наличии уязвимости в работающем приложении: в репозитории пока представлен каркас контрактов, а не полный execution pipeline. Следующие проверки должны быть добавлены при интеграции:
-
-1. **Privilege ↔ transport enforcement.** Policy должна проверять не только capability, но и то, что выбранный transport действительно разрешён текущим privilege snapshot.
-2. **Typed argument schema.** Сейчас аргументы представлены как `Map<String, String>`; до production нужны схемы типов, диапазонов, обязательности, нормализации и валидации.
-3. **Approval lifecycle.** Approval должен иметь срок действия, одноразовое использование и привязку к точным параметрам действия или их digest, а не только к request ID и tool ID.
-4. **Snapshot freshness.** Необходимо проверять возраст CapabilitySnapshot и перечитывать разрешения перед чувствительной операцией.
-5. **Central executor.** Нужен единый pipeline: validate → policy → approval → route → execute → verify → audit.
-6. **Root probe threading.** `RootAccessProbe.check()` блокирующий; вызывать его следует вне UI thread, например через IO dispatcher или управляемый executor.
-7. **Result verification.** Возврат exit code или текстовый ответ инструмента не всегда доказывает, что целевое состояние действительно достигнуто.
-
-Положительный момент текущего каркаса: Root probe использует фиксированную команду `su -c "id -u"`, проверяет UID 0 и не принимает произвольную shell-строку от модели. Это правильная отправная точка, но не полноценный Root service.
-
-## 4. Статус проверки validator
-
-Скрипт `tools/validate_android_bridge.py` требует наличие `app/src/main/AndroidManifest.xml` наряду с Bridge-файлами и спецификациями. В проверенном Git tree Manifest отсутствует. Поэтому текущая опубликованная копия не удовлетворяет всем предусловиям этого validator; его успешное завершение для текущего Git snapshot не заявляется.
-
-## 5. Следующие инженерные действия
-
-1. Найти и синхронизировать полный Android source tree, упомянутый в прежнем README как отдельный архив.
-2. Сверить его с уже опубликованным Bridge scaffold и всеми архитектурными документами.
-3. Восстановить воспроизводимую Gradle-сборку.
-4. Добавить тесты на privilege/transport, approval expiry/replay, schema validation, stale capabilities и отказ доступа.
-5. Только после этого связывать Bridge с Council и интерфейсом NEXUS.
-
----
-
-## 6. Принцип статуса
-
-**Compiled Kotlin scaffold ≠ Android app build ≠ installed APK ≠ verified device integration.**
-
-Каждый из этих уровней фиксируется отдельно. В документации NEXUS нельзя повышать статус компонента без соответствующей проверки.
+**Статус:** создана стартовая Android Gradle/Compose структура. Полноценная сборка и интеграция на устройстве пока не заявляются.
