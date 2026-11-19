@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: nexus-android-debug-${{ github.ref }}
+  group: nexus-android-debug-v2-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
