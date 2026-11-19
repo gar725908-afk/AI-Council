@@ -184,6 +184,14 @@ class LocalFirstCouncilOrchestrator(
     private val adapters = participantAdapters.associateBy { it.descriptor.id }
     private val configuredMaxParallelism = maxParallelism.coerceIn(1, 8)
 
+    private companion object {
+        const val MAX_GOAL_CHARS = 32_000
+        const val MAX_TASK_CHARS = 8_000
+        const val MAX_PARTICIPANT_OUTPUT_CHARS = 12_000
+        const val MAX_MANAGER_MESSAGE_CHARS = 8_000
+        const val OUTPUT_TRUNCATION_MARKER = "\\n[participant output truncated]"
+    }
+
     suspend fun runManaged(
         profile: LocalCouncilProfile,
         goal: String
@@ -194,8 +202,11 @@ class LocalFirstCouncilOrchestrator(
                 message = "В режиме MANUAL используйте dispatchManually: выбор участника должен сделать пользователь."
             )
         }
-        if (goal.isBlank()) {
-            return LocalCouncilExecution(LocalCouncilExecutionStatus.FAILED, message = "Задача пуста.")
+        if (goal.isBlank() || goal.length > MAX_GOAL_CHARS) {
+            return LocalCouncilExecution(
+                LocalCouncilExecutionStatus.FAILED,
+                message = "Задача должна содержать от 1 до $MAX_GOAL_CHARS символов."
+            )
         }
         val managerInfo = manager.runtimeInfo
         if (managerInfo.executionLocation != LocalModelExecutionLocation.ON_DEVICE ||
@@ -255,7 +266,7 @@ class LocalFirstCouncilOrchestrator(
                 is LocalCouncilDecision.Delegate -> {
                     val assignments = decision.assignments
                     if (assignments.isEmpty() || assignments.size > 8 ||
-                        assignments.any { it.task.isBlank() } ||
+                        assignments.any { it.task.isBlank() || it.task.length > MAX_TASK_CHARS } ||
                         assignments.map { it.participantId }.distinct().size != assignments.size
                     ) {
                         return LocalCouncilExecution(
@@ -310,14 +321,20 @@ class LocalFirstCouncilOrchestrator(
                                 missionParallelism.withPermit {
                                     val adapter = adapters.getValue(assignment.participantId)
                                     try {
-                                        val output = adapter.execute(assignment, results.toList())
+                                        val rawOutput = adapter.execute(assignment, results.toList())
+                                        val output = rawOutput.take(MAX_PARTICIPANT_OUTPUT_CHARS)
+                                        val wasTruncated = rawOutput.length > output.length
                                         CouncilParticipantResult(
                                             participantId = adapter.descriptor.id,
                                             displayName = adapter.descriptor.displayName,
                                             task = assignment.task,
-                                            output = output,
+                                            output = if (wasTruncated) output + OUTPUT_TRUNCATION_MARKER else output,
                                             succeeded = output.isNotBlank(),
-                                            error = if (output.isBlank()) "Участник вернул пустой ответ." else null
+                                            error = when {
+                                                output.isBlank() -> "Участник вернул пустой ответ."
+                                                wasTruncated -> "Ответ ограничен лимитом $MAX_PARTICIPANT_OUTPUT_CHARS символов."
+                                                else -> null
+                                            }
                                         )
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
@@ -342,21 +359,21 @@ class LocalFirstCouncilOrchestrator(
                     LocalCouncilExecutionStatus.NEEDS_USER_INPUT,
                     turns,
                     results.toList(),
-                    question = decision.question
+                    question = decision.question.take(MAX_MANAGER_MESSAGE_CHARS)
                 )
 
                 is LocalCouncilDecision.Finish -> return LocalCouncilExecution(
                     LocalCouncilExecutionStatus.COMPLETED,
                     turns,
                     results.toList(),
-                    summary = decision.summary
+                    summary = decision.summary.take(MAX_MANAGER_MESSAGE_CHARS)
                 )
 
                 is LocalCouncilDecision.YieldControl -> return LocalCouncilExecution(
                     LocalCouncilExecutionStatus.PAUSED,
                     turns,
                     results.toList(),
-                    message = decision.reason
+                    message = decision.reason.take(MAX_MANAGER_MESSAGE_CHARS)
                 )
             }
         }
@@ -381,8 +398,11 @@ class LocalFirstCouncilOrchestrator(
                 message = "Ручная отправка доступна только в режиме MANUAL."
             )
         }
-        if (task.isBlank()) {
-            return LocalCouncilExecution(LocalCouncilExecutionStatus.FAILED, message = "Задача пуста.")
+        if (task.isBlank() || task.length > MAX_TASK_CHARS) {
+            return LocalCouncilExecution(
+                LocalCouncilExecutionStatus.FAILED,
+                message = "Поручение должно содержать от 1 до $MAX_TASK_CHARS символов."
+            )
         }
         val errors = profile.validationErrors()
         if (errors.isNotEmpty()) {
@@ -409,7 +429,9 @@ class LocalFirstCouncilOrchestrator(
             )
         }
         return try {
-            val output = adapter.execute(CouncilAssignment(participantId, task), emptyList())
+            val rawOutput = adapter.execute(CouncilAssignment(participantId, task), emptyList())
+            val output = rawOutput.take(MAX_PARTICIPANT_OUTPUT_CHARS)
+            val wasTruncated = rawOutput.length > output.length
             LocalCouncilExecution(
                 LocalCouncilExecutionStatus.COMPLETED,
                 results = listOf(
@@ -417,9 +439,13 @@ class LocalFirstCouncilOrchestrator(
                         participantId = participantId,
                         displayName = descriptor.displayName,
                         task = task,
-                        output = output,
+                        output = if (wasTruncated) output + OUTPUT_TRUNCATION_MARKER else output,
                         succeeded = output.isNotBlank(),
-                        error = if (output.isBlank()) "Участник вернул пустой ответ." else null
+                        error = when {
+                            output.isBlank() -> "Участник вернул пустой ответ."
+                            wasTruncated -> "Ответ ограничен лимитом $MAX_PARTICIPANT_OUTPUT_CHARS символов."
+                            else -> null
+                        }
                     )
                 )
             )
