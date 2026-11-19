@@ -506,11 +506,16 @@ fun AiStudioScreen(
                             credentialVault.get(providerKeyId)
                         }
                         if (councilMode) {
+                            val activeRoutingPolicy = withContext(Dispatchers.IO) {
+                                evolutionExecutor.activeConfiguration(EvolutionChangeKind.ROUTING_POLICY)
+                            }
                             val result = CouncilOrchestrator(
                                 gateway = gateway,
                                 maxParallelAgents = 3,
                                 routeResolver = { agent ->
-                                    val routeKind = routingStore.load(agent.id) ?: providerKind
+                                    val routeKind = resolveEvolutionRoute(activeRoutingPolicy, agent.id)
+                                        ?: routingStore.load(agent.id)
+                                        ?: providerKind
                                     val modelOverride = routingStore.loadModelOverride(agent.id)
                                     if (routeKind == providerKind) {
                                         CouncilModelRoute(
@@ -728,6 +733,25 @@ fun AiStudioScreen(
             }
         }
         Spacer(Modifier.height(18.dp))
+    }
+}
+
+
+private fun resolveEvolutionRoute(payload: String, agentId: String): ProviderKind? {
+    if (payload.isBlank()) return null
+    val root = try {
+        org.json.JSONObject(payload)
+    } catch (error: Exception) {
+        throw IllegalArgumentException("The active Evolution routing policy is not valid JSON.", error)
+    }
+    val routes = root.optJSONObject("routes")
+        ?: throw IllegalArgumentException("The Evolution routing policy must contain a routes object.")
+    val value = routes.optString(agentId).trim()
+    if (value.isBlank()) return null
+    return try {
+        ProviderKind.valueOf(value)
+    } catch (error: Exception) {
+        throw IllegalArgumentException("Evolution routing policy contains an unsupported provider for agent $agentId.", error)
     }
 }
 
