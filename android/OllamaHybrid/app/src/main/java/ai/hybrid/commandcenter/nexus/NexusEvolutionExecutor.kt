@@ -92,19 +92,19 @@ class NexusEvolutionExecutor(context: Context) {
     }
 
     @Synchronized
-    fun pendingProposals(): List<NexusEvolutionRecord> =
-        proposalFiles().mapNotNull {
+    fun pendingProposals(): List<NexusEvolutionRecord> {
         ensureInitialized()
- file -> readRecord(file) }
+        return proposalFiles().mapNotNull { file -> readRecord(file) }
             .filter { it.status == NexusEvolutionProposalStatus.PENDING }
             .sortedBy { it.proposal.createdAtEpochMs }
+    }
 
     @Synchronized
-    fun history(): List<NexusEvolutionRecord> =
-        proposalFiles().mapNotNull {
+    fun history(): List<NexusEvolutionRecord> {
         ensureInitialized()
- file -> readRecord(file) }
+        return proposalFiles().mapNotNull { file -> readRecord(file) }
             .sortedByDescending { it.proposal.createdAtEpochMs }
+    }
 
     @Synchronized
     fun activeVersion(): Long {
@@ -127,7 +127,10 @@ class NexusEvolutionExecutor(context: Context) {
     }
 
     @Synchronized
-    fun activePayload(): String = verifiedVersionPayload(activeVersion())
+    fun activePayload(): String {
+        ensureInitialized()
+        return verifiedVersionPayload(activeVersion())
+    }
 
     /**
      * Resolves the most recent configuration of this kind on the active version's parent chain.
@@ -135,8 +138,6 @@ class NexusEvolutionExecutor(context: Context) {
      */
     @Synchronized
     fun activeConfiguration(kind: EvolutionChangeKind): String {
-        ensureInitialized()
-
         ensureInitialized()
 
         val activeRecords = history()
@@ -175,11 +176,12 @@ class NexusEvolutionExecutor(context: Context) {
     }
 
     @Synchronized
-    fun auditTrail(): List<String> = auditFile.takeIf {
+    fun auditTrail(): List<String> {
         ensureInitialized()
- it.isFile }
-        ?.readLines(Charsets.UTF_8)
-        .orEmpty()
+        return auditFile.takeIf { it.isFile }
+            ?.readLines(Charsets.UTF_8)
+            .orEmpty()
+    }
 
     private fun proposalFileForVersion(version: Long): File {
         val record = proposalFiles().firstOrNull { file ->
@@ -247,12 +249,10 @@ class NexusEvolutionExecutor(context: Context) {
     fun availableVersions(): List<Long> {
         ensureInitialized()
         return versionsDir.listFiles()
-        .orEmpty()
-        .filter {
-        ensureInitialized()
- it.isFile && it.extension == "txt" }
-        .mapNotNull { it.nameWithoutExtension.toLongOrNull() }
-        .sortedDescending()
+            .orEmpty()
+            .filter { it.isFile && it.extension == "txt" }
+            .mapNotNull { it.nameWithoutExtension.toLongOrNull() }
+            .sortedDescending()
     }
 
     private fun proposalFiles(): List<File> = proposalsDir.listFiles()
