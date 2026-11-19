@@ -487,7 +487,7 @@ fun AiStudioScreen(
 
         OutlinedTextField(
             value = prompt,
-            onValueChange = { prompt = it },
+            onValueChange = { prompt = it.take(32_000) },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Задача") },
             placeholder = { Text("Опишите, что должна сделать система…") },
@@ -502,6 +502,9 @@ fun AiStudioScreen(
                     status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
                     var missionId: String? = null
                     try {
+                        require(prompt.isNotBlank() && prompt.length <= 32_000) {
+                            "Задача должна содержать от 1 до 32 000 символов."
+                        }
                         val selectedModelId = if (usesOnDeviceModel) {
                             engineRegistry.activeModel().id
                         } else {
