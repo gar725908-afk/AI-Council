@@ -13,7 +13,8 @@ import javax.crypto.spec.GCMParameterSpec
 
 data class ProviderSettings(
     val endpoint: String = "",
-    val model: String = ""
+    val model: String = "",
+    val providerKind: String = "OPENAI_COMPATIBLE"
 )
 
 /**
@@ -91,6 +92,8 @@ class AndroidCredentialVault(context: Context) {
 
     companion object {
         const val PRIMARY_PROVIDER_KEY = "provider.primary.api-key"
+        fun providerKeyId(providerKind: String): String =
+            "provider.${providerKind.lowercase()}.api-key"
 
         private const val SECRET_PREFS = "nexus_encrypted_credentials"
         private const val KEY_ALIAS = "nexus.provider.credentials.v1"
@@ -106,21 +109,28 @@ class ProviderSettingsStore(context: Context) {
         Context.MODE_PRIVATE
     )
 
-    fun load(): ProviderSettings = ProviderSettings(
-        endpoint = preferences.getString(KEY_ENDPOINT, "") ?: "",
-        model = preferences.getString(KEY_MODEL, "") ?: ""
-    )
+    fun load(providerKind: String? = null): ProviderSettings {
+        val activeKind = providerKind
+            ?: preferences.getString(KEY_ACTIVE_KIND, "OPENAI_COMPATIBLE")
+            ?: "OPENAI_COMPATIBLE"
+        return ProviderSettings(
+            endpoint = preferences.getString("${activeKind}.endpoint", "") ?: "",
+            model = preferences.getString("${activeKind}.model", "") ?: "",
+            providerKind = activeKind
+        )
+    }
 
     fun save(settings: ProviderSettings) {
+        val kind = settings.providerKind
         preferences.edit()
-            .putString(KEY_ENDPOINT, settings.endpoint.trim())
-            .putString(KEY_MODEL, settings.model.trim())
+            .putString(KEY_ACTIVE_KIND, kind)
+            .putString("${kind}.endpoint", settings.endpoint.trim())
+            .putString("${kind}.model", settings.model.trim())
             .apply()
     }
 
     companion object {
         private const val SETTINGS_PREFS = "nexus_provider_settings"
-        private const val KEY_ENDPOINT = "endpoint"
-        private const val KEY_MODEL = "model"
+        private const val KEY_ACTIVE_KIND = "active_provider_kind"
     }
 }
