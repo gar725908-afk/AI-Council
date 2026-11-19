@@ -23,14 +23,22 @@ class ProviderModelCatalog(
         endpoint: String,
         apiKey: String
     ): List<String> {
-        if (kind != ProviderKind.OPENAI_COMPATIBLE) {
+        if (kind.requiresApiKey()) {
             require(apiKey.isNotBlank()) { "Для этого провайдера требуется API-ключ." }
         }
         val base = parseBase(endpoint.ifBlank { defaultEndpoint(kind) })
         val url = modelsUrl(kind, base)
         val builder = Request.Builder().url(url).get().header("Accept", "application/json")
         when (kind) {
-            ProviderKind.OPENAI_COMPATIBLE -> if (apiKey.isNotBlank()) {
+            ProviderKind.OPENAI_COMPATIBLE,
+            ProviderKind.OPENAI,
+            ProviderKind.DEEPSEEK,
+            ProviderKind.OPENROUTER,
+            ProviderKind.GROQ,
+            ProviderKind.MISTRAL,
+            ProviderKind.TOGETHER,
+            ProviderKind.FIREWORKS,
+            ProviderKind.OLLAMA -> if (apiKey.isNotBlank()) {
                 builder.header("Authorization", "Bearer $apiKey")
             }
             ProviderKind.ANTHROPIC -> {
@@ -45,6 +53,14 @@ class ProviderModelCatalog(
         val json = JSONObject(jsonText)
         val models = when (kind) {
             ProviderKind.OPENAI_COMPATIBLE,
+            ProviderKind.OPENAI,
+            ProviderKind.DEEPSEEK,
+            ProviderKind.OPENROUTER,
+            ProviderKind.GROQ,
+            ProviderKind.MISTRAL,
+            ProviderKind.TOGETHER,
+            ProviderKind.FIREWORKS,
+            ProviderKind.OLLAMA,
             ProviderKind.ANTHROPIC -> {
                 val data = json.optJSONArray("data")
                     ?: throw IOException("В ответе каталога отсутствует массив data.")
@@ -102,7 +118,15 @@ class ProviderModelCatalog(
         }
 
     private fun modelsUrl(kind: ProviderKind, base: HttpUrl): HttpUrl = when (kind) {
-        ProviderKind.OPENAI_COMPATIBLE -> base.newBuilder()
+        ProviderKind.OPENAI_COMPATIBLE,
+        ProviderKind.OPENAI,
+        ProviderKind.DEEPSEEK,
+        ProviderKind.OPENROUTER,
+        ProviderKind.GROQ,
+        ProviderKind.MISTRAL,
+        ProviderKind.TOGETHER,
+        ProviderKind.FIREWORKS,
+        ProviderKind.OLLAMA -> base.newBuilder()
             .addPathSegment("models")
             .build()
         ProviderKind.ANTHROPIC -> when {
@@ -144,7 +168,14 @@ class ProviderModelCatalog(
     }
 
     private fun defaultEndpoint(kind: ProviderKind): String = when (kind) {
-        ProviderKind.OPENAI_COMPATIBLE -> "https://api.openai.com/v1"
+        ProviderKind.OPENAI_COMPATIBLE, ProviderKind.OPENAI -> "https://api.openai.com/v1"
+        ProviderKind.DEEPSEEK -> "https://api.deepseek.com"
+        ProviderKind.OPENROUTER -> "https://openrouter.ai/api/v1"
+        ProviderKind.GROQ -> "https://api.groq.com/openai/v1"
+        ProviderKind.MISTRAL -> "https://api.mistral.ai/v1"
+        ProviderKind.TOGETHER -> "https://api.together.ai/v1"
+        ProviderKind.FIREWORKS -> "https://api.fireworks.ai/inference/v1"
+        ProviderKind.OLLAMA -> "http://localhost:11434/v1"
         ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
         ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
     }
