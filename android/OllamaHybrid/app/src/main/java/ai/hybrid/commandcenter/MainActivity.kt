@@ -24,6 +24,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,6 +62,7 @@ private fun NexusApp() {
     )
     MaterialTheme(colorScheme = colors) {
         var selected by remember { mutableIntStateOf(0) }
+        var pendingPrompt by remember { mutableStateOf<String?>(null) }
         val destinations = listOf("Главная", "AI Studio", "Council", "Модели", "Устройство", "Центр")
         Scaffold(
             containerColor = Void,
@@ -78,9 +80,25 @@ private fun NexusApp() {
             }
         ) { padding ->
             when (selected) {
-                0 -> CommandDeckScreen(onNavigate = { selected = it }, modifier = Modifier.padding(padding))
-                1 -> AiStudioScreen(councilMode = false, modifier = Modifier.padding(padding))
-                2 -> CouncilScreen(Modifier.padding(padding))
+                0 -> CommandDeckScreen(
+                    onNavigate = { selected = it },
+                    onCompose = { text, destination ->
+                        pendingPrompt = text
+                        selected = destination
+                    },
+                    modifier = Modifier.padding(padding)
+                )
+                1 -> AiStudioScreen(
+                    councilMode = false,
+                    modifier = Modifier.padding(padding),
+                    initialPrompt = pendingPrompt,
+                    onInitialPromptConsumed = { pendingPrompt = null }
+                )
+                2 -> CouncilScreen(
+                    modifier = Modifier.padding(padding),
+                    initialPrompt = pendingPrompt,
+                    onInitialPromptConsumed = { pendingPrompt = null }
+                )
                 3 -> ModelCenterScreen(Modifier.padding(padding))
                 4 -> DeviceCoreScreen(Modifier.padding(padding))
                 else -> PlatformCenterScreen(Modifier.padding(padding))

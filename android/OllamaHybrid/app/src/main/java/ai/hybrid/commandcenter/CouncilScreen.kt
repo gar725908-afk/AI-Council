@@ -65,8 +65,15 @@ private val SecondaryText = Color(0xFFA4B1C2)
  * flow. No live progress is invented: the journal is the source of truth.
  */
 @Composable
-fun CouncilScreen(modifier: Modifier = Modifier) {
+fun CouncilScreen(
+    modifier: Modifier = Modifier,
+    initialPrompt: String? = null,
+    onInitialPromptConsumed: () -> Unit = {}
+) {
     var tab by remember { mutableIntStateOf(0) }
+    LaunchedEffect(initialPrompt) {
+        if (!initialPrompt.isNullOrBlank()) tab = 1
+    }
     Column(modifier.fillMaxSize().background(Void)) {
         TabRow(
             selectedTabIndex = tab,
@@ -86,7 +93,12 @@ fun CouncilScreen(modifier: Modifier = Modifier) {
         }
         when (tab) {
             0 -> CouncilCommandCenter(Modifier.fillMaxSize())
-            else -> AiStudioScreen(councilMode = true, modifier = Modifier.fillMaxSize())
+            else -> AiStudioScreen(
+                councilMode = true,
+                modifier = Modifier.fillMaxSize(),
+                initialPrompt = initialPrompt,
+                onInitialPromptConsumed = onInitialPromptConsumed
+            )
         }
     }
 }

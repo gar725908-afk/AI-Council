@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -77,7 +78,11 @@ private data class DeckState(
  * were never checked say so instead of pretending.
  */
 @Composable
-fun CommandDeckScreen(onNavigate: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun CommandDeckScreen(
+    onNavigate: (Int) -> Unit,
+    onCompose: (String, Int) -> Unit = { _, destination -> onNavigate(destination) },
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
     var state by remember { mutableStateOf<DeckState?>(null) }
 
@@ -114,6 +119,7 @@ fun CommandDeckScreen(onNavigate: (Int) -> Unit, modifier: Modifier = Modifier) 
                 Spacer(Modifier.height(22.dp))
             }
         } else {
+        item { ComposerCard(onCompose) }
             item { ModelProfileCard(deck, onNavigate) }
             item { MissionsCard(deck, onNavigate) }
             item { StudioCard(deck, onNavigate) }
@@ -126,6 +132,38 @@ fun CommandDeckScreen(onNavigate: (Int) -> Unit, modifier: Modifier = Modifier) 
                     fontSize = 11.sp
                 )
                 Spacer(Modifier.height(22.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposerCard(onCompose: (String, Int) -> Unit) {
+    var task by remember { mutableStateOf("") }
+    DeckCard(title = "COMMAND COMPOSER", accent = Violet) {
+        OutlinedTextField(
+            value = task,
+            onValueChange = { task = it.take(32_000) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Задача") },
+            placeholder = { Text("Опишите, что должна сделать система…") },
+            minLines = 2
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (task.isNotBlank()) {
+                DeckButton("В AI Studio", Cyan) {
+                    onCompose(task, 1)
+                    task = ""
+                }
+                DeckButton("В Council", Violet) {
+                    onCompose(task, 2)
+                    task = ""
+                }
+            } else {
+                Text(
+                    "Введите задачу — её можно отправить одиночной модели или совету агентов.",
+                    color = SecondaryText, fontSize = 11.sp
+                )
             }
         }
     }

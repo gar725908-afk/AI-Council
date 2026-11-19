@@ -69,7 +69,9 @@ import kotlinx.coroutines.flow.collect
 @Composable
 fun AiStudioScreen(
     councilMode: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialPrompt: String? = null,
+    onInitialPromptConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val settingsStore = remember(context) { ProviderSettingsStore(context) }
@@ -111,6 +113,12 @@ fun AiStudioScreen(
     var apiKey by remember { mutableStateOf("") }
     var hasSavedKey by remember { mutableStateOf(false) }
     var prompt by remember { mutableStateOf("") }
+    LaunchedEffect(initialPrompt) {
+        if (!initialPrompt.isNullOrBlank()) {
+            prompt = initialPrompt.take(32_000)
+            onInitialPromptConsumed()
+        }
+    }
     var answer by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Провайдер не проверен") }
     var isRunning by remember { mutableStateOf(false) }
