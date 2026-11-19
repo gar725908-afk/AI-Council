@@ -178,6 +178,7 @@ class NexusModelStorage(context: Context) {
             cancelled.set(true)
             call.cancel()
             partial.delete()
+            destination.delete()
             throw error
         }
     }
