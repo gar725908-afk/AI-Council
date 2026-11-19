@@ -497,13 +497,14 @@ fun AiStudioScreen(
 
         Button(
             onClick = {
+                val submittedPrompt = prompt
                 activeRun = scope.launch {
                     isRunning = true
                     answer = ""
                     status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
                     var missionId: String? = null
                     try {
-                        require(prompt.isNotBlank() && prompt.length <= 32_000) {
+                        require(submittedPrompt.isNotBlank() && submittedPrompt.length <= 32_000) {
                             "Задача должна содержать от 1 до 32 000 символов."
                         }
                         val selectedModelId = if (usesOnDeviceModel) {
@@ -515,7 +516,7 @@ fun AiStudioScreen(
                             "Сначала укажите endpoint и модель."
                         }
                         missionId = withContext(Dispatchers.IO) {
-                            journal.createMission(prompt, endpoint, selectedModelId).also { id ->
+                            journal.createMission(submittedPrompt, endpoint, selectedModelId).also { id ->
                                 journal.transition(id, MissionStatus.QUEUED, "Миссия поставлена в очередь")
                                 journal.transition(id, MissionStatus.RUNNING, "Запрос отправлен провайдеру")
                             }
@@ -524,7 +525,7 @@ fun AiStudioScreen(
                             val chatId = activeConversationId
                                 ?: journal.getLatestConversationId()
                                 ?: journal.createConversation()
-                            journal.appendChatMessage(chatId, "user", prompt)
+                            journal.appendChatMessage(chatId, "user", submittedPrompt)
                             chatId to journal.getChatMessages(chatId, 100)
                         }
                         activeConversationId = chatState.first
