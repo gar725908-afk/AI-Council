@@ -67,7 +67,7 @@ private suspend fun Flow<String>.collectBounded(maxChars: Int): String {
         // The collector exception cancels the upstream HTTP call; keep the bounded partial text.
     }
     if (truncated) {
-        val marker = "\\n[output truncated]"
+        val marker = "\n[output truncated]"
         if (output.length + marker.length > maxChars) {
             output.setLength((maxChars - marker.length).coerceAtLeast(0))
         }
@@ -411,7 +411,7 @@ class CouncilOrchestrator(
         private const val MAX_AGENT_OUTPUT_CHARS = 12_000
         private const val MAX_SYNTHESIS_INPUT_CHARS = 110_000
         private const val MAX_SYNTHESIS_OUTPUT_CHARS = 16_000
-        private const val TRUNCATION_MARKER = "\\n[context truncated]"
+        private const val TRUNCATION_MARKER = "\n[context truncated]"
 
         fun defaultAgents(): List<CouncilAgent> = listOf(
             CouncilAgent("research", "Исследователь", CouncilAgentRole.RESEARCHER,
