@@ -317,13 +317,21 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                         Text("SHA-256: " + record.proposal.contentSha256, style = MaterialTheme.typography.labelSmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = {
-                                evolution.approveAndActivate(record.proposal.id)
-                                    .onSuccess { status = "Evolution активировал версию " + it.activeVersion; refresh() }
-                                    .onFailure { status = it.message ?: "Активация отклонена." }
+                                scope.launch {
+                                    status = "Проверяю целостность и активирую Evolution…"
+                                    val result = withContext(Dispatchers.IO) {
+                                        evolution.approveAndActivate(record.proposal.id)
+                                    }
+                                    result.onSuccess { status = "Evolution активировал версию " + it.activeVersion; refresh() }
+                                        .onFailure { status = it.message ?: "Активация отклонена." }
+                                }
                             }) { Text("Применить") }
                             TextButton(onClick = {
-                                if (evolution.reject(record.proposal.id, "Отклонено пользователем.")) {
-                                    status = "Предложение отклонено."; refresh()
+                                scope.launch {
+                                    val rejected = withContext(Dispatchers.IO) {
+                                        evolution.reject(record.proposal.id, "Отклонено пользователем.")
+                                    }
+                                    if (rejected) { status = "Предложение отклонено."; refresh() }
                                 }
                             }) { Text("Отклонить") }
                         }
