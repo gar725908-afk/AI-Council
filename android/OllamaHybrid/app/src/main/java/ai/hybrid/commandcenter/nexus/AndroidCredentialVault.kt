@@ -26,11 +26,12 @@ class AndroidCredentialVault(context: Context) {
     private val secrets = appContext.getSharedPreferences(SECRET_PREFS, Context.MODE_PRIVATE)
 
     fun put(secretId: String, secret: String) {
-        require(secretId.matches(Regex("[A-Za-z0-9._-]{1,80}"))) { "Invalid secret identifier." }
+        requireValidSecretId(secretId)
         require(secret.isNotBlank()) { "Secret cannot be blank." }
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        cipher.updateAAD(secretId.toByteArray(Charsets.UTF_8))
         val encrypted = cipher.doFinal(secret.toByteArray(Charsets.UTF_8))
         val iv = cipher.iv
         val payload = ByteBuffer.allocate(1 + iv.size + encrypted.size)
@@ -39,13 +40,16 @@ class AndroidCredentialVault(context: Context) {
             .put(encrypted)
             .array()
 
-        check(secrets.edit().putString(secretId, Base64.encodeToString(payload, Base64.NO_WRAP)).commit()) {
+        check(secrets.edit().putString(secretId, V2_PREFIX + Base64.encodeToString(payload, Base64.NO_WRAP)).commit()) {
             "Unable to persist encrypted credential."
         }
     }
 
     fun get(secretId: String): String? {
-        val encoded = secrets.getString(secretId, null) ?: return null
+        requireValidSecretId(secretId)
+        val stored = secrets.getString(secretId, null) ?: return null
+        val versioned = stored.startsWith(V2_PREFIX)
+        val encoded = if (versioned) stored.removePrefix(V2_PREFIX) else stored
         return runCatching {
             val payload = Base64.decode(encoded, Base64.NO_WRAP)
             require(payload.isNotEmpty()) { "Stored credential is empty." }
@@ -59,16 +63,28 @@ class AndroidCredentialVault(context: Context) {
 
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
-            String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+            if (versioned) cipher.updateAAD(secretId.toByteArray(Charsets.UTF_8))
+            val secret = String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+            // Migrate legacy v1 entries in place. The legacy format did not bind ciphertext
+            // to its preference key; v2 authenticates the secret identifier as GCM AAD.
+            if (!versioned) runCatching { put(secretId, secret) }
+            secret
         }.getOrNull()
     }
 
     fun remove(secretId: String) {
+        requireValidSecretId(secretId)
         secrets.edit().remove(secretId).apply()
     }
 
     fun clearAll() {
         secrets.edit().clear().apply()
+    }
+
+    private fun requireValidSecretId(secretId: String) {
+        require(secretId.matches(Regex("[A-Za-z0-9._-]{1,80}"))) {
+            "Invalid secret identifier."
+        }
     }
 
     private fun getOrCreateKey(): SecretKey {
@@ -96,6 +112,7 @@ class AndroidCredentialVault(context: Context) {
             "provider.${providerKind.lowercase()}.api-key"
 
         private const val SECRET_PREFS = "nexus_encrypted_credentials"
+        private const val V2_PREFIX = "v2:"
         private const val KEY_ALIAS = "nexus.provider.credentials.v1"
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
