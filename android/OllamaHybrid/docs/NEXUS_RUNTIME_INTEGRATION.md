@@ -29,6 +29,8 @@ Model artifacts use unique immutable filenames, so a re-download cannot overwrit
 
 The application validates every participant ID and task before dispatch. Model output cannot invoke tools, shell commands, Android APIs, or arbitrary code. The provider SSE transport now treats a failed bounded-channel send as a stream error rather than silently dropping generated fragments. This prevents apparently successful but truncated model output when a consumer cannot keep up.
 
+OpenAI-compatible, Anthropic, and Gemini gateways now share one bounded SSE transport and the same endpoint security policy. The remote Council also caps mission goals at 32,000 characters, individual executor output at 12,000 characters, synthesis context at 110,000 characters, and synthesis output at 16,000 characters; exceeding an output cap cancels the upstream stream and marks the returned text as truncated.
+
 The decision parser enforces an action-specific JSON schema: required fields must be present, unknown fields are rejected, and action text, participant IDs, and task strings must have the expected JSON types and size limits. Each assignment must contain exactly `participantId` and `task`.
 
 `NexusLocalModelParticipantAdapter` provides eight bounded executor roles. In the initial local configuration, the Manager and all eight executors share the active local model. Execution is serialized (`maxParallelism = 1`) to avoid concurrent access to a single native inference context and to limit memory pressure.
