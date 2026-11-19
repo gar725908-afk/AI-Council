@@ -35,6 +35,21 @@ data class AgentJournalRecord(
     val role: String, val status: String, val output: String?, val error: String?, val createdAt: Long
 )
 
+data class ChatConversationRecord(
+    val id: String,
+    val title: String,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+data class ChatMessageRecord(
+    val id: String,
+    val conversationId: String,
+    val role: String,
+    val content: String,
+    val createdAt: Long
+)
+
 /** Local app-private journal. Provider credentials are never stored in this database. */
 class MissionJournal(context: Context) : SQLiteOpenHelper(
     context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION
@@ -69,13 +84,133 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
                 FOREIGN KEY(mission_id) REFERENCES missions(id) ON DELETE CASCADE
             )
         """.trimIndent())
+        createChatTables(db)
         db.execSQL("CREATE INDEX idx_missions_updated ON missions(updated_at DESC)")
         db.execSQL("CREATE INDEX idx_agent_results_mission ON agent_results(mission_id, created_at)")
         db.execSQL("CREATE INDEX idx_mission_events_mission ON mission_events(mission_id, created_at)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Future migrations must be additive; never drop user mission history.
+        // Additive migrations preserve all mission and conversation history.
+        if (oldVersion < 2) createChatTables(db)
+    }
+
+    private fun createChatTables(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS chat_conversations (
+                id TEXT PRIMARY KEY NOT NULL,
+                title TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+        """.trimIndent())
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT PRIMARY KEY NOT NULL,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, created_at)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC)")
+    }
+
+    fun createConversation(title: String = "Новый чат"): String {
+        val id = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        writableDatabase.insertOrThrow("chat_conversations", null, ContentValues().apply {
+            put("id", id)
+            put("title", contentCipher.encrypt(title))
+            put("created_at", now)
+            put("updated_at", now)
+        })
+        return id
+    }
+
+    fun getLatestConversationId(): String? =
+        readableDatabase.rawQuery(
+            "SELECT id FROM chat_conversations ORDER BY updated_at DESC LIMIT 1",
+            null
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+
+    fun appendChatMessage(conversationId: String, role: String, content: String) {
+        require(role in setOf("system", "user", "assistant")) { "Unsupported chat role." }
+        require(content.isNotBlank()) { "Chat message cannot be blank." }
+        val now = System.currentTimeMillis()
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            check(db.rawQuery(
+                "SELECT id FROM chat_conversations WHERE id = ?",
+                arrayOf(conversationId)
+            ).use { it.moveToFirst() }) { "Conversation not found: $conversationId" }
+            db.insertOrThrow("chat_messages", null, ContentValues().apply {
+                put("id", UUID.randomUUID().toString())
+                put("conversation_id", conversationId)
+                put("role", role)
+                put("content", contentCipher.encrypt(content))
+                put("created_at", now)
+            })
+            val update = ContentValues().apply { put("updated_at", now) }
+            if (role == "user") {
+                db.rawQuery(
+                    "SELECT title FROM chat_conversations WHERE id = ?",
+                    arrayOf(conversationId)
+                ).use { cursor ->
+                    if (cursor.moveToFirst() &&
+                        contentCipher.decrypt(cursor.getString(0)) == "Новый чат"
+                    ) {
+                        update.put("title", contentCipher.encrypt(content.take(80)))
+                    }
+                }
+            }
+            db.update("chat_conversations", update, "id = ?", arrayOf(conversationId))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun getChatMessages(conversationId: String, limit: Int = 100): List<ChatMessageRecord> {
+        val safeLimit = limit.coerceIn(1, 500)
+        return readableDatabase.rawQuery(
+            "SELECT id, conversation_id, role, content, created_at FROM (" +
+                "SELECT id, conversation_id, role, content, created_at FROM chat_messages " +
+                "WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?" +
+                ") ORDER BY created_at ASC",
+            arrayOf(conversationId, safeLimit.toString())
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(ChatMessageRecord(
+                    id = cursor.getString(0),
+                    conversationId = cursor.getString(1),
+                    role = cursor.getString(2),
+                    content = contentCipher.decrypt(cursor.getString(3)).orEmpty(),
+                    createdAt = cursor.getLong(4)
+                ))
+            }
+        }
+    }
+
+    fun getRecentConversations(limit: Int = 20): List<ChatConversationRecord> {
+        val safeLimit = limit.coerceIn(1, 100)
+        return readableDatabase.rawQuery(
+            "SELECT id, title, created_at, updated_at FROM chat_conversations " +
+                "ORDER BY updated_at DESC LIMIT ?",
+            arrayOf(safeLimit.toString())
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(ChatConversationRecord(
+                    id = cursor.getString(0),
+                    title = contentCipher.decrypt(cursor.getString(1)).orEmpty(),
+                    createdAt = cursor.getLong(2),
+                    updatedAt = cursor.getLong(3)
+                ))
+            }
+        }
     }
 
     fun createMission(goal: String, endpoint: String, model: String): String {
@@ -219,6 +354,6 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
 
     companion object {
         private const val DATABASE_NAME = "nexus_missions.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
     }
 }
