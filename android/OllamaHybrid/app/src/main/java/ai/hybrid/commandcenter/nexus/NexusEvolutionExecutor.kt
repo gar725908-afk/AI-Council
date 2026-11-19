@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.math.BigDecimal
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -30,11 +31,21 @@ class NexusEvolutionExecutor(context: Context) {
     private val auditFile = File(root, "audit.jsonl")
 
     init {
-        proposalsDir.mkdirs()
-        versionsDir.mkdirs()
+        val hadPriorState = activeFile.exists() || auditFile.exists() ||
+            proposalsDir.listFiles()?.isNotEmpty() == true ||
+            versionsDir.listFiles()?.isNotEmpty() == true
+        check(proposalsDir.mkdirs() || proposalsDir.isDirectory) {
+            "Не удалось создать каталог предложений Evolution."
+        }
+        check(versionsDir.mkdirs() || versionsDir.isDirectory) {
+            "Не удалось создать каталог версий Evolution."
+        }
         if (!activeFile.exists()) {
-            writeJsonAtomic(activeFile, JSONObject().put("version", 0L))
+            check(!hadPriorState) {
+                "Указатель активной версии Evolution отсутствует при наличии истории. Автоматическая переинициализация запрещена."
+            }
             writeTextAtomic(versionFile(0L), "")
+            writeJsonAtomic(activeFile, JSONObject().put("version", 0L))
         }
     }
 
@@ -93,11 +104,13 @@ class NexusEvolutionExecutor(context: Context) {
         }
         val rawVersion = json.opt("version")
         require(rawVersion is Number) { "Evolution active version must be a JSON number." }
-        val numericVersion = rawVersion.toDouble()
-        require(numericVersion.isFinite() && numericVersion >= 0.0 &&
-            numericVersion == numericVersion.toLong().toDouble()
-        ) { "Evolution active version must be a non-negative integer." }
-        return numericVersion.toLong()
+        val exactVersion = runCatching {
+            BigDecimal(rawVersion.toString()).longValueExact()
+        }.getOrElse {
+            throw IllegalArgumentException("Evolution active version must be an exact 64-bit integer.")
+        }
+        require(exactVersion >= 0L) { "Evolution active version must be a non-negative integer." }
+        return exactVersion
     }
 
     @Synchronized
@@ -239,10 +252,13 @@ class NexusEvolutionExecutor(context: Context) {
             val file = versionFile(currentVersion)
             check(file.isFile) { "Evolution version $currentVersion is missing from the archive." }
             val payload = file.readText(Charsets.UTF_8)
-            val recordFile = proposalFiles().firstOrNull { candidate ->
+            val matchingRecords = proposalFiles().filter { candidate ->
                 readRecord(candidate)?.proposal?.proposedVersion == currentVersion
-            } ?: throw IllegalStateException("Evolution proposal for version $currentVersion is missing.")
-            val record = readRecord(recordFile)
+            }
+            check(matchingRecords.size == 1) {
+                "Evolution version $currentVersion must have exactly one proposal record."
+            }
+            val record = readRecord(matchingRecords.single())
                 ?: throw IllegalStateException("Evolution proposal for version $currentVersion is unreadable.")
 
             check(record.status == NexusEvolutionProposalStatus.ACTIVE) {
