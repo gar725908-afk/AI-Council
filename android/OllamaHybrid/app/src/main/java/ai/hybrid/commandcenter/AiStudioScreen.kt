@@ -76,10 +76,11 @@ fun AiStudioScreen(
                 .getOrDefault(ProviderKind.OPENAI_COMPATIBLE)
         )
     }
-    val gateway = remember(providerKind, context) { createModelGateway(providerKind, context) }
-    DisposableEffect(gateway) {
-        onDispose { (gateway as? Closeable)?.close() }
+    val engineRegistry = remember(context) { NexusEngineRegistry(context) }
+    DisposableEffect(engineRegistry) {
+        onDispose { engineRegistry.close() }
     }
+    val gateway = remember(providerKind, engineRegistry) { engineRegistry.gateway(providerKind) }
     val usesOnDeviceModel = providerKind == ProviderKind.ON_DEVICE_LITERT ||
         providerKind == ProviderKind.ON_DEVICE_LLAMA_CPP
     val modelCatalog = remember { ProviderModelCatalog() }
@@ -545,7 +546,7 @@ fun AiStudioScreen(
                                                 routeKind.displayName + "."
                                         }
                                         CouncilModelRoute(
-                                            gateway = if (routeKind == providerKind) gateway else createModelGateway(routeKind, context),
+                                            gateway = engineRegistry.gateway(routeKind),
                                             endpoint = routeEndpoint,
                                             model = routeModel,
                                             apiKey = routeKey
