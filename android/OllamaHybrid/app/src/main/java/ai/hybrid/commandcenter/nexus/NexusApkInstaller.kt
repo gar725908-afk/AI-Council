@@ -105,6 +105,9 @@ class NexusApkInstaller(
                 )) { "SHA-256 APK не совпадает с опубликованным GitHub digest." }
             }
 
+            if (target.exists()) {
+                check(target.delete()) { "Не удалось удалить устаревший APK из кэша." }
+            }
             check(temporary.renameTo(target)) { "Не удалось сохранить проверенный APK." }
         } catch (error: Exception) {
             temporary.delete()
