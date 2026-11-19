@@ -82,7 +82,7 @@ data class NexusExtensionManifest(
                         val uri = runCatching { java.net.URI(payload) }
                             .getOrElse { throw IllegalArgumentException("Некорректная HTTPS-ссылка.", it) }
                         require(uri.scheme.equals("https", ignoreCase = true) &&
-                            !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.port == -1) {
+                            !uri.host.isNullOrBlank() && uri.rawUserInfo == null && (uri.port == -1 || uri.port == 443)) {
                             "Разрешены только HTTPS-ссылки без логина и нестандартного порта."
                         }
                     }
