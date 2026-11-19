@@ -92,16 +92,21 @@ class NexusEvolutionExecutor(context: Context) {
         .takeIf { it.isFile }?.readText().orEmpty()
 
     /**
-     * Returns the configuration of this kind that belongs to the exact active version.
-     * A rollback therefore cannot accidentally keep later configuration changes alive.
+     * Resolves the most recent configuration of this kind on the active version's parent chain.
+     * Changes of other kinds remain active, while rollback excludes all descendants of the target.
      */
     @Synchronized
     fun activeConfiguration(kind: EvolutionChangeKind): String {
-        val active = activeVersion()
-        if (active == 0L) return ""
-        return readRecord(proposalFileForVersion(active))
-            ?.takeIf { it.status == NexusEvolutionProposalStatus.ACTIVE && it.proposal.kind == kind }
-            ?.payload.orEmpty()
+        val activeRecords = history()
+            .filter { it.status == NexusEvolutionProposalStatus.ACTIVE }
+            .associateBy { it.proposal.proposedVersion }
+        var version = activeVersion()
+        while (version > 0L) {
+            val record = activeRecords[version] ?: return ""
+            if (record.proposal.kind == kind) return record.payload
+            version = record.proposal.beforeVersion
+        }
+        return ""
     }
 
     @Synchronized
