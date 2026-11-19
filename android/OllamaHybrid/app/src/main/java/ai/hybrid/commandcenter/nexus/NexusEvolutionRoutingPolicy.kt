@@ -29,8 +29,12 @@ data class NexusEvolutionRoutingPolicy(
             require(keys.all { it in allowedRootKeys }) {
                 "Routing policy contains unsupported fields. Endpoints and credentials must stay in provider settings."
             }
-            require(root.optInt("version", 1) == 1) {
-                "Only routing policy schema version 1 is supported."
+            require(root.has("version")) {
+                "Routing policy must declare its schema version."
+            }
+            val schemaVersion = root.opt("version")
+            require(schemaVersion is Number && schemaVersion.toDouble() == 1.0) {
+                "Only numeric routing policy schema version 1 is supported."
             }
             val routeObject = root.optJSONObject("routes")
                 ?: throw IllegalArgumentException("Routing policy must contain a routes object.")
@@ -41,7 +45,11 @@ data class NexusEvolutionRoutingPolicy(
                 require(agentId in allowedAgentIds) {
                     "Routing policy references an unknown Council role: $agentId."
                 }
-                val providerName = routeObject.optString(agentId).trim()
+                val rawProvider = routeObject.opt(agentId)
+                require(rawProvider is String) {
+                    "Routing policy provider for $agentId must be a provider name string."
+                }
+                val providerName = rawProvider.trim()
                 require(providerName.isNotBlank()) {
                     "Routing policy provider for $agentId cannot be empty."
                 }
@@ -53,7 +61,10 @@ data class NexusEvolutionRoutingPolicy(
                 routes[agentId] = provider
             }
 
-            val overrideObject = root.optJSONObject("modelOverrides")
+            val overrideObject = if (root.has("modelOverrides")) {
+                root.optJSONObject("modelOverrides")
+                    ?: throw IllegalArgumentException("modelOverrides must be a JSON object.")
+            } else null
             val overrides = linkedMapOf<String, String>()
             if (overrideObject != null) {
                 val overrideKeys = overrideObject.keys()
@@ -62,7 +73,11 @@ data class NexusEvolutionRoutingPolicy(
                     require(agentId in allowedAgentIds) {
                         "Model override references an unknown Council role: $agentId."
                     }
-                    val modelId = overrideObject.optString(agentId).trim()
+                    val rawModelId = overrideObject.opt(agentId)
+                    require(rawModelId is String) {
+                        "Model override for $agentId must be a model ID string."
+                    }
+                    val modelId = rawModelId.trim()
                     require(modelId.isNotBlank() && modelId.length <= 200) {
                         "Model override for $agentId must contain 1–200 characters."
                     }
