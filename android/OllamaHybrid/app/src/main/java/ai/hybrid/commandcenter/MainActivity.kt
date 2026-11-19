@@ -78,67 +78,13 @@ private fun NexusApp() {
             }
         ) { padding ->
             when (selected) {
-                0 -> CommandDeck(Modifier.padding(padding))
+                0 -> CommandDeckScreen(onNavigate = { selected = it }, modifier = Modifier.padding(padding))
                 1 -> AiStudioScreen(councilMode = false, modifier = Modifier.padding(padding))
                 2 -> AiStudioScreen(councilMode = true, modifier = Modifier.padding(padding))
                 3 -> ModelCenterScreen(Modifier.padding(padding))
                 4 -> DeviceCoreScreen(Modifier.padding(padding))
                 else -> PlatformCenterScreen(Modifier.padding(padding))
             }
-        }
-    }
-}
-
-@Composable
-private fun CommandDeck(modifier: Modifier = Modifier) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize().background(Void).padding(horizontal = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            Spacer(Modifier.height(18.dp))
-            Text("NEXUS", color = PrimaryText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("SIRIUS TECHNOLOGY SYSTEM", color = Cyan, fontSize = 11.sp, letterSpacing = 2.sp)
-            Spacer(Modifier.height(18.dp))
-        }
-        item {
-            Surface(color = SurfaceDeep, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("GENESIS PROTOCOL", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Text("AI Studio и Council подключены к базовому runtime", color = PrimaryText, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Выберите OpenAI-compatible, Claude или Gemini, проверьте соединение и загрузите модели. Ключи хранятся через Android Keystore; HTTP разрешён только для локальной сети.",
-                        color = SecondaryText,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-        }
-        item { StatusCard("NEXUS CORE", "Стартовый runtime и потоковый шлюз", "FOUNDATION") }
-        item { StatusCard("AI STUDIO", "Три API-протокола и каталог моделей", "READY TO CONFIGURE") }
-        item { StatusCard("AI COUNCIL", "Восемь ролей, маршруты по отдельным провайдерам", "READY TO CONFIGURE") }
-        item { StatusCard("DEVICE BRIDGE", "Системные действия пока не подключены", "NOT CONNECTED") }
-        item {
-            Text("ПЕРВЫЙ СИГНАЛ", color = Violet, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("Выберите AI Studio для одиночного запроса или Council для коллективного анализа.", color = SecondaryText, fontSize = 14.sp)
-            Spacer(Modifier.height(22.dp))
-        }
-    }
-}
-
-@Composable
-private fun StatusCard(title: String, detail: String, status: String) {
-    Surface(color = SurfaceRaised, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, color = PrimaryText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Text(detail, color = SecondaryText, fontSize = 12.sp)
-            }
-            Text(status, color = Cyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
