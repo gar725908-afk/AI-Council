@@ -105,7 +105,7 @@ private fun CommandDeck(modifier: Modifier = Modifier) {
                     Text("GENESIS PROTOCOL", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Text("AI Studio и Council подключены к базовому runtime", color = PrimaryText, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Настройте OpenAI-compatible endpoint и модель. Ключ хранится через Android Keystore; локальные HTTP endpoint ограничены частной сетью.",
+                        "Выберите OpenAI-compatible, Claude или Gemini, проверьте соединение и загрузите модели. Ключи хранятся через Android Keystore; HTTP разрешён только для локальной сети.",
                         color = SecondaryText,
                         fontSize = 13.sp
                     )
@@ -113,8 +113,8 @@ private fun CommandDeck(modifier: Modifier = Modifier) {
             }
         }
         item { StatusCard("NEXUS CORE", "Стартовый runtime и потоковый шлюз", "FOUNDATION") }
-        item { StatusCard("AI STUDIO", "Чат с потоковым ответом модели", "READY TO CONFIGURE") }
-        item { StatusCard("AI COUNCIL", "Восемь ролей, максимум три параллельно", "READY TO CONFIGURE") }
+        item { StatusCard("AI STUDIO", "Три API-протокола и каталог моделей", "READY TO CONFIGURE") }
+        item { StatusCard("AI COUNCIL", "Восемь ролей, маршруты по отдельным провайдерам", "READY TO CONFIGURE") }
         item { StatusCard("DEVICE BRIDGE", "Системные действия пока не подключены", "NOT CONNECTED") }
         item {
             Text("ПЕРВЫЙ СИГНАЛ", color = Violet, fontSize = 11.sp, fontWeight = FontWeight.Bold)
