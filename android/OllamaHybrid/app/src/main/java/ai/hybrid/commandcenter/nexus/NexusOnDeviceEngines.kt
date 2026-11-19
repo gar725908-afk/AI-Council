@@ -90,6 +90,7 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
 
     private fun ensureEngine(modelPath: String) {
         if (engine != null && loadedPath == modelPath) return
+        storage.verifyActiveModelIntegrity(ModelRuntimeKind.LITERT_LM, modelPath)
         releaseOwnedObjects()
         check(File(modelPath).isFile) { "Файл активной LiteRT-LM модели не найден." }
         val candidate = Engine(
@@ -229,6 +230,7 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
                 val modelPath = storage.activeModelPath(ModelRuntimeKind.LLAMA_CPP)
                 check(File(modelPath).isFile) { "Файл активной GGUF-модели не найден." }
                 if (handle != 0L && loadedModelPath == modelPath) return@withContext handle
+                storage.verifyActiveModelIntegrity(ModelRuntimeKind.LLAMA_CPP, modelPath)
 
                 val previous = handle
                 handle = 0L
