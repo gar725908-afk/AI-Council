@@ -79,9 +79,14 @@ fun AiStudioScreen(
     val gateway = remember(providerKind, engineRegistry) { engineRegistry.gateway(providerKind) }
     val usesOnDeviceModel = providerKind == ProviderKind.ON_DEVICE_LITERT ||
         providerKind == ProviderKind.ON_DEVICE_LLAMA_CPP
-    val activeOnDeviceModel = if (usesOnDeviceModel) {
-        runCatching { engineRegistry.activeModel() }.getOrNull()
-    } else null
+    var activeOnDeviceModel by remember { mutableStateOf<InstalledNexusModel?>(null) }
+    LaunchedEffect(usesOnDeviceModel, engineRegistry) {
+        activeOnDeviceModel = if (usesOnDeviceModel) {
+            withContext(Dispatchers.IO) { runCatching { engineRegistry.activeModel() }.getOrNull() }
+        } else {
+            null
+        }
+    }
     val modelCatalog = remember { ProviderModelCatalog() }
     val routingStore = remember(context) { CouncilRoutingStore(context) }
     val councilAgents = remember { CouncilOrchestrator.defaultAgents() }
