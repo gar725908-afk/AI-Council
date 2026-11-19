@@ -141,7 +141,14 @@ private object SseTransport {
                             if (data == "[DONE]") break
                             if (data.isEmpty()) continue
                             val fragment = parseData(data)
-                            if (!fragment.isNullOrEmpty()) trySend(fragment)
+                            if (!fragment.isNullOrEmpty()) {
+                                val sent = trySend(fragment)
+                                if (sent.isFailure && !channel.isClosedForSend) {
+                                    close(IOException("The provider stream outpaced the inference consumer; partial output was discarded."))
+                                    call.cancel()
+                                    return
+                                }
+                            }
                         }
                         close()
                     } catch (error: Throwable) {
