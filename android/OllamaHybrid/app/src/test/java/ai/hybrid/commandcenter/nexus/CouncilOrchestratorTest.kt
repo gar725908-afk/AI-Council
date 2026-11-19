@@ -66,6 +66,45 @@ class CouncilOrchestratorTest {
     }
 
     @Test
+    fun routesSelectedAgentToItsOwnGateway() = runBlocking {
+        class TaggedGateway(private val tag: String) : ModelGateway {
+            override fun stream(request: CompletionRequest): Flow<String> = flow {
+                emit(tag)
+            }
+        }
+
+        val defaultGateway = TaggedGateway("default")
+        val routedGateway = TaggedGateway("routed")
+        val agents = listOf(
+            CouncilAgent("route-me", "Роль с отдельной моделью", CouncilAgentRole.ANALYST, "Анализируй."),
+            CouncilAgent("default-route", "Роль по умолчанию", CouncilAgentRole.CRITIC, "Критикуй.")
+        )
+        val result = CouncilOrchestrator(
+            gateway = defaultGateway,
+            routeResolver = { agent ->
+                if (agent.id == "route-me") {
+                    CouncilModelRoute(
+                        gateway = routedGateway,
+                        endpoint = "https://example.invalid/v1",
+                        model = "routed-model",
+                        apiKey = ""
+                    )
+                } else null
+            }
+        ).run(
+            goal = "Проверить маршрутизацию",
+            endpoint = "https://example.invalid/v1",
+            model = "default-model",
+            apiKey = "",
+            agents = agents
+        )
+
+        assertEquals("routed", result.agentResults.first { it.agent.id == "route-me" }.output)
+        assertEquals("default", result.agentResults.first { it.agent.id == "default-route" }.output)
+        assertEquals("default", result.synthesis)
+    }
+
+    @Test
     fun defaultCouncilHasEightDistinctRoles() {
         val agents = CouncilOrchestrator.defaultAgents()
 
