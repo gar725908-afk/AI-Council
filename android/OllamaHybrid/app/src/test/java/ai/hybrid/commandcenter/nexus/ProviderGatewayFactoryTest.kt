@@ -20,6 +20,9 @@ class ProviderGatewayFactoryTest {
             ProviderKind.MISTRAL,
             ProviderKind.TOGETHER,
             ProviderKind.FIREWORKS,
+            ProviderKind.XAI,
+            ProviderKind.CEREBRAS,
+            ProviderKind.NVIDIA,
             ProviderKind.OLLAMA
         )
         compatibleProviders.forEach { provider ->
@@ -31,6 +34,9 @@ class ProviderGatewayFactoryTest {
     fun cloudProfilesRequireKeysButLocalProfilesDoNot() {
         assertTrue(ProviderKind.OPENAI.requiresApiKey())
         assertTrue(ProviderKind.DEEPSEEK.requiresApiKey())
+        assertTrue(ProviderKind.XAI.requiresApiKey())
+        assertTrue(ProviderKind.CEREBRAS.requiresApiKey())
+        assertTrue(ProviderKind.NVIDIA.requiresApiKey())
         assertTrue(ProviderKind.ANTHROPIC.requiresApiKey())
         assertTrue(!ProviderKind.OLLAMA.requiresApiKey())
         assertTrue(!ProviderKind.OPENAI_COMPATIBLE.requiresApiKey())
