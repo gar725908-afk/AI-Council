@@ -201,6 +201,13 @@ data class CouncilRunResult(
     val error: String? = null
 )
 
+data class CouncilModelRoute(
+    val gateway: ModelGateway,
+    val endpoint: String,
+    val model: String,
+    val apiKey: String
+)
+
 /**
  * Bounded, cancellable multi-agent execution.
  * Mission state remains owned by the application layer; agents cannot invoke tools directly.
@@ -209,7 +216,8 @@ class CouncilOrchestrator(
     private val gateway: ModelGateway,
     maxParallelAgents: Int = 3,
     private val agentTimeoutMillis: Long = 120_000,
-    private val synthesisTimeoutMillis: Long = 120_000
+    private val synthesisTimeoutMillis: Long = 120_000,
+    private val routeResolver: ((CouncilAgent) -> CouncilModelRoute?)? = null
 ) {
     private val parallelism = maxParallelAgents.coerceIn(1, 8)
     private val semaphore = Semaphore(parallelism)
@@ -230,11 +238,16 @@ class CouncilOrchestrator(
                 async(Dispatchers.IO) {
                     semaphore.withPermit {
                         try {
+                            val route = routeResolver?.invoke(agent)
+                            val selectedGateway = route?.gateway ?: gateway
+                            val selectedEndpoint = route?.endpoint ?: endpoint
+                            val selectedModel = route?.model ?: model
+                            val selectedApiKey = route?.apiKey ?: apiKey
                             val output = withTimeout(agentTimeoutMillis) {
                                 val request = CompletionRequest(
-                                    endpoint = endpoint,
-                                    model = model,
-                                    apiKey = apiKey,
+                                    endpoint = selectedEndpoint,
+                                    model = selectedModel,
+                                    apiKey = selectedApiKey,
                                     messages = listOf(
                                         ProviderMessage(
                                             "system",
@@ -246,7 +259,7 @@ class CouncilOrchestrator(
                                     )
                                 )
                                 val chunks = mutableListOf<String>()
-                                gateway.stream(request).collect { chunk -> chunks += chunk }
+                                selectedGateway.stream(request).collect { chunk -> chunks += chunk }
                                 chunks.joinToString("")
                             }
                             AgentRunResult(agent, AgentRunStatus.COMPLETED, output)
