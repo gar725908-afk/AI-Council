@@ -2,6 +2,7 @@ package ai.hybrid.commandcenter.nexus
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -102,6 +103,77 @@ class CouncilOrchestratorTest {
         assertEquals("routed", result.agentResults.first { it.agent.id == "route-me" }.output)
         assertEquals("default", result.agentResults.first { it.agent.id == "default-route" }.output)
         assertEquals("default", result.synthesis)
+    }
+
+    @Test
+    fun oneAgentTimeoutDoesNotCancelOtherAgentsOrSynthesis() = runBlocking {
+        val timeoutGateway = object : ModelGateway {
+            override fun stream(request: CompletionRequest): Flow<String> = flow {
+                val system = request.messages.firstOrNull()?.content.orEmpty()
+                when {
+                    system.contains("Manager и Synthesizer") -> emit("Сводный итог.")
+                    system.contains("медленный исполнитель") -> {
+                        delay(500)
+                        emit("Слишком поздний ответ.")
+                    }
+                    else -> emit("Быстрый ответ.")
+                }
+            }
+        }
+        val agents = listOf(
+            CouncilAgent("slow", "Медленный", CouncilAgentRole.ANALYST, "Ты медленный исполнитель."),
+            CouncilAgent("fast", "Быстрый", CouncilAgentRole.CRITIC, "Работай быстро.")
+        )
+
+        val result = CouncilOrchestrator(
+            gateway = timeoutGateway,
+            maxParallelAgents = 2,
+            agentTimeoutMillis = 100,
+            synthesisTimeoutMillis = 1_000
+        ).run(
+            goal = "Проверить изоляцию тайм-аутов",
+            endpoint = "https://example.invalid/v1",
+            model = "test-model",
+            apiKey = "",
+            agents = agents
+        )
+
+        assertEquals(AgentRunStatus.FAILED, result.agentResults.first { it.agent.id == "slow" }.status)
+        assertEquals(AgentRunStatus.COMPLETED, result.agentResults.first { it.agent.id == "fast" }.status)
+        assertEquals("Сводный итог.", result.synthesis)
+        assertTrue(result.completed)
+    }
+
+    @Test
+    fun synthesisTimeoutReturnsStructuredFailure() = runBlocking {
+        val gateway = object : ModelGateway {
+            override fun stream(request: CompletionRequest): Flow<String> = flow {
+                val system = request.messages.firstOrNull()?.content.orEmpty()
+                if (system.contains("Manager и Synthesizer")) {
+                    delay(500)
+                } else {
+                    emit("Результат агента.")
+                }
+            }
+        }
+
+        val result = CouncilOrchestrator(
+            gateway = gateway,
+            agentTimeoutMillis = 1_000,
+            synthesisTimeoutMillis = 100
+        ).run(
+            goal = "Проверить тайм-аут синтеза",
+            endpoint = "https://example.invalid/v1",
+            model = "test-model",
+            apiKey = "",
+            agents = listOf(
+                CouncilAgent("a1", "Аналитик", CouncilAgentRole.ANALYST, "Анализируй.")
+            )
+        )
+
+        assertTrue(!result.completed)
+        assertEquals(null, result.synthesis)
+        assertTrue(result.error?.contains("Синтез превысил лимит времени") == true)
     }
 
     @Test
