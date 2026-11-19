@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import ai.hybrid.commandcenter.nexus.NexusConnectorAccount
 import ai.hybrid.commandcenter.nexus.NexusConnectorAuthService
 import ai.hybrid.commandcenter.nexus.NexusConnectorId
+import ai.hybrid.commandcenter.nexus.NexusApkInstaller
+import ai.hybrid.commandcenter.nexus.NexusInstallResult
 import ai.hybrid.commandcenter.nexus.NexusExtensionManifest
 import ai.hybrid.commandcenter.nexus.NexusExtensionPackageReader
 import ai.hybrid.commandcenter.nexus.NexusExtensionPermissionStore
@@ -330,11 +332,13 @@ private fun UpdatesPanel(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val checker = remember { NexusUpdateChecker() }
+    val installer = remember { NexusApkInstaller(context) }
     val currentVersion = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0.0.0" }
             .getOrDefault("0.0.0")
     }
     var checking by remember { mutableStateOf(false) }
+    var installing by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Установлена версия NEXUS " + currentVersion + ". Проверьте GitHub Releases.") }
     var release by remember { mutableStateOf<NexusRelease?>(null) }
 
@@ -386,10 +390,35 @@ private fun UpdatesPanel(modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Button(onClick = {
+                    if (latest.apkUrl != null && latest.apkDigest != null) {
+                        Button(
+                            enabled = !installing,
+                            onClick = {
+                                installing = true
+                                scope.launch {
+                                    val result = runCatching { installer.downloadAndLaunch(latest) }
+                                    result.onSuccess { outcome ->
+                                        status = when (outcome) {
+                                            is NexusInstallResult.InstallerOpened ->
+                                                "APK проверен по SHA-256, package ID и подписи. Подтвердите установку в системном окне Android."
+                                            is NexusInstallResult.PermissionSettingsOpened ->
+                                                "APK проверен. Разрешите NEXUS устанавливать приложения в настройках Android, вернитесь сюда и повторите установку."
+                                        }
+                                    }.onFailure { error ->
+                                        status = error.message ?: "Не удалось проверить или установить APK."
+                                    }
+                                    installing = false
+                                }
+                            }
+                        ) {
+                            if (installing) CircularProgressIndicator()
+                            else Text("Скачать и установить APK")
+                        }
+                    }
+                    OutlinedButton(onClick = {
                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(latest.pageUrl))) }
                             .onFailure { status = "Не удалось открыть страницу релиза." }
-                    }) { Text("Открыть релиз GitHub") }
+                    }) { Text("Страница релиза") }
                 }
             }
         }
