@@ -192,15 +192,15 @@ fun AiStudioScreen(
                     placeholder = {
                         Text(
                             when (providerKind) {
-                                ProviderKind.OPENAI_COMPATIBLE,
-                                ProviderKind.OPENAI -> "gpt-4.1-mini"
-                                ProviderKind.DEEPSEEK -> "deepseek-flash или deepseek-v4-pro"
-                                ProviderKind.OPENROUTER -> "provider/model"
+                                ProviderKind.OPENAI_COMPATIBLE -> "точное имя модели совместимого API"
+                                ProviderKind.OPENAI -> "точное имя модели из каталога OpenAI"
+                                ProviderKind.DEEPSEEK -> "точное имя модели из каталога DeepSeek"
+                                ProviderKind.OPENROUTER -> "provider/model из каталога OpenRouter"
                                 ProviderKind.GROQ -> "точное имя модели из каталога Groq"
-                                ProviderKind.MISTRAL -> "mistral-large-latest"
-                                ProviderKind.TOGETHER -> "provider/model"
-                                ProviderKind.FIREWORKS -> "accounts/fireworks/models/..."
-                                ProviderKind.OLLAMA -> "имя локальной модели, например qwen3"
+                                ProviderKind.MISTRAL -> "точное имя модели из каталога Mistral"
+                                ProviderKind.TOGETHER -> "provider/model из каталога Together"
+                                ProviderKind.FIREWORKS -> "accounts/fireworks/models/…"
+                                ProviderKind.OLLAMA -> "имя установленной модели из Ollama"
                                 ProviderKind.ANTHROPIC -> "имя Claude модели из Anthropic Console"
                                 ProviderKind.GEMINI -> "имя Gemini модели из Google AI Studio"
                             }
