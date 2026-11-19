@@ -42,7 +42,6 @@ import ai.hybrid.commandcenter.nexus.CouncilRoutingStore
 import ai.hybrid.commandcenter.nexus.CompletionRequest
 import ai.hybrid.commandcenter.nexus.ProviderKind
 import ai.hybrid.commandcenter.nexus.requiresApiKey
-import ai.hybrid.commandcenter.nexus.createModelGateway
 import ai.hybrid.commandcenter.nexus.ProviderMessage
 import ai.hybrid.commandcenter.nexus.ProviderSettings
 import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
@@ -51,6 +50,8 @@ import ai.hybrid.commandcenter.nexus.MissionStatus
 import ai.hybrid.commandcenter.nexus.ChatMessageRecord
 import ai.hybrid.commandcenter.nexus.ProviderModelCatalog
 import ai.hybrid.commandcenter.nexus.NexusEvolutionExecutor
+import ai.hybrid.commandcenter.nexus.NexusEngineRegistry
+import ai.hybrid.commandcenter.nexus.runLocalCouncil
 import ai.hybrid.commandcenter.nexus.EvolutionChangeKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
