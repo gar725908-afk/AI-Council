@@ -37,6 +37,9 @@ import ai.hybrid.commandcenter.nexus.OpenAiCompatibleGateway
 import ai.hybrid.commandcenter.nexus.ProviderMessage
 import ai.hybrid.commandcenter.nexus.ProviderSettings
 import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
+import ai.hybrid.commandcenter.nexus.MissionJournal
+import ai.hybrid.commandcenter.nexus.MissionStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -49,6 +52,7 @@ fun AiStudioScreen(
     val credentialVault = remember(context) { AndroidCredentialVault(context) }
     val initialSettings = remember(context) { settingsStore.load() }
     val gateway = remember { OpenAiCompatibleGateway() }
+    val journal = remember(context) { (context.applicationContext as NexusApplication).missionJournal }
     val scope = rememberCoroutineScope()
 
     var endpoint by remember { mutableStateOf(initialSettings.endpoint) }
@@ -61,6 +65,7 @@ fun AiStudioScreen(
     var answer by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Провайдер не проверен") }
     var isRunning by remember { mutableStateOf(false) }
+    var recentMissions by remember { mutableStateOf(journal.getRecentMissions(8)) }
 
     Column(
         modifier = modifier
@@ -177,7 +182,15 @@ fun AiStudioScreen(
                     isRunning = true
                     answer = ""
                     status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
+                    var missionId: String? = null
                     try {
+                        require(endpoint.isNotBlank() && model.isNotBlank()) {
+                            "Сначала укажите endpoint и модель."
+                        }
+                        missionId = journal.createMission(prompt, endpoint, model)
+                        journal.transition(missionId!!, MissionStatus.QUEUED, "Миссия поставлена в очередь")
+                        journal.transition(missionId!!, MissionStatus.RUNNING, "Запрос отправлен провайдеру")
+
                         val activeKey = if (apiKey.isNotBlank()) {
                             credentialVault.put(AndroidCredentialVault.PRIMARY_PROVIDER_KEY, apiKey)
                             apiKey = ""
@@ -186,10 +199,6 @@ fun AiStudioScreen(
                         } else {
                             credentialVault.get(AndroidCredentialVault.PRIMARY_PROVIDER_KEY)
                         }
-                        require(endpoint.isNotBlank() && model.isNotBlank()) {
-                            "Сначала укажите endpoint и модель."
-                        }
-
                         if (councilMode) {
                             val result = CouncilOrchestrator(gateway, maxParallelAgents = 3).run(
                                 goal = prompt,
@@ -197,7 +206,25 @@ fun AiStudioScreen(
                                 model = model,
                                 apiKey = activeKey.orEmpty()
                             )
+                            result.agentResults.forEach { journal.saveAgentResult(missionId!!, it) }
                             answer = result.synthesis.orEmpty()
+                            if (result.synthesis.isNullOrBlank()) {
+                                journal.transition(
+                                    missionId!!,
+                                    MissionStatus.FAILED,
+                                    "Council не сформировал проверенный итог",
+                                    error = result.error ?: "Пустой итог синтеза"
+                                )
+                            } else {
+                                journal.transition(missionId!!, MissionStatus.VERIFYING, "Результаты агентов собраны")
+                                journal.transition(
+                                    missionId!!,
+                                    MissionStatus.COMPLETED,
+                                    "Синтез завершён",
+                                    result = result.synthesis
+                                )
+                            }
+                            recentMissions = journal.getRecentMissions(8)
                             status = result.error ?: if (result.completed) {
                                 "Council завершил миссию: ${result.agentResults.count { it.status.name == "COMPLETED" }} агентов успешно."
                             } else {
@@ -220,9 +247,40 @@ fun AiStudioScreen(
                                     )
                                 )
                             ).collect { chunk -> answer += chunk }
+                            journal.transition(missionId!!, MissionStatus.VERIFYING, "Ответ потока получен")
+                            journal.transition(
+                                missionId!!,
+                                MissionStatus.COMPLETED,
+                                "Запрос завершён",
+                                result = answer
+                            )
+                            recentMissions = journal.getRecentMissions(8)
                             status = "Ответ получен"
                         }
+                    } catch (cancelled: CancellationException) {
+                        missionId?.let { id ->
+                            runCatching {
+                                journal.transition(
+                                    id,
+                                    MissionStatus.INTERRUPTED,
+                                    "Задача была отменена или экран закрыт"
+                                )
+                            }
+                        }
+                        recentMissions = journal.getRecentMissions(8)
+                        throw cancelled
                     } catch (error: Exception) {
+                        missionId?.let { id ->
+                            runCatching {
+                                journal.transition(
+                                    id,
+                                    MissionStatus.FAILED,
+                                    "Ошибка выполнения",
+                                    error = error.message ?: error::class.java.simpleName
+                                )
+                            }
+                        }
+                        recentMissions = journal.getRecentMissions(8)
                         status = error.message ?: "Ошибка выполнения запроса"
                     } finally {
                         isRunning = false
@@ -242,6 +300,26 @@ fun AiStudioScreen(
         }
 
         Text(status, style = MaterialTheme.typography.labelMedium)
+        if (recentMissions.isNotEmpty()) {
+            Text("ИСТОРИЯ МИССИЙ", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            recentMissions.forEach { mission ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(mission.goal, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                        Text(
+                            "${mission.status} • ${mission.updatedAt}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        mission.error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            }
+        }
         if (answer.isNotBlank()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
