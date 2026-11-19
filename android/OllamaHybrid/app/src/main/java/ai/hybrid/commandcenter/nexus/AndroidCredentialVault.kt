@@ -141,11 +141,19 @@ class ProviderSettingsStore(context: Context) {
     }
 
     fun save(settings: ProviderSettings) {
-        val kind = settings.providerKind
+        val kind = ProviderKind.valueOf(settings.providerKind).name
+        val endpoint = settings.endpoint.trim()
+        val model = settings.model.trim()
+        require(endpoint.length <= 2_048 && endpoint.none { it.code < 0x20 || it.code == 0x7f }) {
+            "Provider endpoint must not exceed 2048 characters or contain control characters."
+        }
+        require(model.length <= 200 && model.none { it.code < 0x20 || it.code == 0x7f }) {
+            "Provider model ID must not exceed 200 characters or contain control characters."
+        }
         preferences.edit()
             .putString(KEY_ACTIVE_KIND, kind)
-            .putString("${kind}.endpoint", settings.endpoint.trim())
-            .putString("${kind}.model", settings.model.trim())
+            .putString("${kind}.endpoint", endpoint)
+            .putString("${kind}.model", model)
             .apply()
     }
 
