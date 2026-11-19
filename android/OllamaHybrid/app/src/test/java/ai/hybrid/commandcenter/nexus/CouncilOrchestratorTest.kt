@@ -113,7 +113,7 @@ class CouncilOrchestratorTest {
                 when {
                     system.contains("Manager и Synthesizer") -> emit("Сводный итог.")
                     system.contains("медленный исполнитель") -> {
-                        delay(500)
+                        delay(2_000)
                         emit("Слишком поздний ответ.")
                     }
                     else -> emit("Быстрый ответ.")
@@ -128,8 +128,8 @@ class CouncilOrchestratorTest {
         val result = CouncilOrchestrator(
             gateway = timeoutGateway,
             maxParallelAgents = 2,
-            agentTimeoutMillis = 100,
-            synthesisTimeoutMillis = 1_000
+            agentTimeoutMillis = 500,
+            synthesisTimeoutMillis = 2_000
         ).run(
             goal = "Проверить изоляцию тайм-аутов",
             endpoint = "https://example.invalid/v1",
@@ -150,7 +150,7 @@ class CouncilOrchestratorTest {
             override fun stream(request: CompletionRequest): Flow<String> = flow {
                 val system = request.messages.firstOrNull()?.content.orEmpty()
                 if (system.contains("Manager и Synthesizer")) {
-                    delay(500)
+                    delay(2_000)
                 } else {
                     emit("Результат агента.")
                 }
@@ -160,7 +160,7 @@ class CouncilOrchestratorTest {
         val result = CouncilOrchestrator(
             gateway = gateway,
             agentTimeoutMillis = 1_000,
-            synthesisTimeoutMillis = 100
+            synthesisTimeoutMillis = 500
         ).run(
             goal = "Проверить тайм-аут синтеза",
             endpoint = "https://example.invalid/v1",
@@ -172,7 +172,7 @@ class CouncilOrchestratorTest {
         )
 
         assertTrue(!result.completed)
-        assertEquals(null, result.synthesis)
+        assertTrue(result.synthesis == null)
         assertTrue(result.error?.contains("Синтез превысил лимит времени") == true)
     }
 
