@@ -9,6 +9,7 @@ import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.SamplerConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collect
@@ -18,10 +19,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import okhttp3.internal.closeQuietly
 import java.io.Closeable
 import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A device inference adapter. It never represents a LAN or cloud endpoint as on-device execution.
@@ -48,7 +47,7 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
         val config = ConversationConfig(
             systemInstruction = Contents.of(systemText),
             initialMessages = initial,
-            samplerConfig = SamplerConfig(temperature = request.temperature.toFloat())
+            samplerConfig = SamplerConfig(temperature = request.temperature)
         )
         activeEngine.createConversation(config).use { conversation ->
             conversation.sendMessageAsync(request.messages[lastUserIndex].content).collect { message ->
@@ -98,6 +97,7 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
     private val mutex = Mutex()
     @Volatile private var handle: Long = 0L
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun stream(request: CompletionRequest): Flow<String> = callbackFlow {
         require(request.apiKey.isBlank()) { "Локальный llama.cpp не использует API-ключ." }
         val nativeHandle = getOrCreateHandle()
