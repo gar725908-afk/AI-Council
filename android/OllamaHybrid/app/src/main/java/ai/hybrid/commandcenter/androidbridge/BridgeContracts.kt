@@ -92,14 +92,24 @@ object BridgeActionPolicy {
 class BridgeToolRegistry {
     private val tools = linkedMapOf<String, AndroidBridgeTool>()
 
+    @Synchronized
     fun register(tool: AndroidBridgeTool) {
-        require(tool.id.isNotBlank()) { "Tool id must not be blank" }
+        require(tool.id.matches(Regex("[A-Za-z0-9._:-]{1,128}"))) {
+            "Tool id must be 1 to 128 safe identifier characters."
+        }
+        require(tool.supportedTransports.isNotEmpty()) {
+            "A bridge tool must declare at least one supported transport."
+        }
         require(tools.putIfAbsent(tool.id, tool) == null) { "Duplicate bridge tool: ${tool.id}" }
     }
 
+    @Synchronized
     fun get(toolId: String): AndroidBridgeTool? = tools[toolId]
+
+    @Synchronized
     fun all(): List<AndroidBridgeTool> = tools.values.toList()
 
+    @Synchronized
     fun selectTransport(tool: AndroidBridgeTool, available: Set<BridgeTransport>): BridgeTransport? =
         tool.supportedTransports.intersect(available).maxByOrNull { it.priority }
 }
