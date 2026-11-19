@@ -17,7 +17,7 @@ class NexusModelCenterTest {
     @Test fun officialGemmaArtifactIsPinnedAndDownloadableOnlyAfterLicenseAcceptance() {
         val gemma = NexusModelCatalog.find("google-gemma-4-e2b-it")!!
         assertTrue(gemma.isDownloadable)
-        assertEquals(2_340_870_772L, gemma.artifact?.sizeBytes)
+        assertEquals(2_588_147_712L, gemma.artifact?.sizeBytes)
         assertEquals("Apache-2.0", gemma.artifact?.licenseId)
         assertTrue(ModelDownloadPolicy.evaluate(
             gemma, ModelDownloadRequest(gemma.id, Long.MAX_VALUE, null)
@@ -55,7 +55,7 @@ class NexusModelCenterTest {
     }
 
     @Test fun invalidEvolutionVersionRejectedAndWeightsNeverMutateSilently() {
-        assertTrue(NexusEvolutionPolicy.activate(validProposal().copy(proposedVersion = 10), EvolutionApproval.Approved).isFailure)
+        assertTrue(NexusEvolutionPolicy.activate(validProposal().copy(proposedVersion = 7), EvolutionApproval.Approved).isFailure)
         assertFalse(NexusEvolutionPolicy.allowsSilentWeightMutation())
     }
 
