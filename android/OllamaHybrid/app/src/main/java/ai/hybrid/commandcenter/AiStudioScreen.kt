@@ -114,7 +114,7 @@ fun AiStudioScreen(
                     value = apiKey,
                     onValueChange = { apiKey = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (hasSavedKey) "Новый API-ключ (необязательно)" else "API-ключ") },
+                    label = { Text(if (hasSavedKey) "Новый API-ключ (необязательно)" else "API-ключ (можно пустым для локального сервера)") },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true
                 )
@@ -151,11 +151,11 @@ fun AiStudioScreen(
                 }
                 Text(
                     if (hasSavedKey) "Ключ сохранён в зашифрованном виде через Android Keystore."
-                    else "API-ключ ещё не сохранён.",
+                    else "Ключ не задан. Это допустимо для локального сервера без авторизации; облачный API обычно потребует ключ.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
-                    "Контекст запроса отправляется выбранному провайдеру. HTTP разрешён только для localhost/частной сети; внешние endpoint должны использовать HTTPS.",
+                    "Контекст запроса отправляется выбранному провайдеру. HTTP разрешён только для локальной сети и не шифрует трафик: не используйте с ним ключи облачных сервисов. Внешние endpoint должны использовать HTTPS.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -186,7 +186,6 @@ fun AiStudioScreen(
                         } else {
                             credentialVault.get(AndroidCredentialVault.PRIMARY_PROVIDER_KEY)
                         }
-                        require(!activeKey.isNullOrBlank()) { "Сначала сохраните API-ключ." }
                         require(endpoint.isNotBlank() && model.isNotBlank()) {
                             "Сначала укажите endpoint и модель."
                         }
@@ -200,13 +199,13 @@ fun AiStudioScreen(
                             )
                             answer = result.synthesis.orEmpty()
                             status = result.error ?: if (result.completed) {
-                                "Council завершил миссию: \${result.agentResults.count { it.status.name == "COMPLETED" }} агентов успешно."
+                                "Council завершил миссию: ${result.agentResults.count { it.status.name == "COMPLETED" }} агентов успешно."
                             } else {
                                 "Council не смог сформировать итог."
                             }
                             if (answer.isBlank() && result.agentResults.isNotEmpty()) {
                                 answer = result.agentResults.joinToString("\n\n") {
-                                    "## \${it.agent.name}\n\${it.output.ifBlank { it.error.orEmpty() }}"
+                                    "## ${it.agent.name}\n${it.output.ifBlank { it.error.orEmpty() }}"
                                 }
                             }
                         } else {
@@ -214,7 +213,7 @@ fun AiStudioScreen(
                                 CompletionRequest(
                                     endpoint = endpoint,
                                     model = model,
-                                    apiKey = activeKey!!,
+                                    apiKey = activeKey.orEmpty(),
                                     messages = listOf(
                                         ProviderMessage("system", "Ты NEX — помощник экосистемы NEXUS. Отвечай точно, отделяй факты от предположений."),
                                         ProviderMessage("user", prompt)
