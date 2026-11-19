@@ -10,16 +10,10 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
-import okhttp3.Call
-import okhttp3.Callback
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -89,8 +83,7 @@ class OpenAiCompatibleGateway(
         .build()
 ) : ModelGateway {
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    override fun stream(request: CompletionRequest): Flow<String> = callbackFlow {
+    override fun stream(request: CompletionRequest): Flow<String> {
         require(request.model.isNotBlank()) { "Не указана модель." }
         val url = buildUrl(request.endpoint)
         val messages = JSONArray().apply {
@@ -114,55 +107,14 @@ class OpenAiCompatibleGateway(
             .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
 
-        val call = client.newCall(httpRequest)
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, error: IOException) {
-                close(error)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                response.use { networkResponse ->
-                    try {
-                        if (!networkResponse.isSuccessful) {
-                            val details = networkResponse.body?.string()?.take(2_000)
-                                ?: networkResponse.message
-                            close(ProviderHttpException(networkResponse.code, details))
-                            return
-                        }
-
-                        val body = networkResponse.body
-                            ?: throw IOException("Провайдер вернул пустое тело ответа.")
-                        val source = body.source()
-                        while (!source.exhausted() && !channel.isClosedForSend) {
-                            val line = source.readUtf8Line() ?: continue
-                            if (!line.startsWith("data:")) continue
-                            val data = line.removePrefix("data:").trim()
-                            if (data == "[DONE]") break
-                            if (data.isEmpty()) continue
-
-                            val delta = JSONObject(data)
-                                .optJSONArray("choices")
-                                ?.optJSONObject(0)
-                                ?.optJSONObject("delta")
-                                ?.optString("content")
-                            if (!delta.isNullOrEmpty()) {
-                                val sent = trySend(delta)
-                                if (sent.isFailure && !channel.isClosedForSend) {
-                                    close(IOException("The provider stream outpaced the Council consumer; partial output was discarded."))
-                                    call.cancel()
-                                    return
-                                }
-                            }
-                        }
-                        close()
-                    } catch (error: Throwable) {
-                        close(error)
-                    }
-                }
-            }
-        })
-
-        awaitClose { call.cancel() }
+        return SseTransport.stream(httpRequest, client) { data ->
+            val content = JSONObject(data)
+                .optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("delta")
+                ?.opt("content")
+            (content as? String)?.takeIf { it.isNotEmpty() }
+        }
     }
 
     private fun buildUrl(endpoint: String): String {
