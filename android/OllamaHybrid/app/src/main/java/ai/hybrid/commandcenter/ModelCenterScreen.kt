@@ -161,16 +161,19 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                             progress = 0f
                             status = "Загрузка " + model.displayName + "…"
                             runCatching {
-                                storage.download(model, model.artifact?.licenseId?.takeIf { license ->
-                                    license in acceptedLicenses
-                                }, onCallCreated = { call ->
-                                    scope.launch { activeDownloadCall = call }
-                                }) { received, total ->
-                                    scope.launch {
-                                        progress = if (total > 0) received.toFloat() / total.toFloat() else 0f
-                                        progressLabel = formatBytes(received) + " / " + formatBytes(total)
+                                storage.download(
+                                    model,
+                                    model.artifact?.licenseId?.takeIf { license -> license in acceptedLicenses },
+                                    onProgress = { received, total ->
+                                        scope.launch {
+                                            progress = if (total > 0) received.toFloat() / total.toFloat() else 0f
+                                            progressLabel = formatBytes(received) + " / " + formatBytes(total)
+                                        }
+                                    },
+                                    onCallCreated = { call ->
+                                        scope.launch { activeDownloadCall = call }
                                     }
-                                }
+                                )
                             }.onSuccess {
                                 status = "Модель загружена, SHA-256 подтверждён: " + it.displayName
                                 refresh()
