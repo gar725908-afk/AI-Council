@@ -17,7 +17,7 @@ set(GGML_CPU_KLEIDIAI ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
     llama_cpp
     GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
-    GIT_TAG 2d8a32502909ca065c41c4cf5f2fb1c427c047fc
+    GIT_TAG v1.0.0
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(llama_cpp)
