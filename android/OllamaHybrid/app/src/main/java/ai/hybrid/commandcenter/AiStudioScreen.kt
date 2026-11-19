@@ -187,7 +187,10 @@ fun AiStudioScreen(
             ) {
                 Text("ПОДКЛЮЧЕНИЕ МОДЕЛИ", fontWeight = FontWeight.SemiBold)
                 Box {
-                    Button(onClick = { providerMenuExpanded = true }) {
+                    Button(
+                        enabled = settingsLoaded && !isRunning,
+                        onClick = { providerMenuExpanded = true }
+                    ) {
                         Text(providerKind.displayName)
                     }
                     DropdownMenu(
@@ -198,15 +201,17 @@ fun AiStudioScreen(
                             DropdownMenuItem(
                                 text = { Text(kind.displayName) },
                                 onClick = {
-                                    providerKind = kind
-                                    val saved = settingsStore.load(kind.name)
-                                    endpoint = saved.endpoint.ifBlank { defaultProviderEndpoint(kind) }
-                                    model = saved.model
-                                    apiKey = ""
-                                    discoveredModels = emptyList()
-                                    modelMenuExpanded = false
                                     providerMenuExpanded = false
-                                    status = "Провайдер выбран: " + kind.displayName
+                                    scope.launch {
+                                        val saved = withContext(Dispatchers.IO) { settingsStore.load(kind.name) }
+                                        providerKind = kind
+                                        endpoint = saved.endpoint.ifBlank { defaultProviderEndpoint(kind) }
+                                        model = saved.model
+                                        apiKey = ""
+                                        discoveredModels = emptyList()
+                                        modelMenuExpanded = false
+                                        status = "Провайдер выбран: " + kind.displayName
+                                    }
                                 }
                             )
                         }
@@ -760,7 +765,7 @@ fun AiStudioScreen(
                     }
                 }
             },
-            enabled = !isRunning && activeConversationId != null && prompt.isNotBlank() &&
+            enabled = settingsLoaded && !isRunning && activeConversationId != null && prompt.isNotBlank() &&
                 (!usesOnDeviceModel || activeOnDeviceModel != null),
             modifier = Modifier.fillMaxWidth()
         ) {
