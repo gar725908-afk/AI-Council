@@ -28,6 +28,9 @@ class AndroidCredentialVault(context: Context) {
     fun put(secretId: String, secret: String) {
         requireValidSecretId(secretId)
         require(secret.isNotBlank()) { "Secret cannot be blank." }
+        require(secret.toByteArray(Charsets.UTF_8).size <= MAX_SECRET_BYTES) {
+            "Credential exceeds the 16 KiB storage limit."
+        }
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
