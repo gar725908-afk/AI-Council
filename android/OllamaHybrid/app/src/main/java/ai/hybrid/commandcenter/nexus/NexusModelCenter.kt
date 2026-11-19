@@ -72,7 +72,17 @@ object NexusModelCatalog {
             "qwen3-0.6b", "Qwen3 0.6B", "Qwen",
             ModelExecutionTarget.ANDROID_ON_DEVICE, setOf(ModelRuntimeKind.LLAMA_CPP),
             setOf(ModelTaskCapability.CHAT, ModelTaskCapability.REASONING, ModelTaskCapability.MULTILINGUAL),
-            "0.6B"
+            "0.6B",
+            artifact = ModelArtifactManifest(
+                source = "https://huggingface.co/ggml-org/Qwen3-0.6B-GGUF",
+                immutableRevision = "a41486f",
+                licenseId = "Apache-2.0",
+                artifactFileName = "Qwen3-0.6B-Q4_0.gguf",
+                sizeBytes = 428_970_080L,
+                sha256 = "da2572f16c06133561ce56accaa822216f2391ef4d37fba427801cd6736417d4",
+                runtime = ModelRuntimeKind.LLAMA_CPP,
+                downloadUrl = "https://huggingface.co/ggml-org/Qwen3-0.6B-GGUF/resolve/a41486f/Qwen3-0.6B-Q4_0.gguf"
+            )
         ),
         NexusModelDescriptor(
             "functiongemma-270m", "FunctionGemma 270M", "Google",
