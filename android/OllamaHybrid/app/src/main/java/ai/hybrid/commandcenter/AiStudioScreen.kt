@@ -602,7 +602,7 @@ private fun defaultProviderEndpoint(kind: ProviderKind): String = when (kind) {
     ProviderKind.GROQ -> "https://api.groq.com/openai/v1"
     ProviderKind.MISTRAL -> "https://api.mistral.ai/v1"
     ProviderKind.TOGETHER -> "https://api.together.ai/v1"
-    ProviderKind.FIREWORKS -> "https://api.fireworks.ai/inference/v1"
+    ProviderKind.FIREWORKS -> "https://api.gofireworks.org/v1"
     ProviderKind.OLLAMA -> ""
     ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
     ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
