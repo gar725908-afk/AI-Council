@@ -14,17 +14,24 @@ class NexusModelCenterTest {
         assertTrue(gemma?.runtimes?.contains(ModelRuntimeKind.LITERT_LM) == true)
     }
 
-    @Test fun catalogEntriesAreNotDownloadableWithoutVerifiedManifest() {
-        assertTrue(NexusModelCatalog.starterModels.none { it.isDownloadable })
+    @Test fun officialGemmaArtifactIsPinnedAndDownloadableOnlyAfterLicenseAcceptance() {
         val gemma = NexusModelCatalog.find("google-gemma-4-e2b-it")!!
+        assertTrue(gemma.isDownloadable)
+        assertEquals(2_340_870_772L, gemma.artifact?.sizeBytes)
+        assertEquals("Apache-2.0", gemma.artifact?.licenseId)
         assertTrue(ModelDownloadPolicy.evaluate(
             gemma, ModelDownloadRequest(gemma.id, Long.MAX_VALUE, null)
         ) is ModelDownloadDecision.Rejected)
+        assertTrue(ModelDownloadPolicy.evaluate(
+            gemma, ModelDownloadRequest(gemma.id, Long.MAX_VALUE, "Apache-2.0")
+        ) is ModelDownloadDecision.Allowed)
+        assertTrue(NexusModelCatalog.find("qwen3-0.6b")?.isDownloadable == false)
     }
 
     @Test fun downloadRequiresChecksumSpaceAndExactLicense() {
         val manifest = ModelArtifactManifest("trusted-catalog", "revision-123", "gemma-license",
-            "model.litertlm", 1000, "a".repeat(64), ModelRuntimeKind.LITERT_LM)
+            "model.litertlm", 1000, "a".repeat(64), ModelRuntimeKind.LITERT_LM,
+            "https://models.example.test/model.litertlm")
         val model = NexusModelDescriptor("test", "Test", "Test", ModelExecutionTarget.ANDROID_ON_DEVICE,
             setOf(ModelRuntimeKind.LITERT_LM), setOf(ModelTaskCapability.CHAT), "test", artifact = manifest)
         assertTrue(ModelDownloadPolicy.evaluate(model, ModelDownloadRequest("test", 999, "gemma-license")) is ModelDownloadDecision.Rejected)
