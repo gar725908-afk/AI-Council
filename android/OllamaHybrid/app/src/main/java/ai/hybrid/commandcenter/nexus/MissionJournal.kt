@@ -6,14 +6,18 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.util.UUID
 
-enum class MissionStatus { DRAFT, QUEUED, RUNNING, VERIFYING, COMPLETED, FAILED, CANCELLED, INTERRUPTED }
+enum class MissionStatus { DRAFT, QUEUED, RUNNING, VERIFYING, AWAITING_INPUT, COMPLETED, FAILED, CANCELLED, INTERRUPTED }
 
 object MissionStateMachine {
     private val transitions = mapOf(
         MissionStatus.DRAFT to setOf(MissionStatus.QUEUED, MissionStatus.CANCELLED),
         MissionStatus.QUEUED to setOf(MissionStatus.RUNNING, MissionStatus.FAILED, MissionStatus.CANCELLED, MissionStatus.INTERRUPTED),
-        MissionStatus.RUNNING to setOf(MissionStatus.VERIFYING, MissionStatus.FAILED, MissionStatus.CANCELLED, MissionStatus.INTERRUPTED),
+        MissionStatus.RUNNING to setOf(
+            MissionStatus.VERIFYING, MissionStatus.AWAITING_INPUT,
+            MissionStatus.FAILED, MissionStatus.CANCELLED, MissionStatus.INTERRUPTED
+        ),
         MissionStatus.VERIFYING to setOf(MissionStatus.COMPLETED, MissionStatus.FAILED, MissionStatus.INTERRUPTED),
+        MissionStatus.AWAITING_INPUT to setOf(MissionStatus.QUEUED, MissionStatus.CANCELLED),
         MissionStatus.INTERRUPTED to setOf(MissionStatus.QUEUED, MissionStatus.CANCELLED),
         MissionStatus.FAILED to setOf(MissionStatus.QUEUED, MissionStatus.CANCELLED),
         MissionStatus.COMPLETED to emptySet(),
