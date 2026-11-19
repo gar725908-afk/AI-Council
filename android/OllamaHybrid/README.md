@@ -26,8 +26,8 @@
 - **OpenAI-compatible gateway:** Chat Completions SSE через OkHttp; подходит для endpoint, которые действительно поддерживают этот протокол, включая OpenAI-compatible сервисы и локальные Ollama/LM Studio/vLLM серверы.
 - **Anthropic gateway:** нативный Messages API, потоковые content_block_delta события.
 - **Gemini gateway:** нативный streamGenerateContent с SSE.
-- **Provider registry:** выбор OpenAI-compatible, Anthropic Claude или Google Gemini в интерфейсе; endpoint, model и ключи раздельны для каждого профиля.
-- **Model discovery:** проверка соединения и загрузка списка моделей через /models, /v1/models или Gemini /v1beta/models; найденную модель можно выбрать в UI.
+- **Provider registry:** отдельные профили OpenAI, DeepSeek, OpenRouter, Groq, Mistral, Together AI, Fireworks AI, Ollama local и Custom OpenAI-compatible, а также нативные Anthropic Claude и Google Gemini. Endpoint, model и ключи раздельны для каждого профиля.
+- **Model discovery:** проверка соединения и загрузка списка моделей через /models, /v1/models, Anthropic /v1/models или Gemini /v1beta/models; найденную модель можно выбрать в UI.
 - **Credential vault:** API-ключи шифруются AES-GCM ключом Android Keystore; в обычных настройках хранятся только endpoint и имя модели.
 - **NEXUS COUNCIL:** восемь преднастроенных ролей; одновременно работают максимум три агента; для каждой роли можно назначить отдельный провайдер. Manager выполняет синтез через основной выбранный профиль. Все агенты, назначенные одному профилю, используют сохранённую для этого профиля модель.
 - **Mission Journal:** локальный SQLite-журнал миссий, результатов агентов и событий; фиксируются состояния и ошибки.
@@ -50,14 +50,14 @@
 ## Подключение AI Studio
 
 1. Откройте **AI Studio** или **Council**.
-2. Выберите тип API: OpenAI-compatible, Anthropic или Gemini.
+2. Выберите профиль: OpenAI, DeepSeek, OpenRouter, Groq, Mistral, Together AI, Fireworks AI, Ollama, Custom OpenAI-compatible, Anthropic или Gemini.
 3. Введите базовый endpoint и точное имя модели. Поле endpoint уже содержит пример для выбранного протокола.
 4. Добавьте API-ключ выбранного облачного провайдера и нажмите **Сохранить**. Ключ хранится отдельно от endpoint/model через Android Keystore.
 5. Для локального OpenAI-compatible сервера без авторизации ключ можно оставить пустым.
 6. В режиме Council при необходимости назначьте каждой роли отдельный провайдер. Для дополнительного провайдера предварительно выберите его в AI Studio, проверьте endpoint и сохраните модель и ключ.
 7. Введите задачу и запустите одиночный запрос или Council. Во время выполнения можно нажать «Остановить текущую задачу».
 
-Для локального OpenAI-compatible сервера пример endpoint: http://192.168.1.10:11434/v1. Укажите реальный адрес сервера в своей сети и убедитесь, что он доступен с телефона. Не отправляйте облачные API-ключи через незашифрованный HTTP. Не публикуйте ключи в GitHub, логах или скриншотах.
+Для локального Ollama на компьютере введите LAN IP компьютера, например http://192.168.1.10:11434/v1. Адрес 192.168.1.10 здесь только пример, его нужно заменить на реальный IP компьютера. Для другого локального OpenAI-compatible сервера используйте его собственный endpoint. Укажите реальный адрес сервера в своей сети и убедитесь, что он доступен с телефона. Не отправляйте облачные API-ключи через незашифрованный HTTP. Не публикуйте ключи в GitHub, логах или скриншотах.
 
 ## Сохранность проекта
 
