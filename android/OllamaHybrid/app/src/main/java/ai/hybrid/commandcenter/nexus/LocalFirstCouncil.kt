@@ -110,7 +110,21 @@ sealed interface LocalCouncilDecision {
     data class YieldControl(val reason: String) : LocalCouncilDecision
 }
 
+enum class LocalModelExecutionLocation {
+    ON_DEVICE,
+    NETWORK_ENDPOINT
+}
+
+data class LocalManagerRuntimeInfo(
+    val runtimeId: String,
+    val modelId: String,
+    val executionLocation: LocalModelExecutionLocation
+)
+
 interface LocalCouncilManager {
+    /** Runtime metadata is supplied by the inference adapter, never by the model response. */
+    val runtimeInfo: LocalManagerRuntimeInfo
+
     suspend fun decide(context: LocalCouncilContext): LocalCouncilDecision
 }
 
@@ -182,6 +196,15 @@ class LocalFirstCouncilOrchestrator(
         }
         if (goal.isBlank()) {
             return LocalCouncilExecution(LocalCouncilExecutionStatus.FAILED, message = "Задача пуста.")
+        }
+        val managerInfo = manager.runtimeInfo
+        if (managerInfo.executionLocation != LocalModelExecutionLocation.ON_DEVICE ||
+            managerInfo.modelId != profile.managerModelId
+        ) {
+            return LocalCouncilExecution(
+                LocalCouncilExecutionStatus.INVALID_PROFILE,
+                message = "Для этого режима требуется выбранная модель, реально выполняющаяся на Android-устройстве."
+            )
         }
         val errors = profile.validationErrors()
         if (errors.isNotEmpty()) {
