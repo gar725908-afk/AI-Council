@@ -506,72 +506,74 @@ fun AiStudioScreen(
                             credentialVault.get(providerKeyId)
                         }
                         if (councilMode) {
-                            val activeRoutingPolicy = withContext(Dispatchers.IO) {
-                                evolutionExecutor.activeConfiguration(EvolutionChangeKind.ROUTING_POLICY)
+                            val councilGoal = withContext(Dispatchers.IO) {
+                                buildCouncilConversationContext(
+                                    chatState.second,
+                                    listOf(
+                                        evolutionExecutor.activeConfiguration(EvolutionChangeKind.PROMPT_PROFILE),
+                                        evolutionExecutor.activeConfiguration(EvolutionChangeKind.SKILL_PACK)
+                                    ).filter { it.isNotBlank() }.joinToString("\\n\\n")
+                                )
                             }
-                            val result = CouncilOrchestrator(
-                                gateway = gateway,
-                                maxParallelAgents = 3,
-                                routeResolver = { agent ->
-                                    val routeKind = resolveEvolutionRoute(activeRoutingPolicy, agent.id)
-                                        ?: routingStore.load(agent.id)
-                                        ?: providerKind
-                                    val modelOverride = routingStore.loadModelOverride(agent.id)
-                                    if (routeKind == providerKind) {
-                                        CouncilModelRoute(
-                                            gateway = gateway,
-                                            endpoint = endpoint,
-                                            model = modelOverride ?: model,
-                                            apiKey = activeKey.orEmpty()
-                                        )
-                                    } else {
-                                        val profile = settingsStore.load(routeKind.name)
-                                        val localRoute = routeKind == ProviderKind.ON_DEVICE_LITERT ||
-                                            routeKind == ProviderKind.ON_DEVICE_LLAMA_CPP
-                                        val routeModel = modelOverride ?: profile.model.ifBlank {
-                                            if (localRoute) "active-device-model" else ""
-                                        }
-                                        require(routeModel.isNotBlank()) {
-                                            "Для роли " + agent.name + " не настроена модель " + routeKind.displayName +
-                                                ". Укажите модель для роли или сохраните модель в профиле провайдера."
-                                        }
-                                        val routeEndpoint = profile.endpoint.ifBlank {
-                                            defaultProviderEndpoint(routeKind)
-                                        }
-                                        require(localRoute || routeEndpoint.isNotBlank()) {
-                                            "Для роли " + agent.name + " не указан endpoint провайдера " +
-                                                routeKind.displayName + ". Укажите адрес сервера и сохраните профиль."
-                                        }
-                                        val routeKey = credentialVault.get(
-                                            AndroidCredentialVault.providerKeyId(routeKind.name)
-                                        ).orEmpty()
-                                        require(!routeKind.requiresApiKey() || routeKey.isNotBlank()) {
-                                            "Для роли " + agent.name + " не сохранён API-ключ профиля " +
-                                                routeKind.displayName + "."
-                                        }
-                                        CouncilModelRoute(
-                                            gateway = engineRegistry.gateway(routeKind),
-                                            endpoint = routeEndpoint,
-                                            model = routeModel,
-                                            apiKey = routeKey
-                                        )
-                                    }
+                            val result = if (usesOnDeviceModel) {
+                                engineRegistry.runLocalCouncil(councilGoal)
+                            } else {
+                                val activeRoutingPolicy = withContext(Dispatchers.IO) {
+                                    evolutionExecutor.activeConfiguration(EvolutionChangeKind.ROUTING_POLICY)
                                 }
-                            ).run(
-                                goal = withContext(Dispatchers.IO) {
-                                    buildCouncilConversationContext(
-                                        chatState.second,
-                                        listOf(
-                                            evolutionExecutor.activeConfiguration(EvolutionChangeKind.PROMPT_PROFILE),
-                                            evolutionExecutor.activeConfiguration(EvolutionChangeKind.SKILL_PACK)
-                                        ).filter { it.isNotBlank() }.joinToString("\n\n")
-                                    )
-                                },
-                                endpoint = endpoint,
-                                model = model,
-                                apiKey = activeKey.orEmpty(),
-                                agents = councilAgents
-                            )
+                                CouncilOrchestrator(
+                                    gateway = gateway,
+                                    maxParallelAgents = 3,
+                                    routeResolver = { agent ->
+                                        val routeKind = resolveEvolutionRoute(activeRoutingPolicy, agent.id)
+                                            ?: routingStore.load(agent.id)
+                                            ?: providerKind
+                                        val modelOverride = routingStore.loadModelOverride(agent.id)
+                                        if (routeKind == providerKind) {
+                                            CouncilModelRoute(
+                                                gateway = gateway,
+                                                endpoint = endpoint,
+                                                model = modelOverride ?: model,
+                                                apiKey = activeKey.orEmpty()
+                                            )
+                                        } else {
+                                            val profile = settingsStore.load(routeKind.name)
+                                            val localRoute = routeKind == ProviderKind.ON_DEVICE_LITERT ||
+                                                routeKind == ProviderKind.ON_DEVICE_LLAMA_CPP
+                                            val routeModel = modelOverride ?: profile.model.ifBlank {
+                                                if (localRoute) "active-device-model" else ""
+                                            }
+                                            require(routeModel.isNotBlank()) {
+                                                "No model is configured for role " + agent.name + " / " + routeKind.displayName + "."
+                                            }
+                                            val routeEndpoint = profile.endpoint.ifBlank {
+                                                defaultProviderEndpoint(routeKind)
+                                            }
+                                            require(localRoute || routeEndpoint.isNotBlank()) {
+                                                "No endpoint is configured for role " + agent.name + " / " + routeKind.displayName + "."
+                                            }
+                                            val routeKey = credentialVault.get(
+                                                AndroidCredentialVault.providerKeyId(routeKind.name)
+                                            ).orEmpty()
+                                            require(!routeKind.requiresApiKey() || routeKey.isNotBlank()) {
+                                                "No API key is saved for role " + agent.name + " / " + routeKind.displayName + "."
+                                            }
+                                            CouncilModelRoute(
+                                                gateway = engineRegistry.gateway(routeKind),
+                                                endpoint = routeEndpoint,
+                                                model = routeModel,
+                                                apiKey = routeKey
+                                            )
+                                        }
+                                    }
+                                ).run(
+                                    goal = councilGoal,
+                                    endpoint = endpoint,
+                                    model = model,
+                                    apiKey = activeKey.orEmpty(),
+                                    agents = councilAgents
+                                )
+                            }
                             withContext(Dispatchers.IO) {
                                 result.agentResults.forEach { journal.saveAgentResult(missionId!!, it) }
                             }
