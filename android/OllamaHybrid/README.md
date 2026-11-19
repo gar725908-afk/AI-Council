@@ -9,6 +9,7 @@
 - [V3 Full AI Ecosystem](docs/V3_FULL_AI_ECOSYSTEM_ARCHITECTURE_RU.md).
 - [Evolution Core](docs/EVOLUTION_CORE_ARCHITECTURE_RU.md).
 - [Local-first Council и Android execution](docs/LOCAL_FIRST_COUNCIL_AND_ANDROID_EXECUTION_RU.md) — локальная модель-Manager, веб-сессии ИИ, ручной режим, будущий Desktop Link и NEXUS FORGE.
+- [Ollama LAN Node](docs/NEXUS_LAN_OLLAMA_NODE_RU.md) — использование локальной модели на домашнем ПК через Ollama API по Wi-Fi/LAN, с маршрутизацией, потоковой передачей, отказоустойчивостью и безопасным pairing.
 
 ## Сборка
 В каталоге проекта находятся корневые Gradle-конфигурации, Android Manifest и Jetpack Compose entry point. CI настроен на Gradle 8.13 и JDK 17: debug APK и unit tests.
