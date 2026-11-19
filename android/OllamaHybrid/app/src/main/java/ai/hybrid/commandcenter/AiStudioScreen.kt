@@ -531,7 +531,7 @@ fun AiStudioScreen(
                             "Задача должна содержать от 1 до 32 000 символов."
                         }
                         val selectedModelId = if (usesOnDeviceModel) {
-                            engineRegistry.activeModel().id
+                            withContext(Dispatchers.IO) { engineRegistry.activeModel().id }
                         } else {
                             model.trim()
                         }
