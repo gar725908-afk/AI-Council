@@ -26,6 +26,11 @@ class ProviderModelCatalog(
         if (kind.requiresApiKey()) {
             require(apiKey.isNotBlank()) { "Для этого провайдера требуется API-ключ." }
         }
+        if (kind == ProviderKind.OLLAMA) {
+            require(endpoint.isNotBlank()) {
+                "Укажите LAN IP компьютера, на котором запущен Ollama, например http://192.168.1.10:11434/v1."
+            }
+        }
         val base = parseBase(endpoint.ifBlank { defaultEndpoint(kind) })
         val url = modelsUrl(kind, base)
         val builder = Request.Builder().url(url).get().header("Accept", "application/json")
