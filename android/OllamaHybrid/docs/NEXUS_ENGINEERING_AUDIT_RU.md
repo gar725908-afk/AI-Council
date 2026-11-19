@@ -25,7 +25,7 @@
 ### Provider security и credentials
 - Общая проверка endpoint: HTTP допускается только для localhost/частной сети; публичные endpoint требуют HTTPS.
 - API credentials хранятся отдельно от настроек и маршрутов, шифруются AES-GCM с Android Keystore; размер секрета ограничен 16 КиБ.
-- Центральный `CompletionRequest` валидирует модель, endpoint, температуру, роли, количество сообщений, размер каждого сообщения и общий объём контекста до обращения к gateway.
+- Центральный `CompletionRequest` валидирует модель, endpoint, температуру, роли, количество сообщений, размер каждого сообщения и общий объём контекста до обращения к gateway; AI Studio ограничивает пользовательский prompt 32 000 символами и собирает bounded chat/Evolution context.
 - Новые записи vault используют secret ID как AES-GCM AAD; старые записи читаются и мигрируют в новый формат при успешном чтении.
 - Evolution routing policy не принимает endpoint, API key или произвольные поля.
 
