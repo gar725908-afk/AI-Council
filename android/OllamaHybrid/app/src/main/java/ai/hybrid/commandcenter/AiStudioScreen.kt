@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import ai.hybrid.commandcenter.nexus.AndroidCredentialVault
 import ai.hybrid.commandcenter.nexus.CouncilOrchestrator
+import ai.hybrid.commandcenter.nexus.CouncilModelRoute
+import ai.hybrid.commandcenter.nexus.CouncilRoutingStore
 import ai.hybrid.commandcenter.nexus.CompletionRequest
 import ai.hybrid.commandcenter.nexus.ProviderKind
 import ai.hybrid.commandcenter.nexus.createModelGateway
@@ -65,6 +67,8 @@ fun AiStudioScreen(
     }
     val gateway = remember(providerKind) { createModelGateway(providerKind) }
     val modelCatalog = remember { ProviderModelCatalog() }
+    val routingStore = remember(context) { CouncilRoutingStore(context) }
+    val councilAgents = remember { CouncilOrchestrator.defaultAgents() }
     val journal = remember(context) { (context.applicationContext as NexusApplication).missionJournal }
     val scope = rememberCoroutineScope()
 
@@ -76,6 +80,14 @@ fun AiStudioScreen(
     var modelMenuExpanded by remember { mutableStateOf(false) }
     var isCheckingModels by remember { mutableStateOf(false) }
     var discoveredModels by remember(providerKind) { mutableStateOf(emptyList<String>()) }
+    var agentRoutes by remember(providerKind) {
+        mutableStateOf(
+            councilAgents.associate { agent ->
+                agent.id to (routingStore.load(agent.id) ?: providerKind)
+            }
+        )
+    }
+    var expandedAgentRoute by remember { mutableStateOf<String?>(null) }
     var apiKey by remember { mutableStateOf("") }
     var hasSavedKey by remember(providerKind) {
         mutableStateOf(
@@ -294,6 +306,48 @@ fun AiStudioScreen(
             }
         }
 
+        if (councilMode) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("МАРШРУТИЗАЦИЯ АГЕНТОВ", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Назначайте разные AI-провайдеры отдельным ролям. Для каждого выбранного провайдера заранее сохраните endpoint, модель и ключ в AI Studio.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    councilAgents.forEach { agent ->
+                        val selectedRoute = agentRoutes[agent.id] ?: providerKind
+                        Box {
+                            TextButton(onClick = { expandedAgentRoute = agent.id }) {
+                                Text(agent.name + "  ·  " + selectedRoute.displayName)
+                            }
+                            DropdownMenu(
+                                expanded = expandedAgentRoute == agent.id,
+                                onDismissRequest = { expandedAgentRoute = null }
+                            ) {
+                                ProviderKind.values().forEach { kind ->
+                                    DropdownMenuItem(
+                                        text = { Text(kind.displayName) },
+                                        onClick = {
+                                            routingStore.save(agent.id, kind)
+                                            agentRoutes = agentRoutes + (agent.id to kind)
+                                            expandedAgentRoute = null
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         OutlinedTextField(
             value = prompt,
             onValueChange = { prompt = it },
@@ -327,11 +381,44 @@ fun AiStudioScreen(
                             credentialVault.get(providerKeyId)
                         }
                         if (councilMode) {
-                            val result = CouncilOrchestrator(gateway, maxParallelAgents = 3).run(
+                            val result = CouncilOrchestrator(
+                                gateway = gateway,
+                                maxParallelAgents = 3,
+                                routeResolver = { agent ->
+                                    val routeKind = routingStore.load(agent.id) ?: providerKind
+                                    if (routeKind == providerKind) {
+                                        CouncilModelRoute(
+                                            gateway = gateway,
+                                            endpoint = endpoint,
+                                            model = model,
+                                            apiKey = activeKey.orEmpty()
+                                        )
+                                    } else {
+                                        val profile = settingsStore.load(routeKind.name)
+                                        require(profile.model.isNotBlank()) {
+                                            "Для роли " + agent.name + " не настроена модель " + routeKind.displayName +
+                                                ". Сначала выберите провайдера в AI Studio и сохраните его параметры."
+                                        }
+                                        val routeEndpoint = profile.endpoint.ifBlank {
+                                            defaultProviderEndpoint(routeKind)
+                                        }
+                                        val routeKey = credentialVault.get(
+                                            AndroidCredentialVault.providerKeyId(routeKind.name)
+                                        ).orEmpty()
+                                        CouncilModelRoute(
+                                            gateway = createModelGateway(routeKind),
+                                            endpoint = routeEndpoint,
+                                            model = profile.model,
+                                            apiKey = routeKey
+                                        )
+                                    }
+                                }
+                            ).run(
                                 goal = prompt,
                                 endpoint = endpoint,
                                 model = model,
-                                apiKey = activeKey.orEmpty()
+                                apiKey = activeKey.orEmpty(),
+                                agents = councilAgents
                             )
                             result.agentResults.forEach { journal.saveAgentResult(missionId!!, it) }
                             answer = result.synthesis.orEmpty()
