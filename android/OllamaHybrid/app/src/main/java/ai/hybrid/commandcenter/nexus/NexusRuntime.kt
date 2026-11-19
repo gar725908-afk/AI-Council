@@ -27,7 +27,41 @@ data class CompletionRequest(
     val apiKey: String,
     val messages: List<ProviderMessage>,
     val temperature: Double = 0.2
-)
+) {
+    init {
+        require(model.isNotBlank() && model.length <= MAX_MODEL_ID_CHARS) {
+            "Model ID must contain 1 to $MAX_MODEL_ID_CHARS characters."
+        }
+        require(endpoint.length <= MAX_ENDPOINT_CHARS) {
+            "Provider endpoint exceeds $MAX_ENDPOINT_CHARS characters."
+        }
+        require(apiKey.length <= MAX_API_KEY_CHARS) {
+            "Provider credential exceeds the configured size limit."
+        }
+        require(messages.isNotEmpty() && messages.size <= MAX_MESSAGES) {
+            "A completion request must contain 1 to $MAX_MESSAGES messages."
+        }
+        require(messages.all { it.role in ALLOWED_ROLES && it.content.length <= MAX_MESSAGE_CHARS }) {
+            "Completion messages contain an unsupported role or oversized content."
+        }
+        require(messages.sumOf { it.content.length.toLong() } <= MAX_TOTAL_MESSAGE_CHARS) {
+            "Completion request content exceeds the total size limit."
+        }
+        require(temperature.isFinite() && temperature in 0.0..2.0) {
+            "Temperature must be a finite value between 0 and 2."
+        }
+    }
+
+    private companion object {
+        const val MAX_MODEL_ID_CHARS = 200
+        const val MAX_ENDPOINT_CHARS = 2_048
+        const val MAX_API_KEY_CHARS = 16_384
+        const val MAX_MESSAGES = 128
+        const val MAX_MESSAGE_CHARS = 65_536
+        const val MAX_TOTAL_MESSAGE_CHARS = 262_144L
+        val ALLOWED_ROLES = setOf("system", "user", "assistant")
+    }
+}
 
 interface ModelGateway {
     fun stream(request: CompletionRequest): Flow<String>
