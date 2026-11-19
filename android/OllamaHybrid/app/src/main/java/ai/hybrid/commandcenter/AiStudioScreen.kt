@@ -1,6 +1,7 @@
 package ai.hybrid.commandcenter
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +16,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -33,7 +36,8 @@ import androidx.compose.ui.platform.LocalContext
 import ai.hybrid.commandcenter.nexus.AndroidCredentialVault
 import ai.hybrid.commandcenter.nexus.CouncilOrchestrator
 import ai.hybrid.commandcenter.nexus.CompletionRequest
-import ai.hybrid.commandcenter.nexus.OpenAiCompatibleGateway
+import ai.hybrid.commandcenter.nexus.ProviderKind
+import ai.hybrid.commandcenter.nexus.createModelGateway
 import ai.hybrid.commandcenter.nexus.ProviderMessage
 import ai.hybrid.commandcenter.nexus.ProviderSettings
 import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
@@ -52,21 +56,33 @@ fun AiStudioScreen(
     val settingsStore = remember(context) { ProviderSettingsStore(context) }
     val credentialVault = remember(context) { AndroidCredentialVault(context) }
     val initialSettings = remember(context) { settingsStore.load() }
-    val gateway = remember { OpenAiCompatibleGateway() }
+    var providerKind by remember {
+        mutableStateOf(
+            runCatching { ProviderKind.valueOf(initialSettings.providerKind) }
+                .getOrDefault(ProviderKind.OPENAI_COMPATIBLE)
+        )
+    }
+    val gateway = remember(providerKind) { createModelGateway(providerKind) }
     val journal = remember(context) { (context.applicationContext as NexusApplication).missionJournal }
     val scope = rememberCoroutineScope()
 
-    var endpoint by remember { mutableStateOf(initialSettings.endpoint) }
+    var endpoint by remember {
+        mutableStateOf(initialSettings.endpoint.ifBlank { defaultProviderEndpoint(providerKind) })
+    }
     var model by remember { mutableStateOf(initialSettings.model) }
+    var providerMenuExpanded by remember { mutableStateOf(false) }
     var apiKey by remember { mutableStateOf("") }
-    var hasSavedKey by remember {
-        mutableStateOf(credentialVault.get(AndroidCredentialVault.PRIMARY_PROVIDER_KEY) != null)
+    var hasSavedKey by remember(providerKind) {
+        mutableStateOf(
+            credentialVault.get(AndroidCredentialVault.providerKeyId(providerKind.name)) != null
+        )
     }
     var prompt by remember { mutableStateOf("") }
     var answer by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Провайдер не проверен") }
     var isRunning by remember { mutableStateOf(false) }
     var recentMissions by remember { mutableStateOf(journal.getRecentMissions(8)) }
+    val providerKeyId = AndroidCredentialVault.providerKeyId(providerKind.name)
 
     Column(
         modifier = modifier
@@ -100,12 +116,39 @@ fun AiStudioScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("ПОДКЛЮЧЕНИЕ МОДЕЛИ", fontWeight = FontWeight.SemiBold)
+                Box {
+                    Button(onClick = { providerMenuExpanded = true }) {
+                        Text(providerKind.displayName)
+                    }
+                    DropdownMenu(
+                        expanded = providerMenuExpanded,
+                        onDismissRequest = { providerMenuExpanded = false }
+                    ) {
+                        ProviderKind.values().forEach { kind ->
+                            DropdownMenuItem(
+                                text = { Text(kind.displayName) },
+                                onClick = {
+                                    providerKind = kind
+                                    val saved = settingsStore.load(kind.name)
+                                    endpoint = saved.endpoint.ifBlank { defaultProviderEndpoint(kind) }
+                                    model = saved.model
+                                    hasSavedKey = credentialVault.get(
+                                        AndroidCredentialVault.providerKeyId(kind.name)
+                                    ) != null
+                                    apiKey = ""
+                                    providerMenuExpanded = false
+                                    status = "Провайдер выбран: " + kind.displayName
+                                }
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = endpoint,
                     onValueChange = { endpoint = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("API endpoint") },
-                    placeholder = { Text("https://api.openai.com/v1") },
+                    placeholder = { Text(defaultProviderEndpoint(providerKind)) },
                     singleLine = true
                 )
                 OutlinedTextField(
@@ -113,14 +156,29 @@ fun AiStudioScreen(
                     onValueChange = { model = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Имя модели") },
-                    placeholder = { Text("gpt-4.1-mini или имя локальной модели") },
+                    placeholder = {
+                        Text(
+                            when (providerKind) {
+                                ProviderKind.OPENAI_COMPATIBLE -> "gpt-4.1-mini, deepseek-chat или локальная модель"
+                                ProviderKind.ANTHROPIC -> "имя Claude модели из Anthropic Console"
+                                ProviderKind.GEMINI -> "имя Gemini модели из Google AI Studio"
+                            }
+                        )
+                    },
                     singleLine = true
                 )
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (hasSavedKey) "Новый API-ключ (необязательно)" else "API-ключ (можно пустым для локального сервера)") },
+                    label = {
+                        Text(
+                            if (hasSavedKey) "Новый API-ключ (необязательно)" else
+                                if (providerKind == ProviderKind.OPENAI_COMPATIBLE)
+                                    "API-ключ (можно пустым для локального сервера)"
+                                else "API-ключ провайдера"
+                        )
+                    },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true
                 )
@@ -130,13 +188,13 @@ fun AiStudioScreen(
                             try {
                                 require(endpoint.isNotBlank()) { "Укажите API endpoint." }
                                 require(model.isNotBlank()) { "Укажите имя модели." }
-                                settingsStore.save(ProviderSettings(endpoint, model))
+                                settingsStore.save(ProviderSettings(endpoint, model, providerKind.name))
                                 if (apiKey.isNotBlank()) {
-                                    credentialVault.put(AndroidCredentialVault.PRIMARY_PROVIDER_KEY, apiKey)
+                                    credentialVault.put(providerKeyId, apiKey)
                                     apiKey = ""
                                     hasSavedKey = true
                                 }
-                                status = "Настройки сохранены"
+                                status = "Настройки сохранены для " + providerKind.displayName
                             } catch (error: Exception) {
                                 status = error.message ?: "Не удалось сохранить настройки"
                             }
@@ -146,10 +204,10 @@ fun AiStudioScreen(
                     }
                     TextButton(
                         onClick = {
-                            credentialVault.remove(AndroidCredentialVault.PRIMARY_PROVIDER_KEY)
+                            credentialVault.remove(providerKeyId)
                             hasSavedKey = false
                             apiKey = ""
-                            status = "API-ключ удалён"
+                            status = "API-ключ этого провайдера удалён"
                         }
                     ) {
                         Text("Удалить ключ")
@@ -157,7 +215,9 @@ fun AiStudioScreen(
                 }
                 Text(
                     if (hasSavedKey) "Ключ сохранён в зашифрованном виде через Android Keystore."
-                    else "Ключ не задан. Это подходит локальному серверу без авторизации; для облачного API обычно нужен ключ.",
+                    else if (providerKind == ProviderKind.OPENAI_COMPATIBLE)
+                        "Ключ можно не указывать для локального сервера без авторизации."
+                    else "Для выбранного облачного провайдера требуется API-ключ.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
@@ -193,12 +253,12 @@ fun AiStudioScreen(
                         journal.transition(missionId!!, MissionStatus.RUNNING, "Запрос отправлен провайдеру")
 
                         val activeKey = if (apiKey.isNotBlank()) {
-                            credentialVault.put(AndroidCredentialVault.PRIMARY_PROVIDER_KEY, apiKey)
+                            credentialVault.put(providerKeyId, apiKey)
                             apiKey = ""
                             hasSavedKey = true
-                            credentialVault.get(AndroidCredentialVault.PRIMARY_PROVIDER_KEY)
+                            credentialVault.get(providerKeyId)
                         } else {
-                            credentialVault.get(AndroidCredentialVault.PRIMARY_PROVIDER_KEY)
+                            credentialVault.get(providerKeyId)
                         }
                         if (councilMode) {
                             val result = CouncilOrchestrator(gateway, maxParallelAgents = 3).run(
@@ -336,4 +396,10 @@ fun AiStudioScreen(
         }
         Spacer(Modifier.height(18.dp))
     }
+}
+
+private fun defaultProviderEndpoint(kind: ProviderKind): String = when (kind) {
+    ProviderKind.OPENAI_COMPATIBLE -> "https://api.openai.com/v1"
+    ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
+    ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
 }
