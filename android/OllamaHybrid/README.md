@@ -10,6 +10,7 @@
 - [Evolution Core](docs/EVOLUTION_CORE_ARCHITECTURE_RU.md).
 - [Local-first Council и Android execution](docs/LOCAL_FIRST_COUNCIL_AND_ANDROID_EXECUTION_RU.md) — локальная модель-Manager, веб-сессии ИИ, ручной режим, будущий Desktop Link и NEXUS FORGE.
 - [Ollama LAN Node](docs/NEXUS_LAN_OLLAMA_NODE_RU.md) — использование локальной модели на домашнем ПК через Ollama API по Wi-Fi/LAN, с маршрутизацией, потоковой передачей, отказоустойчивостью и безопасным pairing.
+- [NEXUS MODEL CENTER и EVOLUTION](docs/NEXUS_MODEL_CENTER_AND_EVOLUTION_RU.md) — каталог локальных моделей (Gemma 4 E2B как Balanced-кандидат), безопасная политика загрузки, версии, лицензии и контролируемое саморазвитие.
 
 ## Сборка
 В каталоге проекта находятся корневые Gradle-конфигурации, Android Manifest и Jetpack Compose entry point. CI настроен на Gradle 8.13 и JDK 17: debug APK и unit tests.
