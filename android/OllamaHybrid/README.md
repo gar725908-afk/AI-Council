@@ -27,6 +27,7 @@
 - **Anthropic gateway:** нативный Messages API, потоковые content_block_delta события.
 - **Gemini gateway:** нативный streamGenerateContent с SSE.
 - **Provider registry:** выбор OpenAI-compatible, Anthropic Claude или Google Gemini в интерфейсе; endpoint, model и ключи раздельны для каждого профиля.
+- **Model discovery:** проверка соединения и загрузка списка моделей через /models, /v1/models или Gemini /v1beta/models; найденную модель можно выбрать в UI.
 - **Credential vault:** API-ключи шифруются AES-GCM ключом Android Keystore; в обычных настройках хранятся только endpoint и имя модели.
 - **NEXUS COUNCIL:** восемь преднастроенных ролей; одновременно работают максимум три агента; затем Manager выполняет отдельный синтез.
 - **Mission Journal:** локальный SQLite-журнал миссий, результатов агентов и событий; фиксируются состояния и ошибки.
@@ -42,7 +43,7 @@
 - Mission Journal сохраняет миссии и ответы агентов, но полноценная история чатов, вложения, полнотекстовый индекс и поиск по архиву ещё не реализованы. Содержимое миссий хранится в app-private SQLite; отдельное шифрование всей базы данных пока не добавлено.
 - Recovery пока фиксирует прерванное состояние; автоматический безопасный resume и WorkManager orchestration ещё не реализованы.
 - Tool Gateway, MCP client, browser automation, Material Library processing, Voice, Android Bridge executor, Shizuku/Root и Evolution executor ещё не подключены как production-функции.
-- Отдельная health/model discovery проверка для каждого провайдера ещё не добавлена.
+- Каталог моделей запрашивает первую страницу ответа провайдера; постраничная загрузка и расширенная диагностика лимитов/прав доступа пока не реализованы.
 - Unit tests добавлены, но прохождение тестов и Android APK build должны быть подтверждены GitHub Actions.
 - UI не сообщает об успешном действии Android Bridge, пока bridge не реализован.
 
