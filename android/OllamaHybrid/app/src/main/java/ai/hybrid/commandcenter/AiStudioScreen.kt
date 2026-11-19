@@ -513,6 +513,8 @@ fun AiStudioScreen(
                                         )
                                     } else {
                                         val profile = settingsStore.load(routeKind.name)
+                                        val localRoute = routeKind == ProviderKind.ON_DEVICE_LITERT ||
+                                            routeKind == ProviderKind.ON_DEVICE_LLAMA_CPP
                                         val routeModel = modelOverride ?: profile.model.ifBlank {
                                             if (localRoute) "active-device-model" else ""
                                         }
@@ -520,8 +522,6 @@ fun AiStudioScreen(
                                             "Для роли " + agent.name + " не настроена модель " + routeKind.displayName +
                                                 ". Укажите модель для роли или сохраните модель в профиле провайдера."
                                         }
-                                        val localRoute = routeKind == ProviderKind.ON_DEVICE_LITERT ||
-                                            routeKind == ProviderKind.ON_DEVICE_LLAMA_CPP
                                         val routeEndpoint = profile.endpoint.ifBlank {
                                             defaultProviderEndpoint(routeKind)
                                         }
