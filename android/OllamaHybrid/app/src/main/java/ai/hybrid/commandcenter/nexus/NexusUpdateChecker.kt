@@ -44,9 +44,25 @@ class NexusUpdateChecker(
             }
             val payload = response.body?.string()
                 ?: throw IOException("GitHub вернул пустой ответ.")
-            val json = JSONObject(payload)
-            val tag = json.optString("tag_name").removePrefix("v").trim()
-            require(isSemVer(tag)) { "GitHub Release содержит некорректный tag_name." }
+            val releases = org.json.JSONArray(payload)
+            val candidates = buildList {
+                for (index in 0 until releases.length()) {
+                    val item = releases.optJSONObject(index) ?: continue
+                    if (item.optBoolean("draft") || item.optBoolean("prerelease")) continue
+                    val releaseTag = item.optString("tag_name")
+                    if (!releaseTag.startsWith(NEXUS_TAG_PREFIX)) continue
+                    val version = releaseTag.removePrefix(NEXUS_TAG_PREFIX)
+                    if (isSemVer(version)) add(item)
+                }
+            }
+            val json = candidates.maxWithOrNull { left, right ->
+                compareVersions(
+                    left.optString("tag_name").removePrefix(NEXUS_TAG_PREFIX),
+                    right.optString("tag_name").removePrefix(NEXUS_TAG_PREFIX)
+                )
+            } ?: throw IOException("Android-релизы NEXUS пока не опубликованы.")
+
+            val tag = json.optString("tag_name").removePrefix(NEXUS_TAG_PREFIX).trim()
 
             val assets = json.optJSONArray("assets")
             var apkUrl: String? = null
@@ -97,7 +113,8 @@ class NexusUpdateChecker(
 
     private companion object {
         const val LATEST_RELEASE_URL =
-            "https://api.github.com/repos/gar725908-afk/AI-Council/releases/latest"
+            "https://api.github.com/repos/gar725908-afk/AI-Council/releases?per_page=30"
+        const val NEXUS_TAG_PREFIX = "nexus-v"
         const val RELEASES_URL = "https://github.com/gar725908-afk/AI-Council/releases"
     }
 }
