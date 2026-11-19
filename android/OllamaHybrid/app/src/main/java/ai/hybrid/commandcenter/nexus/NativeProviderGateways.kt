@@ -1,5 +1,7 @@
 package ai.hybrid.commandcenter.nexus
 
+import android.content.Context
+
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -32,15 +34,18 @@ enum class ProviderKind(val displayName: String) {
     NVIDIA("NVIDIA API Catalog"),
     OLLAMA("Ollama local"),
     ANTHROPIC("Anthropic Claude"),
-    GEMINI("Google Gemini")
+    GEMINI("Google Gemini"),
+    ON_DEVICE_LITERT("On-device LiteRT-LM"),
+    ON_DEVICE_LLAMA_CPP("On-device llama.cpp")
 }
 
 fun ProviderKind.requiresApiKey(): Boolean = when (this) {
-    ProviderKind.OPENAI_COMPATIBLE, ProviderKind.OLLAMA -> false
+    ProviderKind.OPENAI_COMPATIBLE, ProviderKind.OLLAMA,
+    ProviderKind.ON_DEVICE_LITERT, ProviderKind.ON_DEVICE_LLAMA_CPP -> false
     else -> true
 }
 
-fun createModelGateway(kind: ProviderKind): ModelGateway = when (kind) {
+fun createModelGateway(kind: ProviderKind, context: Context? = null): ModelGateway = when (kind) {
     ProviderKind.OPENAI_COMPATIBLE,
     ProviderKind.OPENAI,
     ProviderKind.DEEPSEEK,
@@ -53,6 +58,12 @@ fun createModelGateway(kind: ProviderKind): ModelGateway = when (kind) {
     ProviderKind.CEREBRAS,
     ProviderKind.NVIDIA,
     ProviderKind.OLLAMA -> OpenAiCompatibleGateway()
+    ProviderKind.ON_DEVICE_LITERT -> LiteRtLmGateway(
+        context ?: throw IllegalArgumentException("Для локального LiteRT-LM требуется Android Context.")
+    )
+    ProviderKind.ON_DEVICE_LLAMA_CPP -> LlamaCppGateway(
+        context ?: throw IllegalArgumentException("Для локального llama.cpp требуется Android Context.")
+    )
     ProviderKind.ANTHROPIC -> AnthropicMessagesGateway()
     ProviderKind.GEMINI -> GeminiGenerateContentGateway()
 }
