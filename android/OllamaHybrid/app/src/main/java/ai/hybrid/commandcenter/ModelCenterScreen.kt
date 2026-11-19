@@ -169,6 +169,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                             }.onFailure {
                                 status = it.message ?: "Ошибка загрузки модели."
                             }
+                            activeDownloadCall = null
                             downloadingId = null
                         }
                     },
@@ -176,6 +177,10 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                         runCatching { storage.activate(model.id) }
                             .onSuccess { status = "Активная модель: " + it.displayName; refresh() }
                             .onFailure { status = it.message ?: "Не удалось активировать модель." }
+                    },
+                    onCancelDownload = {
+                        status = "Отменяю загрузку…"
+                        activeDownloadCall?.cancel()
                     },
                     onDelete = {
                         runCatching { storage.remove(model.id) }
@@ -313,6 +318,7 @@ private fun ModelCatalogCard(
     onLicenseChange: (Boolean) -> Unit,
     onDownload: () -> Unit,
     onActivate: () -> Unit,
+    onCancelDownload: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth(),
@@ -346,6 +352,9 @@ private fun ModelCatalogCard(
                 if (isDownloading) {
                     LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
                     Text(progressLabel, style = MaterialTheme.typography.labelSmall)
+                    TextButton(onClick = onCancelDownload, modifier = Modifier.fillMaxWidth()) {
+                        Text("Отменить загрузку")
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (installed == null) {
