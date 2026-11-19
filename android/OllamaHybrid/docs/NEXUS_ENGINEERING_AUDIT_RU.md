@@ -24,7 +24,8 @@
 
 ### Provider security и credentials
 - Общая проверка endpoint: HTTP допускается только для localhost/частной сети; публичные endpoint требуют HTTPS.
-- API credentials хранятся отдельно от настроек и маршрутов, шифруются AES-GCM с Android Keystore.
+- API credentials хранятся отдельно от настроек и маршрутов, шифруются AES-GCM с Android Keystore; размер секрета ограничен 16 КиБ.
+- Центральный `CompletionRequest` валидирует модель, endpoint, температуру, роли, количество сообщений, размер каждого сообщения и общий объём контекста до обращения к gateway.
 - Новые записи vault используют secret ID как AES-GCM AAD; старые записи читаются и мигрируют в новый формат при успешном чтении.
 - Evolution routing policy не принимает endpoint, API key или произвольные поля.
 
@@ -58,7 +59,8 @@
 
 Добавлены JUnit-тесты для:
 - строгой маршрутизации Evolution: schema version, allowlist ролей, JSON-типы, provider names и ограничения model ID;
-- endpoint security: частные IPv4/IPv6, отказ от публичного HTTP и malformed hostname;
+- endpoint security: частные IPv4/IPv6, отказ от публичного HTTP, malformed hostname и чрезмерно длинных endpoint;
+- central completion request: границы model ID, контекста, сообщений, API key и temperature;
 - Android Bridge policy: approval requirements, freshness capability snapshot/grant и лимиты request arguments.
 
 Тесты добавлены в исходники, но не запускались.
