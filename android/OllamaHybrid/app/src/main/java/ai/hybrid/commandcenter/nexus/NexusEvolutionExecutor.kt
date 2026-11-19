@@ -50,13 +50,17 @@ class NexusEvolutionExecutor(context: Context) {
             "Изменение превышает допустимый размер 256 КБ."
         }
         val current = activeVersion()
+        val nextVersion = maxOf(
+            availableVersions().maxOrNull() ?: 0L,
+            history().maxOfOrNull { it.proposal.proposedVersion } ?: 0L
+        ) + 1L
         val proposal = EvolutionProposal(
             id = UUID.randomUUID().toString(),
             kind = kind,
             title = title.trim(),
             rationale = rationale.trim(),
             beforeVersion = current,
-            proposedVersion = current + 1,
+            proposedVersion = nextVersion,
             contentSha256 = sha256(payload),
             createdAtEpochMs = System.currentTimeMillis()
         )
@@ -158,6 +162,7 @@ class NexusEvolutionExecutor(context: Context) {
         val target = versionFile(version)
         require(target.isFile) { "Версия " + version + " не найдена в архиве Evolution." }
         val previous = activeVersion()
+        require(version <= previous) { "Нельзя откатить систему вперёд по истории версий." }
         if (previous == version) return@runCatching version
         writeJsonAtomic(activeFile, JSONObject().put("version", version))
         appendAudit("ROLLBACK", "rollback", previous, version, "Пользователь восстановил сохранённую версию.")
