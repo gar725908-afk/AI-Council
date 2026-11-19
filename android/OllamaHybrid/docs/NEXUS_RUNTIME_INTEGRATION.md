@@ -14,6 +14,10 @@ Runtime mapping:
 
 The registry rejects use after close and closes all managed gateways when the screen is disposed.
 
+Model artifacts use unique immutable filenames, so a re-download cannot overwrite a file that may still be mapped by an active inference engine. Imports are staged to a temporary file and promoted only after copy completion; registry entries are restricted to files inside the app-private model directory, and activation rechecks size and SHA-256. A failed import/download removes its temporary or newly promoted artifact.
+
+
+
 ## Local-first Council
 
 `NexusLocalCouncilManager` implements the Manager control plane using the currently active on-device model. The model returns a constrained JSON decision:
@@ -23,7 +27,9 @@ The registry rejects use after close and closes all managed gateways when the sc
 - `finish` — return the final summary
 - `yield_control` — pause execution
 
-The application validates every participant ID and task before dispatch. Model output cannot invoke tools, shell commands, Android APIs, or arbitrary code. The decision parser enforces an action-specific JSON schema: required fields must be present, unknown fields are rejected, and action text, participant IDs, and task strings must have the expected JSON types and size limits. Each assignment must contain exactly `participantId` and `task`.
+The application validates every participant ID and task before dispatch. Model output cannot invoke tools, shell commands, Android APIs, or arbitrary code. The provider SSE transport now treats a failed bounded-channel send as a stream error rather than silently dropping generated fragments. This prevents apparently successful but truncated model output when a consumer cannot keep up.
+
+The decision parser enforces an action-specific JSON schema: required fields must be present, unknown fields are rejected, and action text, participant IDs, and task strings must have the expected JSON types and size limits. Each assignment must contain exactly `participantId` and `task`.
 
 `NexusLocalModelParticipantAdapter` provides eight bounded executor roles. In the initial local configuration, the Manager and all eight executors share the active local model. Execution is serialized (`maxParallelism = 1`) to avoid concurrent access to a single native inference context and to limit memory pressure.
 
@@ -50,7 +56,7 @@ Approved `ROUTING_POLICY` payloads are parsed by the strict `NexusEvolutionRouti
 }
 ```
 
-Only the eight built-in Council role IDs and exact `ProviderKind` enum values are accepted. The schema version must be explicitly present as a numeric `1`; route values and model overrides must be JSON strings, and `modelOverrides`, when present, must be an object. Unknown root fields, unknown roles, invalid providers, blank/oversized model IDs, wrong JSON value types, and malformed JSON are rejected both when a proposal is created and again immediately before activation. Endpoints and credentials cannot be stored in a routing policy; they remain in provider settings and the credential vault. Evolution model overrides take precedence over saved per-agent model overrides. When no Evolution route exists for an agent, the saved per-agent route and then the selected default provider are used. Model Center includes a v1 template to reduce manual schema errors.
+Only the eight built-in Council role IDs and exact `ProviderKind` enum values are accepted. The schema version must be explicitly present as a numeric `1`; route values and model overrides must be JSON strings, and `modelOverrides`, when present, must be an object. Unknown root fields, unknown roles, invalid providers, blank/oversized model IDs, wrong JSON value types, and malformed JSON are rejected both when a proposal is created and again immediately before activation. Endpoints and credentials cannot be stored in a routing policy; they remain in provider settings and the credential vault. New credential records authenticate their secret identifier as AES-GCM additional authenticated data; legacy records are read and migrated in place when possible. Evolution model overrides take precedence over saved per-agent model overrides. When no Evolution route exists for an agent, the saved per-agent route and then the selected default provider are used. Model Center includes a v1 template to reduce manual schema errors.
 
 Evolution storage fails closed: the active-version pointer must be a valid non-negative integer JSON value; malformed pointers are not silently reset to version zero. Before resolving active configuration or rolling back, the executor verifies the full version ancestry, active proposal records, parent links, and SHA-256 checksums for archived payloads. The immutable version record is persisted before the active pointer is moved, preserving the prior active version if the pointer update fails.
 
