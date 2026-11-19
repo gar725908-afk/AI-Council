@@ -19,13 +19,34 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 enum class ProviderKind(val displayName: String) {
-    OPENAI_COMPATIBLE("OpenAI / DeepSeek / OpenRouter / Ollama"),
+    OPENAI_COMPATIBLE("Custom OpenAI-compatible"),
+    OPENAI("OpenAI"),
+    DEEPSEEK("DeepSeek"),
+    OPENROUTER("OpenRouter"),
+    GROQ("Groq"),
+    MISTRAL("Mistral"),
+    TOGETHER("Together AI"),
+    FIREWORKS("Fireworks AI"),
+    OLLAMA("Ollama local"),
     ANTHROPIC("Anthropic Claude"),
     GEMINI("Google Gemini")
 }
 
+fun ProviderKind.requiresApiKey(): Boolean = when (this) {
+    ProviderKind.OPENAI_COMPATIBLE, ProviderKind.OLLAMA -> false
+    else -> true
+}
+
 fun createModelGateway(kind: ProviderKind): ModelGateway = when (kind) {
-    ProviderKind.OPENAI_COMPATIBLE -> OpenAiCompatibleGateway()
+    ProviderKind.OPENAI_COMPATIBLE,
+    ProviderKind.OPENAI,
+    ProviderKind.DEEPSEEK,
+    ProviderKind.OPENROUTER,
+    ProviderKind.GROQ,
+    ProviderKind.MISTRAL,
+    ProviderKind.TOGETHER,
+    ProviderKind.FIREWORKS,
+    ProviderKind.OLLAMA -> OpenAiCompatibleGateway()
     ProviderKind.ANTHROPIC -> AnthropicMessagesGateway()
     ProviderKind.GEMINI -> GeminiGenerateContentGateway()
 }
