@@ -80,8 +80,9 @@ class ProviderModelCatalog(
                     ?: throw IOException("В ответе каталога отсутствует массив data.")
                 buildList {
                     for (index in 0 until data.length()) {
-                        val id = data.optJSONObject(index)?.optString("id")
-                        if (!id.isNullOrBlank()) add(id)
+                        if (size >= MAX_MODELS) break
+                        val id = safeModelId(data.optJSONObject(index)?.optString("id"))
+                        if (id != null) add(id)
                     }
                 }
             }
@@ -91,23 +92,33 @@ class ProviderModelCatalog(
                     ?: throw IOException("В ответе Gemini отсутствует массив models.")
                 buildList {
                     for (index in 0 until data.length()) {
+                        if (size >= MAX_MODELS) break
                         val item = data.optJSONObject(index) ?: continue
                         val methods = item.optJSONArray("supportedGenerationMethods")
                         val supportsTextGeneration = methods == null ||
                             (0 until methods.length()).any { methods.optString(it) == "generateContent" }
-                        val name = item.optString("name").removePrefix("models/")
-                        if (supportsTextGeneration && name.isNotBlank()) add(name)
+                        val name = safeModelId(item.optString("name").removePrefix("models/"))
+                        if (supportsTextGeneration && name != null) add(name)
                     }
                 }
             }
         }
-        return models.distinct().sorted().also {
+        return models.distinct().sorted().take(MAX_MODELS).also {
             if (it.isEmpty()) throw IOException("Провайдер ответил, но доступных моделей для генерации не найдено.")
         }
     }
 
+    private fun safeModelId(value: String?): String? {
+        val normalized = value?.trim() ?: return null
+        if (normalized.isBlank() || normalized.length > MAX_MODEL_ID_CHARS) return null
+        if (normalized.any { it.code < 0x20 || it.code == 0x7f }) return null
+        return normalized
+    }
+
     private companion object {
         const val MAX_CATALOG_RESPONSE_BYTES = 1_048_576
+        const val MAX_MODELS = 500
+        const val MAX_MODEL_ID_CHARS = 200
     }
 
     private suspend fun execute(request: Request): String =
