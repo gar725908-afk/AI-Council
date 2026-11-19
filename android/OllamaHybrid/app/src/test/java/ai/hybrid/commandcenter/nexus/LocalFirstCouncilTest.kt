@@ -13,7 +13,8 @@ class LocalFirstCouncilTest {
         val web = CouncilParticipantDescriptor(
             id = "web-session-a",
             displayName = "Free AI Web Session",
-            transport = CouncilParticipantTransport.ANDROID_WEBVIEW_SESSION
+            transport = CouncilParticipantTransport.ANDROID_WEBVIEW_SESSION,
+            externalContextConsentGranted = true
         )
         val adapter = RecordingAdapter(web)
         val manager = QueueManager(
