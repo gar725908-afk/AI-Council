@@ -1,36 +1,37 @@
-# OllamaHybrid — Android edition materials
+# NEXUS — Android personal AI ecosystem
 
-This directory currently contains the Android architecture/specification and the first Bridge foundation files alongside the existing Python desktop AI-Council. It is **not yet a complete, independently buildable Android Studio project mirror**.
+**NEXUS** — персональная Android AI-экосистема, оформленная в художественной вселенной SIRIUS. Внутренний канон и продуктовая терминология: [NEXUS CODEX](docs/NEXUS_CODEX_RU.md).
 
-## Product and design specifications
-- [Project master specification](docs/PROJECT_MASTER_SPEC_RU.md)
-- [Cyberpunk UI design system and screen specification v1](docs/UI_DESIGN_SYSTEM_RU.md)
-- [Hybrid Universe Experimental Edition — visual system and detailed screens v2](docs/HYBRID_UNIVERSE_EXPERIMENTAL_V2_RU.md)
-- [V3 — Full AI Ecosystem Architecture](docs/V3_FULL_AI_ECOSYSTEM_ARCHITECTURE_RU.md)
-- [Evolution Core — self-improvement and self-optimization architecture](docs/EVOLUTION_CORE_ARCHITECTURE_RU.md)
-- [Universal Internet Access and Agent Browser specification](docs/WEB_ACCESS_AND_AGENT_BROWSER_RU.md)
+> SIRIUS и внеземное происхождение технологии — художественная часть проекта, а не утверждение о реальном источнике программного обеспечения.
+
+## Документы NEXUS
+- [NEXUS CODEX — история, канон, имена и визуальный язык](docs/NEXUS_CODEX_RU.md)
+- [План технического перехода и реализации](docs/NEXUS_TECHNICAL_ROADMAP_RU.md)
+
+## Базовая архитектура
+NEXUS продолжает Android-архитектуру, ранее разработанную под рабочим названием **OllamaHybrid**. Каталог `android/OllamaHybrid/`, namespace `ai.hybrid.commandcenter` и текущие технические identifiers пока сохраняются для совместимости. Массовое переименование будет отдельным этапом после восстановления полного проекта и проверки сборки.
+
+- [Master specification](docs/PROJECT_MASTER_SPEC_RU.md)
+- [V3 full AI ecosystem architecture](docs/V3_FULL_AI_ECOSYSTEM_ARCHITECTURE_RU.md)
+- [UI design system](docs/UI_DESIGN_SYSTEM_RU.md)
+- [Hybrid Universe experimental UI specification](docs/HYBRID_UNIVERSE_EXPERIMENTAL_V2_RU.md)
+- [Evolution Core](docs/EVOLUTION_CORE_ARCHITECTURE_RU.md)
 - [Android Bridge architecture](docs/ANDROID_BRIDGE_ARCHITECTURE_RU.md)
 - [Android Bridge test plan](docs/ANDROID_BRIDGE_TEST_PLAN_RU.md)
 
-## Committed in this directory
-- Product master specification and accumulated decisions.
-- UI design system v1 and Hybrid Universe Experimental Edition v2.
-- V3 full AI ecosystem target architecture, service boundaries, data model, mission lifecycle, security, verification, resilience and staged implementation plan.
-- Evolution Core architecture: intelligence, runtime and software evolution; Resource Governor; MCP/tool governance; evidence-based strategy optimization; sandboxed code evolution.
-- Universal Internet Access / Agent Browser architecture specification.
-- Hybrid Android Bridge architecture, including Standard / Shizuku Extended / Root profiles.
-- Test plan and device matrix.
-- Initial Kotlin Bridge contracts, risk policy, tool registry/router and Root UID probe.
-- Android app Gradle configuration snapshot for version 0.5.0.
+## Status — important
+Этот каталог GitHub пока **не является полным независимо собираемым Android Studio project**. В проверенном дереве присутствуют спецификации, Gradle-конфигурация app-модуля и начальные Bridge-файлы, но отсутствуют корневые Gradle-файлы/Wrapper, AndroidManifest, Compose entry point, полноценные экраны и ресурсы.
 
-## Full working project
-The full current Android working tree is maintained separately as the OllamaHybrid project archive supplied with this update. The remaining existing Android application sources, resources and root Gradle project files still need to be synchronized into this GitHub directory before it can be built directly from GitHub.
+Полный рабочий Android source tree должен быть найден и синхронизирован до массовых изменений кода. Целевые архитектурные документы не являются доказательством реализации функций.
 
-## Status
-- Architecture, Bridge foundation and UI/Internet specifications committed.
-- Static validation and isolated Kotlin/JVM smoke tests passed for the earlier Bridge foundation.
-- Full Android Gradle build, APK install and Root/Shizuku device tests are **not** claimed.
-- Full Shizuku/Sui integration, Direct Root command service, Permission Center UI, native adapters, local llama.cpp runtime and Council tool wiring remain future implementation work.
-- UI, browser and V3 architecture documents are target specifications, not claims that those screens/features/services are already implemented.
+### Принципы
+- Local-first; cloud providers — opt-in.
+- Сменяемые модели; постоянное состояние принадлежит NEXUS runtime.
+- Typed tools, allowlists, permission checks, approval gates и audit.
+- Android Bridge управляет только Android-устройством и работает в пределах доступных Android API/разрешений.
+- Recovery Core изолирован от AI-editable workspace.
+- Hybrid Mesh отложен за пределы V3.
+- APK публикуется в GitHub Releases только после реальной сборки, установки и QA.
 
-APK binaries belong in GitHub Releases only after a real build, device verification and checksum generation.
+## Сохранение desktop AI-Council
+Python/PySide6 desktop-приложение в корне репозитория остаётся отдельным продуктом и не переименовывается этим Android-переходом.
