@@ -108,6 +108,9 @@ internal object ProviderEndpointPolicy {
 }
 
 internal object SseTransport {
+    private const val MAX_SSE_LINE_BYTES = 1_048_576L
+    private const val MAX_ERROR_BODY_BYTES = 2_048L
+
     private val defaultClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(180, TimeUnit.SECONDS)
@@ -131,8 +134,11 @@ internal object SseTransport {
                 response.use { networkResponse ->
                     try {
                         if (!networkResponse.isSuccessful) {
-                            val details = networkResponse.body?.string()?.take(2_000)
-                                ?: networkResponse.message
+                            val details = if (networkResponse.body != null) {
+                                networkResponse.peekBody(MAX_ERROR_BODY_BYTES).string().take(2_000)
+                            } else {
+                                networkResponse.message
+                            }
                             close(ProviderHttpException(networkResponse.code, details))
                             return
                         }
@@ -140,7 +146,17 @@ internal object SseTransport {
                             ?: throw IOException("Провайдер вернул пустое тело ответа.")
                         val source = body.source()
                         while (!source.exhausted() && !channel.isClosedForSend) {
-                            val line = source.readUtf8Line() ?: continue
+                            val newlineOffset = source.indexOf(
+                                '\n'.code.toByte(),
+                                0L,
+                                MAX_SSE_LINE_BYTES.toLong() + 1L
+                            )
+                            if (newlineOffset > MAX_SSE_LINE_BYTES ||
+                                (newlineOffset == -1L && source.request(MAX_SSE_LINE_BYTES.toLong() + 1L))
+                            ) {
+                                throw IOException("Provider SSE line exceeds the 1 MiB safety limit.")
+                            }
+                            val line = source.readUtf8Line() ?: break
                             if (!line.startsWith("data:")) continue
                             val data = line.removePrefix("data:").trim()
                             if (data == "[DONE]") break
