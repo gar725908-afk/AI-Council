@@ -25,7 +25,13 @@ class NexusModelCenterTest {
         assertTrue(ModelDownloadPolicy.evaluate(
             gemma, ModelDownloadRequest(gemma.id, Long.MAX_VALUE, "Apache-2.0")
         ) is ModelDownloadDecision.Allowed)
-        assertTrue(NexusModelCatalog.find("qwen3-0.6b")?.isDownloadable == false)
+        val qwen = NexusModelCatalog.find("qwen3-0.6b")!!
+        assertTrue(qwen.isDownloadable)
+        assertEquals(ModelRuntimeKind.LLAMA_CPP, qwen.artifact?.runtime)
+        assertEquals(428_970_080L, qwen.artifact?.sizeBytes)
+        assertTrue(ModelDownloadPolicy.evaluate(
+            qwen, ModelDownloadRequest(qwen.id, Long.MAX_VALUE, "Apache-2.0")
+        ) is ModelDownloadDecision.Allowed)
     }
 
     @Test fun downloadRequiresChecksumSpaceAndExactLicense() {
