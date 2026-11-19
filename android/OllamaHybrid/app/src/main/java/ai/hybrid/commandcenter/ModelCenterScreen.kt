@@ -194,6 +194,8 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.primary)
             Text("Можно выбрать файл .gguf для llama.cpp или .litertlm для LiteRT-LM. NEXUS скопирует его в app-private storage.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Важно: встроенный шаблон диалога llama.cpp сейчас рассчитан на Qwen3 ChatML. Другие GGUF могут требовать отдельную chat template и пока не гарантированно совместимы.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Импортировать файл модели")
             }
