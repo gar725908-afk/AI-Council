@@ -343,6 +343,7 @@ fun AiStudioScreen(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
+                        enabled = settingsLoaded,
                         onClick = {
                             scope.launch {
                                 try {
