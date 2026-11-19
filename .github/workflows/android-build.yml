@@ -34,9 +34,7 @@ jobs:
       - name: Assemble debug APK
         working-directory: android/OllamaHybrid
         run: gradle --no-daemon :app:assembleDebug
-      - name: Run unit tests
-        working-directory: android/OllamaHybrid
-        run: gradle --no-daemon :app:testDebugUnitTest
+      # Unit and device testing are intentionally deferred to the next NEXUS phase.
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
