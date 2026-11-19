@@ -81,11 +81,21 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
         require(goal.isNotBlank()) { "Цель миссии не может быть пустой." }
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
-        writableDatabase.insertOrThrow("missions", null, ContentValues().apply {
-            put("id", id); put("goal", goal); put("endpoint", endpoint); put("model", model)
-            put("state", MissionStatus.DRAFT.name); put("created_at", now); put("updated_at", now)
-        })
-        addEvent(id, "MISSION_CREATED", "Миссия создана")
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.insertOrThrow("missions", null, ContentValues().apply {
+                put("id", id); put("goal", goal); put("endpoint", endpoint); put("model", model)
+                put("state", MissionStatus.DRAFT.name); put("created_at", now); put("updated_at", now)
+            })
+            db.insertOrThrow("mission_events", null, ContentValues().apply {
+                put("mission_id", id); put("event", "MISSION_CREATED")
+                put("detail", "Миссия создана"); put("created_at", now)
+            })
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
         return id
     }
 
@@ -119,14 +129,24 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
 
     fun saveAgentResult(missionId: String, result: AgentRunResult) {
         val now = System.currentTimeMillis()
-        writableDatabase.insertOrThrow("agent_results", null, ContentValues().apply {
-            put("id", UUID.randomUUID().toString()); put("mission_id", missionId)
-            put("agent_id", result.agent.id); put("agent_name", result.agent.name)
-            put("role", result.agent.role.name); put("status", result.status.name)
-            put("output", result.output); put("error", result.error); put("created_at", now)
-        })
-        addEvent(missionId, "AGENT_${result.status.name}",
-            "${result.agent.name}: ${result.error ?: "результат сохранён"}")
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.insertOrThrow("agent_results", null, ContentValues().apply {
+                put("id", UUID.randomUUID().toString()); put("mission_id", missionId)
+                put("agent_id", result.agent.id); put("agent_name", result.agent.name)
+                put("role", result.agent.role.name); put("status", result.status.name)
+                put("output", result.output); put("error", result.error); put("created_at", now)
+            })
+            db.insertOrThrow("mission_events", null, ContentValues().apply {
+                put("mission_id", missionId); put("event", "AGENT_${result.status.name}")
+                put("detail", "${result.agent.name}: ${result.error ?: "результат сохранён"}")
+                put("created_at", now)
+            })
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     fun getRecentMissions(limit: Int = 30): List<MissionRecord> {
