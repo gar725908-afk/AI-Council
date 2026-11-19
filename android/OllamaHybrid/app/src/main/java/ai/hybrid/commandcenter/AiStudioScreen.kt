@@ -93,6 +93,13 @@ fun AiStudioScreen(
             }
         )
     }
+    var agentModelOverrides by remember {
+        mutableStateOf(
+            councilAgents.associate { agent ->
+                agent.id to routingStore.loadModelOverride(agent.id).orEmpty()
+            }
+        )
+    }
     var expandedAgentRoute by remember { mutableStateOf<String?>(null) }
     var apiKey by remember { mutableStateOf("") }
     var hasSavedKey by remember(providerKind) {
@@ -346,25 +353,38 @@ fun AiStudioScreen(
                     )
                     councilAgents.forEach { agent ->
                         val selectedRoute = agentRoutes[agent.id] ?: providerKind
-                        Box {
-                            TextButton(onClick = { expandedAgentRoute = agent.id }) {
-                                Text(agent.name + "  ·  " + selectedRoute.displayName)
-                            }
-                            DropdownMenu(
-                                expanded = expandedAgentRoute == agent.id,
-                                onDismissRequest = { expandedAgentRoute = null }
-                            ) {
-                                ProviderKind.values().forEach { kind ->
-                                    DropdownMenuItem(
-                                        text = { Text(kind.displayName) },
-                                        onClick = {
-                                            routingStore.save(agent.id, kind)
-                                            agentRoutes = agentRoutes + (agent.id to kind)
-                                            expandedAgentRoute = null
-                                        }
-                                    )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box {
+                                TextButton(onClick = { expandedAgentRoute = agent.id }) {
+                                    Text(agent.name + "  ·  " + selectedRoute.displayName)
+                                }
+                                DropdownMenu(
+                                    expanded = expandedAgentRoute == agent.id,
+                                    onDismissRequest = { expandedAgentRoute = null }
+                                ) {
+                                    ProviderKind.values().forEach { kind ->
+                                        DropdownMenuItem(
+                                            text = { Text(kind.displayName) },
+                                            onClick = {
+                                                routingStore.save(agent.id, kind)
+                                                agentRoutes = agentRoutes + (agent.id to kind)
+                                                expandedAgentRoute = null
+                                            }
+                                        )
+                                    }
                                 }
                             }
+                            OutlinedTextField(
+                                value = agentModelOverrides[agent.id].orEmpty(),
+                                onValueChange = { value ->
+                                    agentModelOverrides = agentModelOverrides + (agent.id to value)
+                                    routingStore.saveModelOverride(agent.id, value)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Модель роли: " + agent.name) },
+                                placeholder = { Text("Пусто — использовать модель профиля") },
+                                singleLine = true
+                            )
                         }
                     }
                 }
@@ -412,18 +432,20 @@ fun AiStudioScreen(
                                 maxParallelAgents = 3,
                                 routeResolver = { agent ->
                                     val routeKind = routingStore.load(agent.id) ?: providerKind
+                                    val modelOverride = routingStore.loadModelOverride(agent.id)
                                     if (routeKind == providerKind) {
                                         CouncilModelRoute(
                                             gateway = gateway,
                                             endpoint = endpoint,
-                                            model = model,
+                                            model = modelOverride ?: model,
                                             apiKey = activeKey.orEmpty()
                                         )
                                     } else {
                                         val profile = settingsStore.load(routeKind.name)
-                                        require(profile.model.isNotBlank()) {
+                                        val routeModel = modelOverride ?: profile.model
+                                        require(routeModel.isNotBlank()) {
                                             "Для роли " + agent.name + " не настроена модель " + routeKind.displayName +
-                                                ". Сначала выберите провайдера в AI Studio и сохраните его параметры."
+                                                ". Укажите модель для роли или сохраните модель в профиле провайдера."
                                         }
                                         val routeEndpoint = profile.endpoint.ifBlank {
                                             defaultProviderEndpoint(routeKind)
@@ -442,7 +464,7 @@ fun AiStudioScreen(
                                         CouncilModelRoute(
                                             gateway = createModelGateway(routeKind),
                                             endpoint = routeEndpoint,
-                                            model = profile.model,
+                                            model = routeModel,
                                             apiKey = routeKey
                                         )
                                     }
