@@ -160,7 +160,8 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
                 append(message.content)
                 append("<|im_end|>\n")
             }
-            append("<|im_start|>assistant\n")
+            // Qwen3 non-thinking mode: a closed empty think block precedes the answer.
+            append("<|im_start|>assistant\n<think>\n\n</think>\n")
         }
     }
 }
