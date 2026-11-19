@@ -513,7 +513,7 @@ fun AiStudioScreen(
                                     listOf(
                                         evolutionExecutor.activeConfiguration(EvolutionChangeKind.PROMPT_PROFILE),
                                         evolutionExecutor.activeConfiguration(EvolutionChangeKind.SKILL_PACK)
-                                    ).filter { it.isNotBlank() }.joinToString("\\n\\n")
+                                    ).filter { it.isNotBlank() }.joinToString("\n\n")
                                 )
                             }
                             val result = if (usesOnDeviceModel) {
