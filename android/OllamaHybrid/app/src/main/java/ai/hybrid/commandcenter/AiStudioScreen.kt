@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +48,10 @@ import ai.hybrid.commandcenter.nexus.MissionJournal
 import ai.hybrid.commandcenter.nexus.MissionStatus
 import ai.hybrid.commandcenter.nexus.ProviderModelCatalog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 
@@ -98,7 +103,11 @@ fun AiStudioScreen(
     var answer by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Провайдер не проверен") }
     var isRunning by remember { mutableStateOf(false) }
-    var recentMissions by remember { mutableStateOf(journal.getRecentMissions(8)) }
+    var activeRun by remember { mutableStateOf<Job?>(null) }
+    var recentMissions by remember { mutableStateOf(emptyList<ai.hybrid.commandcenter.nexus.MissionRecord>()) }
+    LaunchedEffect(journal) {
+        recentMissions = withContext(Dispatchers.IO) { journal.getRecentMissions(8) }
+    }
     val providerKeyId = AndroidCredentialVault.providerKeyId(providerKind.name)
 
     Column(
@@ -359,7 +368,7 @@ fun AiStudioScreen(
 
         Button(
             onClick = {
-                scope.launch {
+                activeRun = scope.launch {
                     isRunning = true
                     answer = ""
                     status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
@@ -368,9 +377,12 @@ fun AiStudioScreen(
                         require(endpoint.isNotBlank() && model.isNotBlank()) {
                             "Сначала укажите endpoint и модель."
                         }
-                        missionId = journal.createMission(prompt, endpoint, model)
-                        journal.transition(missionId!!, MissionStatus.QUEUED, "Миссия поставлена в очередь")
-                        journal.transition(missionId!!, MissionStatus.RUNNING, "Запрос отправлен провайдеру")
+                        missionId = withContext(Dispatchers.IO) {
+                            journal.createMission(prompt, endpoint, model).also { id ->
+                                journal.transition(id, MissionStatus.QUEUED, "Миссия поставлена в очередь")
+                                journal.transition(id, MissionStatus.RUNNING, "Запрос отправлен провайдеру")
+                            }
+                        }
 
                         val activeKey = if (apiKey.isNotBlank()) {
                             credentialVault.put(providerKeyId, apiKey)
@@ -420,25 +432,31 @@ fun AiStudioScreen(
                                 apiKey = activeKey.orEmpty(),
                                 agents = councilAgents
                             )
-                            result.agentResults.forEach { journal.saveAgentResult(missionId!!, it) }
+                            withContext(Dispatchers.IO) {
+                                result.agentResults.forEach { journal.saveAgentResult(missionId!!, it) }
+                            }
                             answer = result.synthesis.orEmpty()
                             if (result.synthesis.isNullOrBlank()) {
-                                journal.transition(
-                                    missionId!!,
-                                    MissionStatus.FAILED,
-                                    "Council не сформировал проверенный итог",
-                                    error = result.error ?: "Пустой итог синтеза"
-                                )
+                                withContext(Dispatchers.IO) {
+                                    journal.transition(
+                                        missionId!!,
+                                        MissionStatus.FAILED,
+                                        "Council не сформировал проверенный итог",
+                                        error = result.error ?: "Пустой итог синтеза"
+                                    )
+                                }
                             } else {
-                                journal.transition(missionId!!, MissionStatus.VERIFYING, "Результаты агентов собраны")
-                                journal.transition(
-                                    missionId!!,
-                                    MissionStatus.COMPLETED,
-                                    "Синтез завершён",
-                                    result = result.synthesis
-                                )
+                                withContext(Dispatchers.IO) {
+                                    journal.transition(missionId!!, MissionStatus.VERIFYING, "Результаты агентов собраны")
+                                    journal.transition(
+                                        missionId!!,
+                                        MissionStatus.COMPLETED,
+                                        "Синтез завершён",
+                                        result = result.synthesis
+                                    )
+                                }
                             }
-                            recentMissions = journal.getRecentMissions(8)
+                            recentMissions = withContext(Dispatchers.IO) { journal.getRecentMissions(8) }
                             status = result.error ?: if (result.completed) {
                                 "Council завершил миссию: ${result.agentResults.count { it.status.name == "COMPLETED" }} агентов успешно."
                             } else {
@@ -461,43 +479,50 @@ fun AiStudioScreen(
                                     )
                                 )
                             ).collect { chunk -> answer += chunk }
-                            journal.transition(missionId!!, MissionStatus.VERIFYING, "Ответ потока получен")
-                            journal.transition(
-                                missionId!!,
-                                MissionStatus.COMPLETED,
-                                "Запрос завершён",
-                                result = answer
-                            )
-                            recentMissions = journal.getRecentMissions(8)
+                            withContext(Dispatchers.IO) {
+                                journal.transition(missionId!!, MissionStatus.VERIFYING, "Ответ потока получен")
+                                journal.transition(
+                                    missionId!!,
+                                    MissionStatus.COMPLETED,
+                                    "Запрос завершён",
+                                    result = answer
+                                )
+                                journal.getRecentMissions(8)
+                            }.also { recentMissions = it }
                             status = "Ответ получен"
                         }
                     } catch (cancelled: CancellationException) {
-                        missionId?.let { id ->
-                            runCatching {
-                                journal.transition(
-                                    id,
-                                    MissionStatus.INTERRUPTED,
-                                    "Задача была отменена или экран закрыт"
-                                )
+                        withContext(NonCancellable + Dispatchers.IO) {
+                            missionId?.let { id ->
+                                runCatching {
+                                    journal.transition(
+                                        id,
+                                        MissionStatus.INTERRUPTED,
+                                        "Задача была отменена или экран закрыт"
+                                    )
+                                }
                             }
-                        }
-                        recentMissions = journal.getRecentMissions(8)
+                            journal.getRecentMissions(8)
+                        }.also { recentMissions = it }
                         throw cancelled
                     } catch (error: Exception) {
-                        missionId?.let { id ->
-                            runCatching {
-                                journal.transition(
-                                    id,
-                                    MissionStatus.FAILED,
-                                    "Ошибка выполнения",
-                                    error = error.message ?: error::class.java.simpleName
-                                )
+                        withContext(Dispatchers.IO) {
+                            missionId?.let { id ->
+                                runCatching {
+                                    journal.transition(
+                                        id,
+                                        MissionStatus.FAILED,
+                                        "Ошибка выполнения",
+                                        error = error.message ?: error::class.java.simpleName
+                                    )
+                                }
                             }
-                        }
-                        recentMissions = journal.getRecentMissions(8)
+                            journal.getRecentMissions(8)
+                        }.also { recentMissions = it }
                         status = error.message ?: "Ошибка выполнения запроса"
                     } finally {
                         isRunning = false
+                        activeRun = null
                     }
                 }
             },
@@ -513,6 +538,11 @@ fun AiStudioScreen(
             }
         }
 
+        if (isRunning) {
+            TextButton(onClick = { activeRun?.cancel() }, modifier = Modifier.fillMaxWidth()) {
+                Text("Остановить текущую задачу")
+            }
+        }
         Text(status, style = MaterialTheme.typography.labelMedium)
         if (recentMissions.isNotEmpty()) {
             Text("ИСТОРИЯ МИССИЙ", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
