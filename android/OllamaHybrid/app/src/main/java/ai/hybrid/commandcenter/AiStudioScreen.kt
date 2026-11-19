@@ -59,7 +59,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
-import java.io.Closeable
 
 @Composable
 fun AiStudioScreen(
