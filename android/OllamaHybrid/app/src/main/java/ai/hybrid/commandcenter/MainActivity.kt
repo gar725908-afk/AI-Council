@@ -20,7 +20,6 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -80,6 +79,8 @@ private fun NexusApp() {
         ) { padding ->
             when (selected) {
                 0 -> CommandDeck(Modifier.padding(padding))
+                1 -> AiStudioScreen(councilMode = false, modifier = Modifier.padding(padding))
+                2 -> AiStudioScreen(councilMode = true, modifier = Modifier.padding(padding))
                 else -> PlaceholderScreen(destinations[selected], Modifier.padding(padding))
             }
         }
@@ -102,18 +103,22 @@ private fun CommandDeck(modifier: Modifier = Modifier) {
             Surface(color = SurfaceDeep, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("GENESIS PROTOCOL", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Система готова к настройке", color = PrimaryText, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Это стартовый интерфейс. Подключение моделей, памяти и инструментов будет добавляться отдельными проверяемыми модулями.", color = SecondaryText, fontSize = 13.sp)
+                    Text("AI Studio и Council подключены к базовому runtime", color = PrimaryText, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Настройте OpenAI-compatible endpoint и модель. Ключ хранится через Android Keystore; локальные HTTP endpoint ограничены частной сетью.",
+                        color = SecondaryText,
+                        fontSize = 13.sp
+                    )
                 }
             }
         }
-        item { StatusCard("NEXUS CORE", "Каркас интерфейса запущен", "UI FOUNDATION") }
-        item { StatusCard("AI COUNCIL", "Оркестратор ещё не подключён", "NOT CONNECTED") }
-        item { StatusCard("MODEL RUNTIME", "Провайдеры моделей не настроены", "NOT CONFIGURED") }
-        item { StatusCard("DEVICE BRIDGE", "Проверка разрешений не выполнялась", "NOT CHECKED") }
+        item { StatusCard("NEXUS CORE", "Стартовый runtime и потоковый шлюз", "FOUNDATION") }
+        item { StatusCard("AI STUDIO", "Чат с потоковым ответом модели", "READY TO CONFIGURE") }
+        item { StatusCard("AI COUNCIL", "Восемь ролей, максимум три параллельно", "READY TO CONFIGURE") }
+        item { StatusCard("DEVICE BRIDGE", "Системные действия пока не подключены", "NOT CONNECTED") }
         item {
             Text("ПЕРВЫЙ СИГНАЛ", color = Violet, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("NEXUS создан как персональная AI-среда. Подключите модель, чтобы начать работу.", color = SecondaryText, fontSize = 14.sp)
+            Text("Выберите AI Studio для одиночного запроса или Council для коллективного анализа.", color = SecondaryText, fontSize = 14.sp)
             Spacer(Modifier.height(22.dp))
         }
     }
@@ -145,6 +150,6 @@ private fun PlaceholderScreen(title: String, modifier: Modifier = Modifier) {
     ) {
         Text(title.uppercase(), color = Cyan, fontWeight = FontWeight.Bold, fontSize = 20.sp)
         Spacer(Modifier.height(12.dp))
-        Text("Раздел предусмотрен архитектурой NEXUS. Функциональность будет подключаться поэтапно.", color = SecondaryText)
+        Text("Раздел предусмотрен архитектурой NEXUS. Реальные функции будут обозначаться только после подключения и проверки.", color = SecondaryText)
     }
 }
