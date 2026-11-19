@@ -31,7 +31,7 @@ The application validates every participant ID and task before dispatch. Model o
 
 SSE input lines are capped at 1 MiB and provider error bodies at 2 KiB; model-catalog JSON responses are capped at 1 MiB. Local Manager and executor generation use the shared bounded collector, which cancels the upstream stream once its output budget is exceeded.
 
-OpenAI-compatible, Anthropic, and Gemini gateways now share one bounded SSE transport and the same endpoint security policy. The remote Council also caps mission goals at 32,000 characters, individual executor output at 12,000 characters, synthesis context at 110,000 characters, and synthesis output at 16,000 characters; exceeding an output cap cancels the upstream stream and marks the returned text as truncated.
+OpenAI-compatible, Anthropic, and Gemini gateways now share one bounded SSE transport and the same endpoint security policy. Private HTTP host validation strictly parses IPv4 octets and IPv6 address bytes, preventing hostname strings that merely begin with `fc`/`fd` or contain four numeric fragments from being misclassified as private addresses. The remote Council also caps mission goals at 32,000 characters, individual executor output at 12,000 characters, synthesis context at 110,000 characters, and synthesis output at 16,000 characters; exceeding an output cap cancels the upstream stream and marks the returned text as truncated.
 
 The decision parser enforces an action-specific JSON schema: required fields must be present, unknown fields are rejected, and action text, participant IDs, and task strings must have the expected JSON types and size limits. Each assignment must contain exactly `participantId` and `task`.
 
