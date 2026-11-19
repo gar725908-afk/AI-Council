@@ -38,7 +38,7 @@ jobs:
 
       - name: Build debug APK
         working-directory: android/OllamaHybrid
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
 
       - name: Verify APK exists
         shell: bash
