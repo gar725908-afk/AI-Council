@@ -26,7 +26,7 @@
 - **OpenAI-compatible gateway:** Chat Completions SSE через OkHttp; подходит для endpoint, которые действительно поддерживают этот протокол, включая OpenAI-compatible сервисы и локальные Ollama/LM Studio/vLLM серверы.
 - **Anthropic gateway:** нативный Messages API, потоковые content_block_delta события.
 - **Gemini gateway:** нативный streamGenerateContent с SSE.
-- **Provider registry:** отдельные профили OpenAI, DeepSeek, OpenRouter, Groq, Mistral, Together AI, Fireworks AI, Ollama local и Custom OpenAI-compatible, а также нативные Anthropic Claude и Google Gemini. Endpoint, model и ключи раздельны для каждого профиля.
+- **Provider registry:** отдельные профили OpenAI, DeepSeek, OpenRouter, Groq, Mistral, Together AI, Fireworks AI, xAI Grok, Cerebras, NVIDIA API Catalog, Ollama local и Custom OpenAI-compatible, а также нативные Anthropic Claude и Google Gemini. Endpoint, model и ключи раздельны для каждого профиля.
 - **Model discovery:** проверка соединения и загрузка списка моделей через /models, /v1/models, Anthropic /v1/models или Gemini /v1beta/models; найденную модель можно выбрать в UI.
 - **Credential vault:** API-ключи шифруются AES-GCM ключом Android Keystore; в обычных настройках хранятся только endpoint и имя модели.
 - **NEXUS COUNCIL:** восемь преднастроенных ролей; одновременно работают максимум три агента; для каждой роли можно назначить отдельного провайдера и собственный model ID override. Manager выполняет синтез через основной выбранный профиль.
@@ -50,7 +50,7 @@
 ## Подключение AI Studio
 
 1. Откройте **AI Studio** или **Council**.
-2. Выберите профиль: OpenAI, DeepSeek, OpenRouter, Groq, Mistral, Together AI, Fireworks AI, Ollama, Custom OpenAI-compatible, Anthropic или Gemini.
+2. Выберите профиль: OpenAI, DeepSeek, OpenRouter, Groq, Mistral, Together AI, Fireworks AI, xAI Grok, Cerebras, NVIDIA API Catalog, Ollama, Custom OpenAI-compatible, Anthropic или Gemini.
 3. Введите базовый endpoint и точное имя модели. Поле endpoint уже содержит пример для выбранного протокола.
 4. Добавьте API-ключ выбранного облачного провайдера и нажмите **Сохранить**. Ключ хранится отдельно от endpoint/model через Android Keystore.
 5. Для локального OpenAI-compatible сервера без авторизации ключ можно оставить пустым.
