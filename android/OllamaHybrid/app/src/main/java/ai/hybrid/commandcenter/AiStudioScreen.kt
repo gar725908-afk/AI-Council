@@ -41,6 +41,7 @@ import ai.hybrid.commandcenter.nexus.MissionJournal
 import ai.hybrid.commandcenter.nexus.MissionStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 @Composable
 fun AiStudioScreen(
