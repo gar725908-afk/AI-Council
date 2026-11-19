@@ -31,6 +31,8 @@ AI Studio now selects this nine-agent local execution path when an on-device pro
 
 Manager outcomes are preserved as mission lifecycle states: a request for clarification is stored as `AWAITING_INPUT`, an explicit pause or turn-limit is stored as `INTERRUPTED`, and only an actual execution failure is stored as `FAILED`. This prevents a valid Manager request for more information from being misreported as a model failure.
 
+AI Studio exposes a **Continue with clarification** action for `AWAITING_INPUT` missions. It pre-fills a follow-up prompt with the original task and the Manager's question; the user supplies the missing information and explicitly starts a new mission. The prior mission is retained as history. Interrupted missions are not replayed automatically.
+
 ## Evolution routing policy
 
 Approved `ROUTING_POLICY` payloads are parsed by the strict `NexusEvolutionRoutingPolicy` schema and applied by the remote-provider Council path before per-agent saved routes. Supported payload shape:
