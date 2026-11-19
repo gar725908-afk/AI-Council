@@ -112,6 +112,36 @@ class LocalFirstCouncilTest {
         assertTrue(adapter.tasks.isEmpty())
     }
 
+
+    @Test
+    fun autonomousModeStillRequiresConsentBeforeSendingContextToWebAi() = runBlocking {
+        val web = CouncilParticipantDescriptor(
+            "web",
+            "Web session",
+            CouncilParticipantTransport.ANDROID_WEBVIEW_SESSION,
+            externalContextConsentGranted = false
+        )
+        val adapter = RecordingAdapter(web)
+        val manager = QueueManager(
+            LocalCouncilDecision.Delegate(listOf(CouncilAssignment("web", "Analyze private context")))
+        )
+        val profile = LocalCouncilProfile(
+            mode = CouncilControlMode.LOCAL_AUTONOMOUS,
+            managerModelId = "local",
+            participants = listOf(web)
+        )
+        val orchestrator = LocalFirstCouncilOrchestrator(
+            manager,
+            listOf(adapter),
+            CouncilDispatchApproval { _, _, _ -> false }
+        )
+
+        val result = orchestrator.runManaged(profile, "Private task")
+
+        assertEquals(LocalCouncilExecutionStatus.WAITING_FOR_APPROVAL, result.status)
+        assertTrue(adapter.tasks.isEmpty())
+    }
+
     @Test
     fun manualModeCanDispatchWithoutConfiguringLocalManager() = runBlocking {
         val web = CouncilParticipantDescriptor(
