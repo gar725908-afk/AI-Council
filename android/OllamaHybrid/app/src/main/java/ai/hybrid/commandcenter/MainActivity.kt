@@ -82,7 +82,7 @@ private fun NexusApp() {
                 1 -> AiStudioScreen(councilMode = false, modifier = Modifier.padding(padding))
                 2 -> AiStudioScreen(councilMode = true, modifier = Modifier.padding(padding))
                 3 -> ModelCenterScreen(Modifier.padding(padding))
-                4 -> PlaceholderScreen(destinations[selected], Modifier.padding(padding))
+                4 -> DeviceCoreScreen(Modifier.padding(padding))
                 else -> PlatformCenterScreen(Modifier.padding(padding))
             }
         }
@@ -143,15 +143,3 @@ private fun StatusCard(title: String, detail: String, status: String) {
     }
 }
 
-@Composable
-private fun PlaceholderScreen(title: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier.fillMaxSize().background(Void).padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(title.uppercase(), color = Cyan, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Spacer(Modifier.height(12.dp))
-        Text("Раздел предусмотрен архитектурой NEXUS. Реальные функции будут обозначаться только после подключения и проверки.", color = SecondaryText)
-    }
-}
