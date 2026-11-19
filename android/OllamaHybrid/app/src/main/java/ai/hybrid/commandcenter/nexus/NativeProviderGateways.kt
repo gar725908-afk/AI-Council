@@ -337,3 +337,22 @@ class GeminiGenerateContentGateway : ModelGateway {
         }
     }
 }
+
+/** Canonical default endpoint per provider; the runtime and UI share this one source. */
+fun defaultProviderEndpoint(kind: ProviderKind): String = when (kind) {
+    ProviderKind.OPENAI_COMPATIBLE -> ""
+    ProviderKind.OPENAI -> "https://api.openai.com/v1"
+    ProviderKind.DEEPSEEK -> "https://api.deepseek.com"
+    ProviderKind.OPENROUTER -> "https://openrouter.ai/api/v1"
+    ProviderKind.GROQ -> "https://api.groq.com/openai/v1"
+    ProviderKind.MISTRAL -> "https://api.mistral.ai/v1"
+    ProviderKind.TOGETHER -> "https://api.together.ai/v1"
+    ProviderKind.FIREWORKS -> "https://api.gofireworks.org/v1"
+    ProviderKind.XAI -> "https://api.x.ai/v1"
+    ProviderKind.CEREBRAS -> "https://api.cerebras.ai/v1"
+    ProviderKind.NVIDIA -> "https://integrate.api.nvidia.com/v1"
+    ProviderKind.OLLAMA -> ""
+    ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
+    ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
+    ProviderKind.ON_DEVICE_LITERT, ProviderKind.ON_DEVICE_LLAMA_CPP -> ""
+}

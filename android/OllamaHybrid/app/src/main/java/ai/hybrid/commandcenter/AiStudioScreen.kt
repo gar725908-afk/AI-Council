@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import ai.hybrid.commandcenter.nexus.AndroidCredentialVault
+import ai.hybrid.commandcenter.nexus.CouncilMissionRunner
 import ai.hybrid.commandcenter.nexus.CouncilOrchestrator
 import ai.hybrid.commandcenter.nexus.CouncilModelRoute
 import ai.hybrid.commandcenter.nexus.CouncilRoutingStore
@@ -578,128 +579,29 @@ fun AiStudioScreen(
                                     ).filter { it.isNotBlank() }.joinToString("\n\n")
                                 )
                             }
-                            val result = if (usesOnDeviceModel) {
-                                engineRegistry.runLocalCouncil(councilGoal)
-                            } else {
-                                val activeRoutingPolicy = withContext(Dispatchers.IO) {
-                                    evolutionExecutor.activeConfiguration(EvolutionChangeKind.ROUTING_POLICY)
-                                        .takeIf { it.isNotBlank() }
-                                        ?.let(NexusEvolutionRoutingPolicy::parse)
-                                }
-                                CouncilOrchestrator(
-                                    gateway = gateway,
-                                    maxParallelAgents = 3,
-                                    routeResolver = { agent ->
-                                        val routeKind = activeRoutingPolicy?.routes?.get(agent.id)
-                                            ?: routingStore.load(agent.id)
-                                            ?: providerKind
-                                        val modelOverride = activeRoutingPolicy?.modelOverrides?.get(agent.id)
-                                            ?: routingStore.loadModelOverride(agent.id)
-                                        if (routeKind == providerKind) {
-                                            CouncilModelRoute(
-                                                gateway = gateway,
-                                                endpoint = endpoint,
-                                                model = modelOverride ?: model,
-                                                apiKey = activeKey.orEmpty()
-                                            )
-                                        } else {
-                                            val profile = settingsStore.load(routeKind.name)
-                                            val localRoute = routeKind == ProviderKind.ON_DEVICE_LITERT ||
-                                                routeKind == ProviderKind.ON_DEVICE_LLAMA_CPP
-                                            val routeModel = modelOverride ?: profile.model.ifBlank {
-                                                if (localRoute) "active-device-model" else ""
-                                            }
-                                            require(routeModel.isNotBlank()) {
-                                                "No model is configured for role " + agent.name + " / " + routeKind.displayName + "."
-                                            }
-                                            val routeEndpoint = profile.endpoint.ifBlank {
-                                                defaultProviderEndpoint(routeKind)
-                                            }
-                                            require(localRoute || routeEndpoint.isNotBlank()) {
-                                                "No endpoint is configured for role " + agent.name + " / " + routeKind.displayName + "."
-                                            }
-                                            val routeKey = credentialVault.get(
-                                                AndroidCredentialVault.providerKeyId(routeKind.name)
-                                            ).orEmpty()
-                                            require(!routeKind.requiresApiKey() || routeKey.isNotBlank()) {
-                                                "No API key is saved for role " + agent.name + " / " + routeKind.displayName + "."
-                                            }
-                                            CouncilModelRoute(
-                                                gateway = engineRegistry.gateway(routeKind),
-                                                endpoint = routeEndpoint,
-                                                model = routeModel,
-                                                apiKey = routeKey
-                                            )
-                                        }
-                                    }
-                                ).run(
+                            val runner = CouncilMissionRunner(
+                                journal = journal,
+                                engineRegistry = engineRegistry,
+                                settingsStore = settingsStore,
+                                routingStore = routingStore,
+                                credentialVault = credentialVault,
+                                evolutionExecutor = evolutionExecutor
+                            )
+                            val outcome = runner.run(
+                                CouncilMissionRunner.Request(
+                                    missionId = missionId!!,
                                     goal = councilGoal,
+                                    providerKind = providerKind,
                                     endpoint = endpoint,
                                     model = model,
                                     apiKey = activeKey.orEmpty(),
-                                    agents = councilAgents
+                                    agents = councilAgents,
+                                    useOnDeviceModel = usesOnDeviceModel
                                 )
-                            }
-                            withContext(Dispatchers.IO) {
-                                result.agentResults.forEach { journal.saveAgentResult(missionId!!, it) }
-                            }
-                            answer = result.synthesis.orEmpty()
-                            when {
-                                result.needsUserInput -> {
-                                    answer = result.error ?: "The local Council needs additional input to continue."
-                                    withContext(Dispatchers.IO) {
-                                        journal.transition(
-                                            missionId!!,
-                                            MissionStatus.AWAITING_INPUT,
-                                            "Council requested additional user input",
-                                            result = answer
-                                        )
-                                    }
-                                }
-                                result.paused -> {
-                                    answer = result.error ?: "The local Council paused and can be resumed later."
-                                    withContext(Dispatchers.IO) {
-                                        journal.transition(
-                                            missionId!!,
-                                            MissionStatus.INTERRUPTED,
-                                            "Council execution paused",
-                                            result = answer
-                                        )
-                                    }
-                                }
-                                result.synthesis.isNullOrBlank() -> {
-                                    withContext(Dispatchers.IO) {
-                                        journal.transition(
-                                            missionId!!,
-                                            MissionStatus.FAILED,
-                                            "Council did not produce a verified final result",
-                                            error = result.error ?: "Empty synthesis"
-                                        )
-                                    }
-                                }
-                                else -> {
-                                    withContext(Dispatchers.IO) {
-                                        journal.transition(missionId!!, MissionStatus.VERIFYING, "Council results collected")
-                                        journal.transition(
-                                            missionId!!,
-                                            MissionStatus.COMPLETED,
-                                            "Synthesis completed",
-                                            result = result.synthesis
-                                        )
-                                    }
-                                }
-                            }
+                            )
+                            answer = outcome.answer
+                            status = outcome.statusLine
                             recentMissions = withContext(Dispatchers.IO) { journal.getRecentMissions(8) }
-                            status = result.error ?: if (result.completed) {
-                                "Council завершил миссию: ${result.agentResults.count { it.status.name == "COMPLETED" }} агентов успешно."
-                            } else {
-                                "Council не смог сформировать итог."
-                            }
-                            if (answer.isBlank() && result.agentResults.isNotEmpty()) {
-                                answer = result.agentResults.joinToString("\n\n") {
-                                    "## ${it.agent.name}\n${it.output.ifBlank { it.error.orEmpty() }}"
-                                }
-                            }
                             if (answer.isNotBlank()) {
                                 conversationMessages = withContext(Dispatchers.IO) {
                                     journal.appendChatMessage(chatState.first, "assistant", answer)
@@ -854,23 +756,8 @@ fun AiStudioScreen(
 
 
 
-private fun defaultProviderEndpoint(kind: ProviderKind): String = when (kind) {
-    ProviderKind.OPENAI_COMPATIBLE -> ""
-    ProviderKind.OPENAI -> "https://api.openai.com/v1"
-    ProviderKind.DEEPSEEK -> "https://api.deepseek.com"
-    ProviderKind.OPENROUTER -> "https://openrouter.ai/api/v1"
-    ProviderKind.GROQ -> "https://api.groq.com/openai/v1"
-    ProviderKind.MISTRAL -> "https://api.mistral.ai/v1"
-    ProviderKind.TOGETHER -> "https://api.together.ai/v1"
-    ProviderKind.FIREWORKS -> "https://api.gofireworks.org/v1"
-    ProviderKind.XAI -> "https://api.x.ai/v1"
-    ProviderKind.CEREBRAS -> "https://api.cerebras.ai/v1"
-    ProviderKind.NVIDIA -> "https://integrate.api.nvidia.com/v1"
-    ProviderKind.OLLAMA -> ""
-    ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
-    ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
-    ProviderKind.ON_DEVICE_LITERT, ProviderKind.ON_DEVICE_LLAMA_CPP -> ""
-}
+private fun defaultProviderEndpoint(kind: ProviderKind): String =
+    ai.hybrid.commandcenter.nexus.defaultProviderEndpoint(kind)
 
 private fun buildProviderConversationMessages(
     history: List<ChatMessageRecord>,
