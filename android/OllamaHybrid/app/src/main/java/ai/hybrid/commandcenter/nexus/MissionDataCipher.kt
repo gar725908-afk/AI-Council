@@ -36,8 +36,8 @@ internal class MissionDataCipher {
             val buffer = ByteBuffer.wrap(payload)
             val ivSize = buffer.get().toInt() and 0xFF
             require(ivSize in 12..16 && buffer.remaining() > ivSize)
-            val iv = ByteArray(ivSize).also(buffer::get)
-            val encrypted = ByteArray(buffer.remaining()).also(buffer::get)
+            val iv = ByteArray(ivSize).also { buffer.get(it) }
+            val encrypted = ByteArray(buffer.remaining()).also { buffer.get(it) }
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
             String(cipher.doFinal(encrypted), Charsets.UTF_8)
