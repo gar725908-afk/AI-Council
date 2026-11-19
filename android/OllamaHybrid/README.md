@@ -10,10 +10,10 @@
 - [Evolution Core](docs/EVOLUTION_CORE_ARCHITECTURE_RU.md).
 - [Local-first Council и Android execution](docs/LOCAL_FIRST_COUNCIL_AND_ANDROID_EXECUTION_RU.md) — локальная модель-Manager, веб-сессии ИИ, ручной режим, будущий Desktop Link и NEXUS FORGE.
 - [Ollama LAN Node](docs/NEXUS_LAN_OLLAMA_NODE_RU.md) — использование локальной модели на домашнем ПК через Ollama API по Wi-Fi/LAN, с маршрутизацией, потоковой передачей, отказоустойчивостью и безопасным pairing.
-- [NEXUS MODEL CENTER и EVOLUTION](docs/NEXUS_MODEL_CENTER_AND_EVOLUTION_RU.md) — каталог локальных моделей (Gemma 4 E2B как Balanced-кандидат), безопасная политика загрузки, версии, лицензии и контролируемое саморазвитие.
+- [NEXUS MODEL CENTER и EVOLUTION](docs/NEXUS_MODEL_CENTER_AND_EVOLUTION_RU.md) — LiteRT-LM и llama.cpp, закреплённые Gemma 4 E2B / Qwen3 GGUF артефакты, загрузчик весов, экран Model Center и контролируемые версии Evolution. Тестирование отложено.
 
 ## Сборка
-В каталоге проекта находятся корневые Gradle-конфигурации, Android Manifest и Jetpack Compose entry point. CI настроен на Gradle 8.13 и JDK 17: debug APK и unit tests.
+В каталоге проекта находятся корневые Gradle-конфигурации, Android Manifest и Jetpack Compose entry point. CI настроен на Gradle 8.13 и JDK 17 для сборки debug APK. Unit tests временно исключены из CI до отдельного этапа тестирования.
 
 Локальная сборка из Android Studio:
 1. Откройте каталог android/OllamaHybrid.
@@ -46,13 +46,13 @@
 - Текущий legacy Council использует HTTP gateway; синтезатор Manager работает через основной выбранный профиль AI Studio. Переход на локальную модель Manager ещё впереди.
 - Для каждой роли Council поддерживается выбор провайдера. Конфигурация endpoint/model хранится на уровне профиля провайдера, поэтому индивидуальный выбор разных моделей одного и того же провайдера для каждой роли ещё не реализован.
 - OpenAI-compatible сервер должен поддерживать Chat Completions и SSE. Совместимость по одному лишь названию провайдера не гарантируется.
-- Локальный движок llama.cpp не встроен. Для текущего локального inference подключается уже запущенный сетевой endpoint; это не означает, что модель выполняется непосредственно на телефоне. Локальные HTTP endpoint разрешены только в loopback/private LAN; трафик по HTTP не шифруется.
+- Добавлены on-device адаптеры LiteRT-LM и llama.cpp. Их сборка, загрузка модели и генерация на физическом устройстве ещё не проверялись. llama.cpp сейчас собирается под arm64-v8a и CPU, его встроенный chat template ориентирован на Qwen3 ChatML.
 - Бесплатные ИИ через WebView — целевой транспорт. У каждого сервиса отдельная сессия, пользователь самостоятельно проходит вход. Доступность автоматизации зависит от сайта и его правил; CAPTCHA/OTP и защитные проверки не обходятся. До production реализации используется assisted/manual сценарий.
 - Desktop Link пока только архитектурное направление. Текущий Android runtime не управляет ПК и не требует купленного сервера. Работа над desktop AI Consilium не меняется этой Android-веткой.
 - NEXUS FORGE пока архитектурный этап: встроенная среда разработки и сборка APK на Android ещё не реализованы.
 - Mission Journal и NEXUS CHAT шифруют содержимое миссий, результаты агентов, заголовки и тексты сообщений на уровне полей с помощью AES-GCM/Android Keystore. Идентификаторы, статусы, временные метки, endpoint и названия моделей остаются метаданными SQLite. Вложения, полнотекстовый индекс, семантический поиск и поиск по архиву ещё не реализованы.
 - Recovery фиксирует прерванное состояние; автоматический безопасный resume и WorkManager orchestration ещё не реализованы. Тайм-ауты агентов и синтезатора покрыты unit-тестами. SQLite-операции экрана выполняются вне главного UI-потока.
-- Tool Gateway, MCP client, production browser automation, Material Library processing, Voice, Android Bridge executor, Shizuku/Root и Evolution executor ещё не подключены как production-функции.
+- Tool Gateway, MCP client, production browser automation, Material Library processing, Voice, Android Bridge executor, Shizuku/Root и ряд исполнительных частей Evolution остаются будущими этапами. Evolution executor уже хранит и применяет одобренные prompt/skill-конфигурации с журналом и откатом; routing/tool/model-конфигурации ещё не полностью подключены к исполнительным механизмам.
 - Каталог моделей запрашивает первую страницу ответа провайдера; постраничная загрузка и расширенная диагностика лимитов/прав доступа пока не реализованы.
 - Unit tests добавлены, но прохождение тестов и Android APK build должны быть подтверждены GitHub Actions.
 - UI не сообщает об успешном действии Android Bridge, пока bridge не реализован.
