@@ -29,6 +29,8 @@ The application validates every participant ID and task before dispatch. Model o
 
 AI Studio now selects this nine-agent local execution path when an on-device provider is selected. Remote-provider Council execution remains available through the existing provider routing path.
 
+Manager outcomes are preserved as mission lifecycle states: a request for clarification is stored as `AWAITING_INPUT`, an explicit pause or turn-limit is stored as `INTERRUPTED`, and only an actual execution failure is stored as `FAILED`. This prevents a valid Manager request for more information from being misreported as a model failure.
+
 ## Evolution routing policy
 
 Approved `ROUTING_POLICY` payloads are parsed by the strict `NexusEvolutionRoutingPolicy` schema and applied by the remote-provider Council path before per-agent saved routes. Supported payload shape:
