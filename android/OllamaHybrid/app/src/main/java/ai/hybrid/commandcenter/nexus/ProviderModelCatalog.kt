@@ -43,6 +43,9 @@ class ProviderModelCatalog(
             ProviderKind.MISTRAL,
             ProviderKind.TOGETHER,
             ProviderKind.FIREWORKS,
+            ProviderKind.XAI,
+            ProviderKind.CEREBRAS,
+            ProviderKind.NVIDIA,
             ProviderKind.OLLAMA -> if (apiKey.isNotBlank()) {
                 builder.header("Authorization", "Bearer $apiKey")
             }
@@ -65,6 +68,9 @@ class ProviderModelCatalog(
             ProviderKind.MISTRAL,
             ProviderKind.TOGETHER,
             ProviderKind.FIREWORKS,
+            ProviderKind.XAI,
+            ProviderKind.CEREBRAS,
+            ProviderKind.NVIDIA,
             ProviderKind.OLLAMA,
             ProviderKind.ANTHROPIC -> {
                 val data = json.optJSONArray("data")
@@ -131,6 +137,9 @@ class ProviderModelCatalog(
         ProviderKind.MISTRAL,
         ProviderKind.TOGETHER,
         ProviderKind.FIREWORKS,
+        ProviderKind.XAI,
+        ProviderKind.CEREBRAS,
+        ProviderKind.NVIDIA,
         ProviderKind.OLLAMA -> base.newBuilder()
             .addPathSegment("models")
             .build()
@@ -181,6 +190,9 @@ class ProviderModelCatalog(
         ProviderKind.MISTRAL -> "https://api.mistral.ai/v1"
         ProviderKind.TOGETHER -> "https://api.together.ai/v1"
         ProviderKind.FIREWORKS -> "https://api.gofireworks.org/v1"
+        ProviderKind.XAI -> "https://api.x.ai/v1"
+        ProviderKind.CEREBRAS -> "https://api.cerebras.ai/v1"
+        ProviderKind.NVIDIA -> "https://integrate.api.nvidia.com/v1"
         ProviderKind.OLLAMA -> ""
         ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
         ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
