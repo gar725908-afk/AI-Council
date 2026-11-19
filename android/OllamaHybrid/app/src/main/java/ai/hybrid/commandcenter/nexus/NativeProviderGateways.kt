@@ -73,6 +73,9 @@ fun createModelGateway(kind: ProviderKind, context: Context? = null): ModelGatew
 
 internal object ProviderEndpointPolicy {
     fun base(endpoint: String): HttpUrl {
+        require(endpoint.isNotBlank() && endpoint.length <= 2_048) {
+            "Endpoint must contain 1 to 2048 characters."
+        }
         val parsed = endpoint.trim().trimEnd('/').toHttpUrlOrNull()
             ?: throw IllegalArgumentException("Некорректный URL провайдера.")
         require(parsed.username.isEmpty() && parsed.password.isEmpty()) {
