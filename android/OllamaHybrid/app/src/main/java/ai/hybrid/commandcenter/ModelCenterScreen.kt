@@ -389,7 +389,7 @@ private fun ModelCatalogCard(
             } else {
                 Text(
                     if (model.executionTarget == ai.hybrid.commandcenter.nexus.ModelExecutionTarget.HOME_PC_LAN)
-                        "Модель берётся с домашнего ПК через Ollama; список доступных моделей появляется после настройки LAN-подключения."
+                        "Это будущий LAN-каталог моделей домашнего ПК. В текущем срезе подключение к Ollama на ПК настраивается отдельно через профиль AI Studio; веса на телефон не скачиваются."
                     else "Карточка каталога готова. Проверенный артефакт для прямой загрузки пока не закреплён; можно импортировать совместимый файл вручную.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
