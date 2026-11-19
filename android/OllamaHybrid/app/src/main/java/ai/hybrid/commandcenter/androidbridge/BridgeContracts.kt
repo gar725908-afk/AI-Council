@@ -53,14 +53,37 @@ interface AndroidBridgeTool {
 }
 
 object BridgeActionPolicy {
+    private const val MAX_REQUEST_ID_CHARS = 128
+    private const val MAX_TOOL_ID_CHARS = 128
+    private const val MAX_ARGUMENTS = 32
+    private const val MAX_ARGUMENT_KEY_CHARS = 64
+    private const val MAX_ARGUMENT_VALUE_CHARS = 4_096
+    private const val MAX_SNAPSHOT_AGE_MS = 30_000L
+    private const val MAX_APPROVAL_AGE_MS = 120_000L
+    private const val MAX_FUTURE_SKEW_MS = 5_000L
+
     fun requiresApproval(risk: ActionRisk): Boolean = risk != ActionRisk.READ_ONLY
 
     fun isAllowed(tool: AndroidBridgeTool, request: BridgeRequest, snapshot: CapabilitySnapshot): Boolean {
-        if (tool.capability !in snapshot.capabilities) return false
-        if (request.requestId.isBlank() || request.toolId != tool.id) return false
+        val now = System.currentTimeMillis()
+        if (tool.id.isBlank() || tool.id.length > MAX_TOOL_ID_CHARS) return false
+        if (request.requestId.isBlank() || request.requestId.length > MAX_REQUEST_ID_CHARS) return false
+        if (request.toolId != tool.id || tool.capability !in snapshot.capabilities) return false
+        if (request.arguments.size > MAX_ARGUMENTS || request.arguments.any { (key, value) ->
+                key.isBlank() || key.length > MAX_ARGUMENT_KEY_CHARS ||
+                    key.any { it.code < 0x20 || it.code == 0x7f } ||
+                    value.length > MAX_ARGUMENT_VALUE_CHARS
+            }
+        ) return false
+
+        val snapshotAge = now - snapshot.checkedAtEpochMillis
+        if (snapshotAge < -MAX_FUTURE_SKEW_MS || snapshotAge > MAX_SNAPSHOT_AGE_MS) return false
+
         if (requiresApproval(tool.risk)) {
             val grant = request.approval ?: return false
             if (grant.requestId != request.requestId || grant.toolId != tool.id) return false
+            val approvalAge = now - grant.approvedAtEpochMillis
+            if (approvalAge < -MAX_FUTURE_SKEW_MS || approvalAge > MAX_APPROVAL_AGE_MS) return false
         }
         return true
     }
