@@ -129,6 +129,10 @@ class NexusExtensionStore(context: Context) {
     @Synchronized
     fun installManifest(json: String): NexusExtensionManifest {
         val manifest = NexusExtensionManifest.parse(json)
+        val previous = installed().firstOrNull { it.id == manifest.id }
+        if (previous != null && previous != manifest) {
+            NexusExtensionPermissionStore(appContext).revokeAll(manifest.id)
+        }
         val updated = installed().filterNot { it.id == manifest.id } + manifest
         val array = JSONArray().apply { updated.forEach { put(it.toJson()) } }
         check(preferences.edit().putString("manifests", array.toString()).commit()) {
@@ -175,9 +179,15 @@ class NexusExtensionPermissionStore(context: Context) {
 }
 
 /** Only host-owned v1 actions can run, and only after an explicit per-extension grant. */
-class NexusExtensionRuntime(private val permissions: NexusExtensionPermissionStore) {
+class NexusExtensionRuntime(
+    private val store: NexusExtensionStore,
+    private val permissions: NexusExtensionPermissionStore
+) {
     fun execute(context: Context, manifest: NexusExtensionManifest, action: NexusExtensionAction): String {
-        require(manifest.actions.any { it.id == action.id && it == action }) {
+        val storedManifest = store.installed().firstOrNull { it.id == manifest.id }
+            ?: throw IllegalStateException("Расширение больше не установлено.")
+        require(storedManifest == manifest) { "Манифест расширения изменился. Обновите карточку расширения." }
+        require(storedManifest.actions.any { it.id == action.id && it == action }) {
             "Действие не принадлежит установленному расширению."
         }
         val capability = when (action.type) {
