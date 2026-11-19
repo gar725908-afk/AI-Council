@@ -10,9 +10,18 @@ on:
       - ".github/workflows/android-build.yml"
   workflow_dispatch:
 
+# Keep only the newest validation active for each branch.
+concurrency:
+  group: nexus-android-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   debug-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
