@@ -2,7 +2,6 @@ package ai.hybrid.commandcenter.nexus
 
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -160,33 +159,8 @@ class ProviderModelCatalog(
             throw IllegalArgumentException("Локальные модели не используют сетевой каталог.")
     }
 
-    private fun parseBase(endpoint: String): HttpUrl {
-        val url = endpoint.trim().trimEnd('/').toHttpUrlOrNull()
-            ?: throw IllegalArgumentException("Некорректный URL endpoint.")
-        require(url.username.isEmpty() && url.password.isEmpty()) {
-            "Не указывайте логин или пароль внутри URL."
-        }
-        require(url.query == null && url.fragment == null) {
-            "Endpoint каталога должен быть базовым URL без query и fragment."
-        }
-        require(url.scheme == "https" || (url.scheme == "http" && isPrivateHost(url.host))) {
-            "Используйте HTTPS; HTTP разрешён только для localhost или частной сети."
-        }
-        return url
-    }
-
-    private fun isPrivateHost(host: String): Boolean {
-        val value = host.lowercase()
-        if (value == "localhost" || value.endsWith(".localhost") || value.endsWith(".local") ||
-            value == "::1" || value.startsWith("fc") || value.startsWith("fd") ||
-            value.startsWith("fe80:")) return true
-        val octets = value.split(".").mapNotNull { it.toIntOrNull() }
-        if (octets.size != 4 || octets.any { it !in 0..255 }) return false
-        val a = octets[0]
-        val b = octets[1]
-        return a == 10 || a == 127 || (a == 192 && b == 168) ||
-            (a == 172 && b in 16..31) || (a == 169 && b == 254)
-    }
+    private fun parseBase(endpoint: String): HttpUrl =
+        ProviderEndpointPolicy.base(endpoint)
 
     private fun defaultEndpoint(kind: ProviderKind): String = when (kind) {
         ProviderKind.OPENAI_COMPATIBLE -> ""
