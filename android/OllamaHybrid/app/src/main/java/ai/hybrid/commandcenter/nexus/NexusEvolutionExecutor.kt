@@ -51,6 +51,7 @@ class NexusEvolutionExecutor(context: Context) {
         }
         validatePayload(kind, payload)
         val current = activeVersion()
+        verifiedVersionPayload(current)
         val nextVersion = maxOf(
             availableVersions().maxOrNull() ?: 0L,
             history().maxOfOrNull { it.proposal.proposedVersion } ?: 0L
@@ -161,7 +162,9 @@ class NexusEvolutionExecutor(context: Context) {
         check(record.status == NexusEvolutionProposalStatus.PENDING) {
             "Предложение уже обработано и не может быть применено повторно."
         }
-        check(record.proposal.beforeVersion == activeVersion()) {
+        val currentVersion = activeVersion()
+        verifiedVersionPayload(currentVersion)
+        check(record.proposal.beforeVersion == currentVersion) {
             "Предложение устарело: активная версия уже изменилась. Создайте новое предложение на основе текущей версии."
         }
         check(sha256(record.payload) == record.proposal.contentSha256) {
