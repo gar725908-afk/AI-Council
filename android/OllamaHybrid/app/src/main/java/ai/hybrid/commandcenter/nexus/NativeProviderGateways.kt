@@ -4,6 +4,7 @@ import android.content.Context
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import okhttp3.Call
@@ -146,9 +147,11 @@ internal object SseTransport {
                             if (data.isEmpty()) continue
                             val fragment = parseData(data)
                             if (!fragment.isNullOrEmpty()) {
-                                val sent = trySend(fragment)
+                                // Apply bounded backpressure on the OkHttp callback thread instead
+                                // of dropping tokens when the downstream collector is briefly slower.
+                                val sent = channel.trySendBlocking(fragment)
                                 if (sent.isFailure && !channel.isClosedForSend) {
-                                    close(IOException("The provider stream outpaced the inference consumer; partial output was discarded."))
+                                    close(IOException("The provider stream could not deliver a response fragment."))
                                     call.cancel()
                                     return
                                 }
