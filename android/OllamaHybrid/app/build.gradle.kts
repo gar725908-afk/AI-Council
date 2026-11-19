@@ -4,6 +4,16 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val nexusVersionName = providers.environmentVariable("NEXUS_VERSION_NAME").orElse("0.6.0").get()
+val nexusVersionCode = providers.environmentVariable("NEXUS_VERSION_CODE").orNull?.toIntOrNull() ?: 6
+val nexusSigningStoreFile = providers.environmentVariable("NEXUS_SIGNING_STORE_FILE").orNull
+val nexusSigningStorePassword = providers.environmentVariable("NEXUS_SIGNING_STORE_PASSWORD").orNull
+val nexusSigningKeyAlias = providers.environmentVariable("NEXUS_SIGNING_KEY_ALIAS").orNull
+val nexusSigningKeyPassword = providers.environmentVariable("NEXUS_SIGNING_KEY_PASSWORD").orNull
+val nexusSigningConfigured = listOf(
+    nexusSigningStoreFile, nexusSigningStorePassword, nexusSigningKeyAlias, nexusSigningKeyPassword
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "ai.hybrid.commandcenter"
     compileSdk = 36
@@ -12,14 +22,32 @@ android {
         applicationId = "ai.hybrid.commandcenter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.6.0"
+        versionCode = nexusVersionCode
+        versionName = nexusVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
             }
+        }
+    }
+
+    signingConfigs {
+        create("nexusRelease") {
+            if (nexusSigningConfigured) {
+                storeFile = file(requireNotNull(nexusSigningStoreFile))
+                storePassword = nexusSigningStorePassword
+                keyAlias = nexusSigningKeyAlias
+                keyPassword = nexusSigningKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("nexusRelease")
+            isMinifyEnabled = false
         }
     }
 
@@ -42,6 +70,7 @@ android {
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.05.00"))
     implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.core:core:1.16.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
