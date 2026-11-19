@@ -131,7 +131,6 @@ fun AiStudioScreen(
     var recentMissions by remember { mutableStateOf(emptyList<ai.hybrid.commandcenter.nexus.MissionRecord>()) }
     var activeConversationId by remember { mutableStateOf<String?>(null) }
     var conversationMessages by remember { mutableStateOf(emptyList<ChatMessageRecord>()) }
-    var pendingFollowUpMissionId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(journal) {
         val initial = withContext(Dispatchers.IO) {
             val id = journal.getLatestConversationId() ?: journal.createConversation()
@@ -449,7 +448,6 @@ fun AiStudioScreen(
                         conversationMessages = emptyList()
                         answer = ""
                         prompt = ""
-                        pendingFollowUpMissionId = null
                         status = "Создан новый диалог"
                     }
                 }
@@ -773,7 +771,6 @@ fun AiStudioScreen(
                             TextButton(
                                 enabled = !isRunning,
                                 onClick = {
-                                    pendingFollowUpMissionId = mission.id
                                     prompt = buildString {
                                         appendLine("FOLLOW-UP TO MISSION ${mission.id}")
                                         appendLine("Original task:")
