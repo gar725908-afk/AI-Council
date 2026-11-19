@@ -30,7 +30,11 @@ class NexusEvolutionExecutor(context: Context) {
     private val activeFile = File(root, "active.json")
     private val auditFile = File(root, "audit.jsonl")
 
-    init {
+    @Volatile private var initialized = false
+
+    @Synchronized
+    private fun ensureInitialized() {
+        if (initialized) return
         val hadPriorState = activeFile.exists() || auditFile.exists() ||
             proposalsDir.listFiles()?.isNotEmpty() == true ||
             versionsDir.listFiles()?.isNotEmpty() == true
@@ -47,6 +51,7 @@ class NexusEvolutionExecutor(context: Context) {
             writeTextAtomic(versionFile(0L), "")
             writeJsonAtomic(activeFile, JSONObject().put("version", 0L))
         }
+        initialized = true
     }
 
     @Synchronized
@@ -56,6 +61,8 @@ class NexusEvolutionExecutor(context: Context) {
         rationale: String,
         payload: String
     ): EvolutionProposal {
+        ensureInitialized()
+
         require(payload.isNotBlank()) { "Пустое содержимое изменения нельзя предложить." }
         require(payload.toByteArray(Charsets.UTF_8).size <= MAX_PAYLOAD_BYTES) {
             "Изменение превышает допустимый размер 256 КБ."
@@ -86,17 +93,23 @@ class NexusEvolutionExecutor(context: Context) {
 
     @Synchronized
     fun pendingProposals(): List<NexusEvolutionRecord> =
-        proposalFiles().mapNotNull { file -> readRecord(file) }
+        proposalFiles().mapNotNull {
+        ensureInitialized()
+ file -> readRecord(file) }
             .filter { it.status == NexusEvolutionProposalStatus.PENDING }
             .sortedBy { it.proposal.createdAtEpochMs }
 
     @Synchronized
     fun history(): List<NexusEvolutionRecord> =
-        proposalFiles().mapNotNull { file -> readRecord(file) }
+        proposalFiles().mapNotNull {
+        ensureInitialized()
+ file -> readRecord(file) }
             .sortedByDescending { it.proposal.createdAtEpochMs }
 
     @Synchronized
     fun activeVersion(): Long {
+        ensureInitialized()
+
         check(activeFile.isFile) { "Evolution active-version pointer is missing." }
         val json = JSONObject(activeFile.readText())
         require(json.keys().asSequence().toSet() == setOf("version")) {
@@ -122,6 +135,10 @@ class NexusEvolutionExecutor(context: Context) {
      */
     @Synchronized
     fun activeConfiguration(kind: EvolutionChangeKind): String {
+        ensureInitialized()
+
+        ensureInitialized()
+
         val activeRecords = history()
             .filter { it.status == NexusEvolutionProposalStatus.ACTIVE }
             .associateBy { it.proposal.proposedVersion }
@@ -144,6 +161,8 @@ class NexusEvolutionExecutor(context: Context) {
 
     @Synchronized
     fun activeRecord(): NexusEvolutionRecord? {
+        ensureInitialized()
+
         val active = activeVersion()
         if (active == 0L) return null
         val record = readRecord(proposalFileForVersion(active))
@@ -156,7 +175,9 @@ class NexusEvolutionExecutor(context: Context) {
     }
 
     @Synchronized
-    fun auditTrail(): List<String> = auditFile.takeIf { it.isFile }
+    fun auditTrail(): List<String> = auditFile.takeIf {
+        ensureInitialized()
+ it.isFile }
         ?.readLines(Charsets.UTF_8)
         .orEmpty()
 
@@ -170,6 +191,8 @@ class NexusEvolutionExecutor(context: Context) {
 
     @Synchronized
     fun approveAndActivate(proposalId: String): Result<EvolutionActivation> = runCatching {
+        ensureInitialized()
+
         val file = proposalFile(proposalId)
         val record = readRecord(file) ?: throw IllegalArgumentException("Предложение Evolution не найдено.")
         check(record.status == NexusEvolutionProposalStatus.PENDING) {
@@ -196,6 +219,8 @@ class NexusEvolutionExecutor(context: Context) {
 
     @Synchronized
     fun reject(proposalId: String, reason: String): Boolean {
+        ensureInitialized()
+
         val file = proposalFile(proposalId)
         val record = readRecord(file) ?: return false
         if (record.status != NexusEvolutionProposalStatus.PENDING) return false
@@ -206,6 +231,8 @@ class NexusEvolutionExecutor(context: Context) {
 
     @Synchronized
     fun rollbackTo(version: Long): Result<Long> = runCatching {
+        ensureInitialized()
+
         require(version >= 0L) { "Номер версии не может быть отрицательным." }
         val previous = activeVersion()
         require(version <= previous) { "Нельзя откатить систему вперёд по истории версий." }
@@ -216,11 +243,17 @@ class NexusEvolutionExecutor(context: Context) {
         version
     }
 
-    fun availableVersions(): List<Long> = versionsDir.listFiles()
+    @Synchronized
+    fun availableVersions(): List<Long> {
+        ensureInitialized()
+        return versionsDir.listFiles()
         .orEmpty()
-        .filter { it.isFile && it.extension == "txt" }
+        .filter {
+        ensureInitialized()
+ it.isFile && it.extension == "txt" }
         .mapNotNull { it.nameWithoutExtension.toLongOrNull() }
         .sortedDescending()
+    }
 
     private fun proposalFiles(): List<File> = proposalsDir.listFiles()
         .orEmpty()
