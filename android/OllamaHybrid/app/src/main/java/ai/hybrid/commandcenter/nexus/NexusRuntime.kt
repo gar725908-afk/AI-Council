@@ -198,7 +198,9 @@ data class CouncilRunResult(
     val agentResults: List<AgentRunResult>,
     val synthesis: String?,
     val completed: Boolean,
-    val error: String? = null
+    val error: String? = null,
+    val needsUserInput: Boolean = false,
+    val paused: Boolean = false
 )
 
 data class CouncilModelRoute(
