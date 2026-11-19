@@ -229,18 +229,22 @@ class GeminiGenerateContentGateway : ModelGateway {
                 if (feedback != null) {
                     throw IllegalStateException("Gemini не принял запрос: ${feedback}")
                 }
-                return@stream null
-            }
-            val parts = candidates.optJSONObject(0)
-                ?.optJSONObject("content")
-                ?.optJSONArray("parts")
-                ?: return@stream null
-            buildString {
-                for (index in 0 until parts.length()) {
-                    val text = parts.optJSONObject(index)?.optString("text")
-                    if (!text.isNullOrEmpty()) append(text)
+                null
+            } else {
+                val parts = candidates.optJSONObject(0)
+                    ?.optJSONObject("content")
+                    ?.optJSONArray("parts")
+                if (parts == null) {
+                    null
+                } else {
+                    buildString {
+                        for (index in 0 until parts.length()) {
+                            val text = parts.optJSONObject(index)?.optString("text")
+                            if (!text.isNullOrEmpty()) append(text)
+                        }
+                    }.ifEmpty { null }
                 }
-            }.ifEmpty { null }
+            }
         }
     }
 }
