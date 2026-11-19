@@ -61,6 +61,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
     var activeId by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf(emptyList<NexusEvolutionRecord>()) }
     var versions by remember { mutableStateOf(emptyList<Long>()) }
+    var activeEvolutionVersion by remember { mutableStateOf(0L) }
     var auditEvents by remember { mutableStateOf(emptyList<String>()) }
     var status by remember { mutableStateOf("Каталог подготовлен. Файлы моделей хранятся в закрытом каталоге NEXUS.") }
     var downloadingId by remember { mutableStateOf<String?>(null) }
@@ -76,12 +77,17 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
     fun refresh() {
         scope.launch {
             val loaded = withContext(Dispatchers.IO) {
-                Triple(storage.listInstalled(), storage.activeModel()?.id, evolution.pendingProposals())
+                Triple(
+                    Triple(storage.listInstalled(), storage.activeModel()?.id, evolution.pendingProposals()),
+                    evolution.activeVersion(),
+                    evolution.availableVersions()
+                )
             }
-            installed = loaded.first
-            activeId = loaded.second
-            pending = loaded.third
-            versions = withContext(Dispatchers.IO) { evolution.availableVersions() }
+            installed = loaded.first.first
+            activeId = loaded.first.second
+            pending = loaded.first.third
+            activeEvolutionVersion = loaded.second
+            versions = loaded.third
             auditEvents = withContext(Dispatchers.IO) { evolution.auditTrail().takeLast(8).reversed() }
         }
     }
@@ -176,18 +182,23 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                         }
                     },
                     onActivate = {
-                        runCatching { storage.activate(model.id) }
-                            .onSuccess { status = "Активная модель: " + it.displayName; refresh() }
-                            .onFailure { status = it.message ?: "Не удалось активировать модель." }
+                        scope.launch {
+                            status = "Проверяю SHA-256 модели перед активацией…"
+                            runCatching { withContext(Dispatchers.IO) { storage.activate(model.id) } }
+                                .onSuccess { status = "Активная модель: " + it.displayName; refresh() }
+                                .onFailure { status = it.message ?: "Не удалось активировать модель." }
+                        }
                     },
                     onCancelDownload = {
                         status = "Отменяю загрузку…"
                         activeDownloadCall?.cancel()
                     },
                     onDelete = {
-                        runCatching { storage.remove(model.id) }
-                            .onSuccess { status = "Модель удалена из хранилища."; refresh() }
-                            .onFailure { status = it.message ?: "Не удалось удалить модель." }
+                        scope.launch {
+                            runCatching { withContext(Dispatchers.IO) { storage.remove(model.id) } }
+                                .onSuccess { status = "Модель удалена из хранилища."; refresh() }
+                                .onFailure { status = it.message ?: "Не удалось удалить модель." }
+                        }
                     }
                 )
             }
@@ -211,14 +222,19 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                         Text("SHA-256: " + model.sha256, style = MaterialTheme.typography.labelSmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = {
-                                runCatching { storage.activate(model.id) }
-                                    .onSuccess { status = "Активная модель: " + it.displayName; refresh() }
-                                    .onFailure { status = it.message ?: "Ошибка активации." }
+                                scope.launch {
+                                    status = "Проверяю SHA-256 модели перед активацией…"
+                                    runCatching { withContext(Dispatchers.IO) { storage.activate(model.id) } }
+                                        .onSuccess { status = "Активная модель: " + it.displayName; refresh() }
+                                        .onFailure { status = it.message ?: "Ошибка активации." }
+                                }
                             }) { Text(if (activeId == model.id) "АКТИВНА" else "Активировать") }
                             TextButton(onClick = {
-                                runCatching { storage.remove(model.id) }
-                                    .onSuccess { status = "Файл модели удалён."; refresh() }
-                                    .onFailure { status = it.message ?: "Ошибка удаления." }
+                                scope.launch {
+                                    runCatching { withContext(Dispatchers.IO) { storage.remove(model.id) } }
+                                        .onSuccess { status = "Файл модели удалён."; refresh() }
+                                        .onFailure { status = it.message ?: "Ошибка удаления." }
+                                }
                             }) { Text("Удалить") }
                         }
                     }
@@ -274,12 +290,17 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
             Button(
                 enabled = proposalTitle.isNotBlank() && proposalReason.isNotBlank() && proposalPayload.isNotBlank(),
                 onClick = {
-                    runCatching {
-                        evolution.createProposal(proposalKind, proposalTitle, proposalReason, proposalPayload)
-                    }.onSuccess {
-                        status = "Предложение Evolution создано. Для активации требуется отдельное подтверждение."
-                        proposalTitle = ""; proposalReason = ""; proposalPayload = ""; refresh()
-                    }.onFailure { status = it.message ?: "Не удалось создать предложение." }
+                    scope.launch {
+                        status = "Проверяю и сохраняю предложение Evolution…"
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                evolution.createProposal(proposalKind, proposalTitle, proposalReason, proposalPayload)
+                            }
+                        }.onSuccess {
+                            status = "Предложение Evolution создано. Для активации требуется отдельное подтверждение."
+                            proposalTitle = ""; proposalReason = ""; proposalPayload = ""; refresh()
+                        }.onFailure { status = it.message ?: "Не удалось создать предложение." }
+                    }
                 }, modifier = Modifier.fillMaxWidth()
             ) { Text("Создать предложение Evolution") }
 
@@ -312,19 +333,22 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
 
             Text("ВЕРСИИ И ОТКАТ", fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary)
-            Text("Текущая версия: v" + evolution.activeVersion(),
+            Text("Текущая версия: v" + activeEvolutionVersion,
                 style = MaterialTheme.typography.bodyMedium)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                versions.filter { it < evolution.activeVersion() }.take(6).forEach { version ->
+                versions.filter { it < activeEvolutionVersion }.take(6).forEach { version ->
                     OutlinedButton(onClick = {
-                        evolution.rollbackTo(version)
-                            .onSuccess { status = "Восстановлена версия " + it; refresh() }
-                            .onFailure { status = it.message ?: "Откат не выполнен." }
+                        scope.launch {
+                            status = "Проверяю историю версий и выполняю откат…"
+                            val result = withContext(Dispatchers.IO) { evolution.rollbackTo(version) }
+                            result.onSuccess { status = "Восстановлена версия " + it; refresh() }
+                                .onFailure { status = it.message ?: "Откат не выполнен." }
+                        }
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("Восстановить версию v$version")
                     }
                 }
-                if (versions.none { it < evolution.activeVersion() }) {
+                if (versions.none { it < activeEvolutionVersion }) {
                     Text("Предыдущих версий пока нет.", style = MaterialTheme.typography.bodySmall)
                 }
             }
