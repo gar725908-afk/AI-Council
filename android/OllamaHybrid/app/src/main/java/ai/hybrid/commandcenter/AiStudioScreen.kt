@@ -70,13 +70,8 @@ fun AiStudioScreen(
     val context = LocalContext.current
     val settingsStore = remember(context) { ProviderSettingsStore(context) }
     val credentialVault = remember(context) { AndroidCredentialVault(context) }
-    val initialSettings = remember(context) { settingsStore.load() }
-    var providerKind by remember {
-        mutableStateOf(
-            runCatching { ProviderKind.valueOf(initialSettings.providerKind) }
-                .getOrDefault(ProviderKind.OPENAI_COMPATIBLE)
-        )
-    }
+    var providerKind by remember { mutableStateOf(ProviderKind.OPENAI_COMPATIBLE) }
+    var settingsLoaded by remember { mutableStateOf(false) }
     val engineRegistry = remember(context) { NexusEngineRegistry(context) }
     DisposableEffect(engineRegistry) {
         onDispose { engineRegistry.close() }
@@ -95,28 +90,14 @@ fun AiStudioScreen(
     val scope = rememberCoroutineScope()
     val providerKeyId = AndroidCredentialVault.providerKeyId(providerKind.name)
 
-    var endpoint by remember {
-        mutableStateOf(initialSettings.endpoint.ifBlank { defaultProviderEndpoint(providerKind) })
-    }
-    var model by remember { mutableStateOf(initialSettings.model) }
+    var endpoint by remember { mutableStateOf(defaultProviderEndpoint(providerKind)) }
+    var model by remember { mutableStateOf("") }
     var providerMenuExpanded by remember { mutableStateOf(false) }
     var modelMenuExpanded by remember { mutableStateOf(false) }
     var isCheckingModels by remember { mutableStateOf(false) }
     var discoveredModels by remember(providerKind) { mutableStateOf(emptyList<String>()) }
-    var agentRoutes by remember(providerKind) {
-        mutableStateOf(
-            councilAgents.associate { agent ->
-                agent.id to (routingStore.load(agent.id) ?: providerKind)
-            }
-        )
-    }
-    var agentModelOverrides by remember {
-        mutableStateOf(
-            councilAgents.associate { agent ->
-                agent.id to routingStore.loadModelOverride(agent.id).orEmpty()
-            }
-        )
-    }
+    var agentRoutes by remember { mutableStateOf(emptyMap<String, ProviderKind>()) }
+    var agentModelOverrides by remember { mutableStateOf(emptyMap<String, String>()) }
     var expandedAgentRoute by remember { mutableStateOf<String?>(null) }
     var apiKey by remember { mutableStateOf("") }
     var hasSavedKey by remember { mutableStateOf(false) }
@@ -128,6 +109,30 @@ fun AiStudioScreen(
     var recentMissions by remember { mutableStateOf(emptyList<ai.hybrid.commandcenter.nexus.MissionRecord>()) }
     var activeConversationId by remember { mutableStateOf<String?>(null) }
     var conversationMessages by remember { mutableStateOf(emptyList<ChatMessageRecord>()) }
+    LaunchedEffect(settingsStore) {
+        val loaded = withContext(Dispatchers.IO) { settingsStore.load() }
+        val loadedKind = runCatching { ProviderKind.valueOf(loaded.providerKind) }
+            .getOrDefault(ProviderKind.OPENAI_COMPATIBLE)
+        providerKind = loadedKind
+        endpoint = loaded.endpoint.ifBlank { defaultProviderEndpoint(loadedKind) }
+        model = loaded.model
+        settingsLoaded = true
+    }
+    LaunchedEffect(providerKind, settingsLoaded) {
+        if (!settingsLoaded) return@LaunchedEffect
+        val routes = withContext(Dispatchers.IO) {
+            councilAgents.associate { agent ->
+                agent.id to (routingStore.load(agent.id) ?: providerKind)
+            }
+        }
+        val overrides = withContext(Dispatchers.IO) {
+            councilAgents.associate { agent ->
+                agent.id to routingStore.loadModelOverride(agent.id).orEmpty()
+            }
+        }
+        agentRoutes = routes
+        agentModelOverrides = overrides
+    }
     LaunchedEffect(journal) {
         val recovery = (context.applicationContext as NexusApplication).awaitStartupRecovery()
         if (recovery.isFailure) {
