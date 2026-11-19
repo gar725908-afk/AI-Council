@@ -9,6 +9,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Call
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
@@ -42,7 +43,8 @@ class NexusModelStorage(context: Context) {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .callTimeout(0, TimeUnit.MILLISECONDS)
-        .followRedirects(true)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
 
     fun listInstalled(): List<InstalledNexusModel> =
@@ -81,7 +83,8 @@ class NexusModelStorage(context: Context) {
     suspend fun download(
         model: NexusModelDescriptor,
         acceptedLicenseId: String?,
-        onProgress: (Long, Long) -> Unit = { _, _ -> }
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+        onCallCreated: (Call) -> Unit = {}
     ): InstalledNexusModel = withContext(Dispatchers.IO) {
         val manifest = model.artifact
             ?: throw IllegalStateException("Для выбранной модели пока нет проверенного файла для загрузки.")
@@ -104,11 +107,16 @@ class NexusModelStorage(context: Context) {
             .header("Accept", "application/octet-stream")
             .get()
             .build()
+        val call = client.newCall(request)
+        onCallCreated(call)
 
         try {
-            client.newCall(request).execute().use { response ->
+            call.execute().use { response ->
                 require(response.request.url.isHttps) {
                     "Источник перенаправил загрузку на незашифрованный HTTP. Файл не будет сохранён."
+                }
+                if (response.isRedirect) {
+                    throw IOException("Источник вернул redirect. Для безопасности требуется закреплённый прямой HTTPS URL.")
                 }
                 if (!response.isSuccessful) {
                     throw IOException("Сервер загрузки вернул HTTP " + response.code + ".")
