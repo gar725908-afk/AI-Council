@@ -49,6 +49,7 @@ class NexusEvolutionExecutor(context: Context) {
         require(payload.toByteArray(Charsets.UTF_8).size <= MAX_PAYLOAD_BYTES) {
             "Изменение превышает допустимый размер 256 КБ."
         }
+        validatePayload(kind, payload)
         val current = activeVersion()
         val nextVersion = maxOf(
             availableVersions().maxOrNull() ?: 0L,
@@ -143,6 +144,7 @@ class NexusEvolutionExecutor(context: Context) {
         check(sha256(record.payload) == record.proposal.contentSha256) {
             "Контрольная сумма содержимого предложения не совпадает."
         }
+        validatePayload(record.proposal.kind, record.payload)
         val activation = NexusEvolutionPolicy.activate(record.proposal, EvolutionApproval.Approved).getOrThrow()
         writeTextAtomic(versionFile(activation.activeVersion), record.payload)
         writeJsonAtomic(activeFile, JSONObject().put("version", activation.activeVersion))
@@ -262,6 +264,14 @@ class NexusEvolutionExecutor(context: Context) {
                 tmp.delete()
                 throw IOException("Не удалось атомарно сохранить файл Evolution.")
             }
+        }
+    }
+
+    private fun validatePayload(kind: EvolutionChangeKind, payload: String) {
+        when (kind) {
+            EvolutionChangeKind.ROUTING_POLICY -> NexusEvolutionRoutingPolicy.parse(payload)
+            EvolutionChangeKind.PROMPT_PROFILE, EvolutionChangeKind.SKILL_PACK,
+            EvolutionChangeKind.TOOL_DESCRIPTION, EvolutionChangeKind.MODEL_CONFIGURATION -> Unit
         }
     }
 
