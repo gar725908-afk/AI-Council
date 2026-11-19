@@ -35,7 +35,9 @@ data class CouncilParticipantDescriptor(
     val transport: CouncilParticipantTransport,
     val enabled: Boolean = true,
     val sessionReady: Boolean = true,
-    val requiresUserApproval: Boolean = false
+    val requiresUserApproval: Boolean = false,
+    /** Persistent, user-granted consent to send task context to an external AI session. */
+    val externalContextConsentGranted: Boolean = false
 )
 
 data class LocalCouncilProfile(
@@ -253,7 +255,13 @@ class LocalFirstCouncilOrchestrator(
                     }
 
                     val requiresApproval = profile.mode == CouncilControlMode.LOCAL_ASSISTED ||
-                        targets.any { it.requiresUserApproval }
+                        targets.any { target ->
+                            target.requiresUserApproval ||
+                                (target.transport in setOf(
+                                    CouncilParticipantTransport.ANDROID_WEBVIEW_SESSION,
+                                    CouncilParticipantTransport.OPTIONAL_API
+                                ) && !target.externalContextConsentGranted)
+                        }
                     if (requiresApproval && !approval.approve(
                             assignments,
                             targets,
