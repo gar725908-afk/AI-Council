@@ -168,13 +168,38 @@ class NexusLocalCouncilManager(
             "The local Manager returned no valid JSON decision."
         }
         val json = JSONObject(raw.substring(start, end + 1))
-        return when (json.optString("action")) {
+        val actionValue = json.opt("action")
+        require(actionValue is String) {
+            "The local Manager decision must contain a string action."
+        }
+        fun requireKeys(vararg allowedKeys: String) {
+            val allowed = allowedKeys.toSet()
+            require(json.keys().asSequence().all { it in allowed }) {
+                "The local Manager decision contains unsupported fields."
+            }
+            require(allowed.all { json.has(it) }) {
+                "The local Manager decision is missing a required field."
+            }
+        }
+        fun requiredString(objectValue: JSONObject, key: String, maxLength: Int): String {
+            val value = objectValue.opt(key)
+            require(value is String) {
+                "Manager field '$key' must be a string."
+            }
+            val normalized = value.trim()
+            require(normalized.isNotBlank() && normalized.length <= maxLength) {
+                "Manager field '$key' must contain 1 to $maxLength characters."
+            }
+            return normalized
+        }
+        return when (actionValue) {
             "delegate" -> {
+                requireKeys("action", "assignments")
                 val allowed = context.availableParticipants
                     .filter { it.enabled && it.sessionReady }
                     .associateBy { it.id }
                 val items = json.optJSONArray("assignments")
-                    ?: throw IllegalArgumentException("Manager delegate decision has no assignments array.")
+                    ?: throw IllegalArgumentException("Manager delegate assignments must be a JSON array.")
                 require(items.length() in 1..8) {
                     "Manager must return between 1 and 8 assignments."
                 }
@@ -183,34 +208,35 @@ class NexusLocalCouncilManager(
                     for (index in 0 until items.length()) {
                         val item = items.optJSONObject(index)
                             ?: throw IllegalArgumentException("Assignment $index is not an object.")
-                        val participantId = item.optString("participantId").trim()
-                        val task = item.optString("task").trim()
+                        val itemKeys = item.keys().asSequence().toSet()
+                        require(itemKeys == setOf("participantId", "task")) {
+                            "Assignment $index must contain only participantId and task."
+                        }
+                        val participantId = requiredString(item, "participantId", 128)
+                        val task = requiredString(item, "task", 6_000)
                         require(participantId in allowed) {
                             "Manager selected an unknown, disabled, or unavailable participant."
                         }
                         require(seen.add(participantId)) {
                             "Manager returned duplicate assignments for participant $participantId."
                         }
-                        require(task.isNotBlank() && task.length <= 6_000) {
-                            "Assignment task must contain 1 to 6000 characters."
-                        }
                         add(CouncilAssignment(participantId, task))
                     }
                 }
                 LocalCouncilDecision.Delegate(assignments)
             }
-            "ask_user" -> LocalCouncilDecision.AskUser(
-                json.optString("question").trim().takeIf { it.isNotBlank() && it.length <= 2_000 }
-                    ?: throw IllegalArgumentException("Manager returned an empty or oversized question.")
-            )
-            "finish" -> LocalCouncilDecision.Finish(
-                json.optString("summary").trim().takeIf { it.isNotBlank() && it.length <= 8_000 }
-                    ?: throw IllegalArgumentException("Manager returned an empty or oversized summary.")
-            )
-            "yield_control" -> LocalCouncilDecision.YieldControl(
-                json.optString("reason").trim().takeIf { it.isNotBlank() && it.length <= 2_000 }
-                    ?: throw IllegalArgumentException("Manager returned an empty or oversized pause reason.")
-            )
+            "ask_user" -> {
+                requireKeys("action", "question")
+                LocalCouncilDecision.AskUser(requiredString(json, "question", 2_000))
+            }
+            "finish" -> {
+                requireKeys("action", "summary")
+                LocalCouncilDecision.Finish(requiredString(json, "summary", 8_000))
+            }
+            "yield_control" -> {
+                requireKeys("action", "reason")
+                LocalCouncilDecision.YieldControl(requiredString(json, "reason", 2_000))
+            }
             else -> throw IllegalArgumentException("The local Manager returned an unsupported action.")
         }
     }
