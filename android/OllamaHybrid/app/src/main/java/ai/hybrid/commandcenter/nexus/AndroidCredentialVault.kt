@@ -114,6 +114,7 @@ class AndroidCredentialVault(context: Context) {
         fun providerKeyId(providerKind: String): String =
             "provider.${providerKind.lowercase()}.api-key"
 
+        private const val MAX_SECRET_BYTES = 16 * 1024
         private const val SECRET_PREFS = "nexus_encrypted_credentials"
         private const val V2_PREFIX = "v2:"
         private const val KEY_ALIAS = "nexus.provider.credentials.v1"
