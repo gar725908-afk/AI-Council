@@ -49,6 +49,7 @@ import ai.hybrid.commandcenter.nexus.MissionJournal
 import ai.hybrid.commandcenter.nexus.MissionStatus
 import ai.hybrid.commandcenter.nexus.ChatMessageRecord
 import ai.hybrid.commandcenter.nexus.ProviderModelCatalog
+import ai.hybrid.commandcenter.nexus.InstalledNexusModel
 import ai.hybrid.commandcenter.nexus.NexusEvolutionExecutor
 import ai.hybrid.commandcenter.nexus.NexusEngineRegistry
 import ai.hybrid.commandcenter.nexus.NexusEvolutionRoutingPolicy
