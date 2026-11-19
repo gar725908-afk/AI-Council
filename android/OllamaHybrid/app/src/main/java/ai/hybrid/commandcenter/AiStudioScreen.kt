@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
+import java.io.Closeable
 
 @Composable
 fun AiStudioScreen(
@@ -75,6 +77,9 @@ fun AiStudioScreen(
         )
     }
     val gateway = remember(providerKind, context) { createModelGateway(providerKind, context) }
+    DisposableEffect(gateway) {
+        onDispose { (gateway as? Closeable)?.close() }
+    }
     val usesOnDeviceModel = providerKind == ProviderKind.ON_DEVICE_LITERT ||
         providerKind == ProviderKind.ON_DEVICE_LLAMA_CPP
     val modelCatalog = remember { ProviderModelCatalog() }
