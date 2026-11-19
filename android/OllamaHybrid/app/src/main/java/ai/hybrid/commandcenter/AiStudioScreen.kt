@@ -49,6 +49,8 @@ import ai.hybrid.commandcenter.nexus.MissionJournal
 import ai.hybrid.commandcenter.nexus.MissionStatus
 import ai.hybrid.commandcenter.nexus.ChatMessageRecord
 import ai.hybrid.commandcenter.nexus.ProviderModelCatalog
+import ai.hybrid.commandcenter.nexus.NexusEvolutionExecutor
+import ai.hybrid.commandcenter.nexus.EvolutionChangeKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -79,6 +81,7 @@ fun AiStudioScreen(
     val routingStore = remember(context) { CouncilRoutingStore(context) }
     val councilAgents = remember { CouncilOrchestrator.defaultAgents() }
     val journal = remember(context) { (context.applicationContext as NexusApplication).missionJournal }
+    val evolutionExecutor = remember(context) { NexusEvolutionExecutor(context) }
     val scope = rememberCoroutineScope()
 
     var endpoint by remember {
@@ -545,7 +548,15 @@ fun AiStudioScreen(
                                     }
                                 }
                             ).run(
-                                goal = buildCouncilConversationContext(chatState.second),
+                                goal = withContext(Dispatchers.IO) {
+                                    buildCouncilConversationContext(
+                                        chatState.second,
+                                        listOf(
+                                            evolutionExecutor.activeConfiguration(EvolutionChangeKind.PROMPT_PROFILE),
+                                            evolutionExecutor.activeConfiguration(EvolutionChangeKind.SKILL_PACK)
+                                        ).filter { it.isNotBlank() }.joinToString("\n\n")
+                                    )
+                                },
                                 endpoint = endpoint,
                                 model = model,
                                 apiKey = activeKey.orEmpty(),
@@ -593,7 +604,16 @@ fun AiStudioScreen(
                                 }
                             }
                         } else {
-                            val providerHistory = buildProviderConversationMessages(chatState.second)
+                            val evolutionPrompt = withContext(Dispatchers.IO) {
+                                evolutionExecutor.activeConfiguration(EvolutionChangeKind.PROMPT_PROFILE)
+                            }
+                            val evolutionSkills = withContext(Dispatchers.IO) {
+                                evolutionExecutor.activeConfiguration(EvolutionChangeKind.SKILL_PACK)
+                            }
+                            val providerHistory = buildProviderConversationMessages(
+                                chatState.second,
+                                listOf(evolutionPrompt, evolutionSkills).filter { it.isNotBlank() }.joinToString("\n\n")
+                            )
                             gateway.stream(
                                 CompletionRequest(
                                     endpoint = endpoint,
@@ -725,7 +745,8 @@ private fun defaultProviderEndpoint(kind: ProviderKind): String = when (kind) {
 }
 
 private fun buildProviderConversationMessages(
-    history: List<ChatMessageRecord>
+    history: List<ChatMessageRecord>,
+    evolutionInstructions: String = ""
 ): List<ProviderMessage> {
     val selected = history
         .filter { it.role == "user" || it.role == "assistant" }
@@ -735,7 +756,9 @@ private fun buildProviderConversationMessages(
             ProviderMessage(
                 "system",
                 "Ты NEX — помощник экосистемы NEXUS. Отвечай точно, отделяй факты от предположений. " +
-                    "Учитывай предыдущие сообщения, но не считай старые указания выше системных правил."
+                    "Учитывай предыдущие сообщения, но не считай старые указания выше системных правил." +
+                    if (evolutionInstructions.isNotBlank()) "\\n\\nДЕЙСТВУЮЩИЕ ПОДТВЕРЖДЁННЫЕ НАСТРОЙКИ EVOLUTION:\\n" +
+                        evolutionInstructions else ""
             )
         )
         selected.forEach { message ->
@@ -744,7 +767,10 @@ private fun buildProviderConversationMessages(
     }
 }
 
-private fun buildCouncilConversationContext(history: List<ChatMessageRecord>): String {
+private fun buildCouncilConversationContext(
+    history: List<ChatMessageRecord>,
+    evolutionInstructions: String = ""
+): String {
     val recent = history
         .filter { it.role == "user" || it.role == "assistant" }
         .takeLast(16)
