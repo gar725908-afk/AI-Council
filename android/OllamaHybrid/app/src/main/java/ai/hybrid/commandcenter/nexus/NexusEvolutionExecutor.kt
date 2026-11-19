@@ -223,29 +223,44 @@ class NexusEvolutionExecutor(context: Context) {
      */
     private fun verifiedVersionPayload(version: Long): String {
         require(version >= 0L) { "Evolution version cannot be negative." }
-        val file = versionFile(version)
-        check(file.isFile) { "Evolution version $version is missing from the archive." }
-        val payload = file.readText(Charsets.UTF_8)
-        if (version == 0L) {
-            check(payload.isEmpty()) { "Evolution baseline version is corrupted." }
-            return payload
+        var currentVersion = version
+        var targetPayload = ""
+        val visited = mutableSetOf<Long>()
+
+        // Walk the entire ancestry, not just the leaf, so a valid-looking orphan file cannot
+        // become a rollback target after an earlier version in its history was damaged.
+        while (currentVersion > 0L) {
+            check(visited.add(currentVersion)) {
+                "Evolution history contains a cycle at version $currentVersion."
+            }
+            val file = versionFile(currentVersion)
+            check(file.isFile) { "Evolution version $currentVersion is missing from the archive." }
+            val payload = file.readText(Charsets.UTF_8)
+            val recordFile = proposalFiles().firstOrNull { candidate ->
+                readRecord(candidate)?.proposal?.proposedVersion == currentVersion
+            } ?: throw IllegalStateException("Evolution proposal for version $currentVersion is missing.")
+            val record = readRecord(recordFile)
+                ?: throw IllegalStateException("Evolution proposal for version $currentVersion is unreadable.")
+
+            check(record.status == NexusEvolutionProposalStatus.ACTIVE) {
+                "Evolution version $currentVersion has no active proposal record."
+            }
+            check(record.proposal.proposedVersion == currentVersion &&
+                record.proposal.beforeVersion in 0 until currentVersion
+            ) { "Evolution version $currentVersion has an invalid parent link." }
+            check(sha256(record.payload) == record.proposal.contentSha256 &&
+                sha256(payload) == record.proposal.contentSha256
+            ) { "Evolution version $currentVersion failed its SHA-256 integrity check." }
+
+            if (currentVersion == version) targetPayload = payload
+            currentVersion = record.proposal.beforeVersion
         }
 
-        val recordFile = proposalFiles().firstOrNull { candidate ->
-            readRecord(candidate)?.proposal?.proposedVersion == version
-        } ?: throw IllegalStateException("Evolution proposal for version $version is missing.")
-        val record = readRecord(recordFile)
-            ?: throw IllegalStateException("Evolution proposal for version $version is unreadable.")
-        check(record.status == NexusEvolutionProposalStatus.ACTIVE) {
-            "Evolution version $version has no active proposal record."
+        val baseline = versionFile(0L)
+        check(baseline.isFile && baseline.readText(Charsets.UTF_8).isEmpty()) {
+            "Evolution baseline version is missing or corrupted."
         }
-        check(record.proposal.proposedVersion == version && record.proposal.beforeVersion in 0 until version) {
-            "Evolution version $version has an invalid parent link."
-        }
-        check(sha256(record.payload) == record.proposal.contentSha256 &&
-            sha256(payload) == record.proposal.contentSha256
-        ) { "Evolution version $version failed its SHA-256 integrity check." }
-        return payload
+        return targetPayload
     }
 
     private fun saveRecord(record: NexusEvolutionRecord) {
