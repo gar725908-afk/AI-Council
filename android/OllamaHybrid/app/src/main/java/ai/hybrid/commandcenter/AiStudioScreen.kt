@@ -642,7 +642,7 @@ fun AiStudioScreen(
                     }
                 }
             },
-            enabled = !isRunning && prompt.isNotBlank(),
+            enabled = !isRunning && activeConversationId != null && prompt.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
             if (isRunning) {
