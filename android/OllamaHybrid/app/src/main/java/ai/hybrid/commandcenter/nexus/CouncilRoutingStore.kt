@@ -22,7 +22,8 @@ class CouncilRoutingStore(context: Context) {
             ?.let { saved -> runCatching { ProviderKind.valueOf(saved) }.getOrNull() }
 
     fun loadModelOverride(agentId: String): String? =
-        preferences.getString(modelKey(agentId), null)?.takeIf { it.isNotBlank() }
+        preferences.getString(modelKey(agentId), null)
+            ?.let { saved -> runCatching { normalizeModelOverride(saved) }.getOrNull() }
 
     fun loadRoute(agentId: String, fallback: ProviderKind): CouncilAgentRoute =
         CouncilAgentRoute(
@@ -43,7 +44,7 @@ class CouncilRoutingStore(context: Context) {
         if (model.isNullOrBlank()) {
             editor.remove(modelKey(agentId))
         } else {
-            editor.putString(modelKey(agentId), model.trim())
+            editor.putString(modelKey(agentId), normalizeModelOverride(model))
         }
         editor.apply()
     }
@@ -54,7 +55,7 @@ class CouncilRoutingStore(context: Context) {
             .putString(providerKey(agentId), route.providerKind.name)
             .apply {
                 if (route.modelOverride.isNullOrBlank()) remove(modelKey(agentId))
-                else putString(modelKey(agentId), route.modelOverride.trim())
+                else putString(modelKey(agentId), normalizeModelOverride(route.modelOverride))
             }
             .apply()
     }
@@ -69,6 +70,17 @@ class CouncilRoutingStore(context: Context) {
 
     private fun providerKey(agentId: String) = KEY_PREFIX + agentId + ".provider"
     private fun modelKey(agentId: String) = KEY_PREFIX + agentId + ".model"
+
+    private fun normalizeModelOverride(model: String): String {
+        val normalized = model.trim()
+        require(normalized.isNotBlank() && normalized.length <= 200) {
+            "Model override must contain 1 to 200 characters."
+        }
+        require(normalized.none { it.code < 0x20 || it.code == 0x7f }) {
+            "Model override cannot contain control characters."
+        }
+        return normalized
+    }
 
     private fun requireValidId(agentId: String) {
         require(agentId.matches(Regex("[A-Za-z0-9._-]{1,80}"))) {
