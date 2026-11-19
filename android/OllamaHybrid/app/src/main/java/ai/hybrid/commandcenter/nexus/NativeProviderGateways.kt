@@ -27,6 +27,9 @@ enum class ProviderKind(val displayName: String) {
     MISTRAL("Mistral"),
     TOGETHER("Together AI"),
     FIREWORKS("Fireworks AI"),
+    XAI("xAI Grok"),
+    CEREBRAS("Cerebras Inference"),
+    NVIDIA("NVIDIA API Catalog"),
     OLLAMA("Ollama local"),
     ANTHROPIC("Anthropic Claude"),
     GEMINI("Google Gemini")
@@ -46,6 +49,9 @@ fun createModelGateway(kind: ProviderKind): ModelGateway = when (kind) {
     ProviderKind.MISTRAL,
     ProviderKind.TOGETHER,
     ProviderKind.FIREWORKS,
+    ProviderKind.XAI,
+    ProviderKind.CEREBRAS,
+    ProviderKind.NVIDIA,
     ProviderKind.OLLAMA -> OpenAiCompatibleGateway()
     ProviderKind.ANTHROPIC -> AnthropicMessagesGateway()
     ProviderKind.GEMINI -> GeminiGenerateContentGateway()
