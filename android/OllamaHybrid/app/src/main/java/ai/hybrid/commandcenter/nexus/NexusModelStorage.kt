@@ -127,6 +127,7 @@ class NexusModelStorage(context: Context) {
                 }
                 val digest = MessageDigest.getInstance("SHA-256")
                 var received = 0L
+                var lastProgressReported = 0L
                 FileOutputStream(partial).use { output ->
                     val input = body.byteStream()
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
@@ -141,7 +142,12 @@ class NexusModelStorage(context: Context) {
                         }
                         digest.update(buffer, 0, count)
                         output.write(buffer, 0, count)
-                        onProgress(received, verified.sizeBytes)
+                        if (received - lastProgressReported >= PROGRESS_REPORT_INTERVAL_BYTES ||
+                            received == verified.sizeBytes
+                        ) {
+                            onProgress(received, verified.sizeBytes)
+                            lastProgressReported = received
+                        }
                     }
                     output.fd.sync()
                 }
@@ -294,5 +300,6 @@ class NexusModelStorage(context: Context) {
 
     companion object {
         private const val ACTIVE_ID = "active_model_id"
+        private const val PROGRESS_REPORT_INTERVAL_BYTES = 1L * 1024L * 1024L
     }
 }
