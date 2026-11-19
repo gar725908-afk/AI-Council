@@ -3,10 +3,13 @@ package ai.hybrid.commandcenter
 import ai.hybrid.commandcenter.androidbridge.DeviceDiagnostics
 import ai.hybrid.commandcenter.androidbridge.DeviceInspector
 import ai.hybrid.commandcenter.nexus.ChatConversationRecord
+import ai.hybrid.commandcenter.nexus.EndpointReachability
+import ai.hybrid.commandcenter.nexus.HealthCheckResult
 import ai.hybrid.commandcenter.nexus.InstalledNexusModel
 import ai.hybrid.commandcenter.nexus.MissionRecord
 import ai.hybrid.commandcenter.nexus.MissionStatus
 import ai.hybrid.commandcenter.nexus.NexusModelStorage
+import ai.hybrid.commandcenter.nexus.ProviderHealthCheck
 import ai.hybrid.commandcenter.nexus.ProviderKind
 import ai.hybrid.commandcenter.nexus.ProviderSettings
 import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
@@ -31,7 +34,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -143,11 +148,28 @@ private fun ModelProfileCard(deck: DeckState, onNavigate: (Int) -> Unit) {
             ValueRow("Локальная модель (ON_DEVICE)", "Не активирована")
         }
         Spacer(Modifier.height(4.dp))
+        val scope = rememberCoroutineScope()
+        var health by remember { mutableStateOf<HealthCheckResult?>(null) }
+        var checking by remember { mutableStateOf(false) }
         if (cloudConfigured) {
             ValueRow("Облачный провайдер", providerLabel)
             if (settings.model.isNotBlank()) ValueRow("Модель", settings.model)
             if (settings.endpoint.isNotBlank()) ValueRow("Endpoint", settings.endpoint.take(48))
-            StatusLine("Соединение в этой сессии не проверялось", SignalAmber)
+            val currentHealth = health
+            when {
+                checking -> StatusLine("Проверка соединения…", SignalAmber)
+                currentHealth == null ->
+                    StatusLine("Соединение в этой сессии не проверялось", SignalAmber)
+                currentHealth.reachability == EndpointReachability.REACHABLE -> StatusLine(
+                    "${currentHealth.detail} · ${currentHealth.latencyMillis} мс · " +
+                        timeLabel(currentHealth.checkedAtEpochMillis),
+                    SignalGreen
+                )
+                else -> StatusLine(
+                    "${currentHealth.detail} · " + timeLabel(currentHealth.checkedAtEpochMillis),
+                    SignalRed
+                )
+            }
         } else {
             ValueRow("Облачный провайдер", "Не настроен")
         }
@@ -159,6 +181,15 @@ private fun ModelProfileCard(deck: DeckState, onNavigate: (Int) -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             DeckButton("Модели", Cyan) { onNavigate(3) }
             DeckButton("AI Studio", Cyan) { onNavigate(1) }
+            if (cloudConfigured && settings.endpoint.isNotBlank() && !checking) {
+                DeckButton("Проверить", SignalGreen) {
+                    checking = true
+                    scope.launch {
+                        health = ProviderHealthCheck.check(settings.endpoint)
+                        checking = false
+                    }
+                }
+            }
         }
     }
 }
