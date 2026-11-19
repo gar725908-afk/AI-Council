@@ -20,7 +20,7 @@ keytool -genkeypair -v -keystore nexus-upload.jks -keyalg RSA -keysize 4096 -val
 PowerShell: convert the binary keystore to a one-line Base64 value and copy it for the GitHub secret:
 
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes(".\\nexus-upload.jks")) | Set-Clipboard
+[Convert]::ToBase64String([IO.File]::ReadAllBytes(".\nexus-upload.jks")) | Set-Clipboard
 ```
 
 Keep at least two offline backups of `nexus-upload.jks` and its passwords. The same key must sign every future APK that updates this installed package. Do not regenerate it for a later release.
