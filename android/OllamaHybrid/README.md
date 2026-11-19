@@ -32,18 +32,18 @@
 - **Provider registry:** отдельные профили OpenAI, DeepSeek, OpenRouter, Groq, Mistral, Together AI, Fireworks AI, xAI Grok, Cerebras, NVIDIA API Catalog, Ollama local и Custom OpenAI-compatible, а также нативные Anthropic Claude и Google Gemini. Endpoint, model и ключи раздельны для каждого профиля.
 - **Model discovery:** проверка соединения и загрузка списка моделей через /models, /v1/models, Anthropic /v1/models или Gemini /v1beta/models; найденную модель можно выбрать в UI.
 - **Credential vault:** API-ключи шифруются AES-GCM ключом Android Keystore; в обычных настройках хранятся только endpoint и имя модели.
-- **Legacy NEXUS COUNCIL runtime:** восемь преднастроенных ролей; одновременно работают максимум три агента; для каждой роли можно назначить отдельный провайдер и собственный model ID override. В текущем HTTP-потоке Manager пока синтезирует ответы через основной профиль AI Studio.
-- **Local-first Council control plane foundation:** добавлены режимы LOCAL_AUTONOMOUS / LOCAL_ASSISTED / MANUAL, типизированные решения локального Manager, интерфейсы participant adapters, проверка opt-in для API/Desktop и цикл повторных делегирований. Это пока не подключено к экрану Council и не является production-реализацией локальной модели.
+- **Remote Council:** восемь преднастроенных ролей; одновременно работают максимум три агента; для каждой роли можно назначить отдельный провайдер и собственный model ID override. Активная Evolution routing policy имеет приоритет над сохранёнными маршрутами ролей.
+- **Local-first Council runtime:** AI Studio подключён к локальному Manager на активной модели Model Center. Manager формирует типизированные решения `delegate` / `ask_user` / `finish` / `yield_control`; восемь исполнителей используют ту же активную модель и запускаются последовательно. Модель не может напрямую вызывать инструменты, shell или Android API.
 - **Mission Journal:** локальный SQLite-журнал миссий, результатов агентов и событий; фиксируются состояния и ошибки. Цели миссий, ответы, ошибки и детали событий шифруются AES-GCM через Android Keystore; старые plaintext-записи остаются читаемыми.
 - **NEXUS CHAT:** локальные многоходовые диалоги, сохранение сообщений, восстановление последнего разговора, создание нового диалога; последние сообщения передаются выбранной модели как контекст. Для Council передаётся ограниченный транскрипт последних реплик.
 - **Recovery marker:** при запуске незавершённые RUNNING/VERIFYING миссии помечаются INTERRUPTED; они не повторяются автоматически.
-- **Failure handling:** ограничение времени на агента и синтез, кооперативная отмена через coroutine lifecycle, сохранение частичных результатов; тайм-аут одного агента не прерывает остальных; кнопка остановки миссии отменяет активные HTTP-вызовы.
+- **Mission lifecycle:** запрос Manager на уточнение сохраняется как `AWAITING_INPUT`, пауза/лимит ходов — как `INTERRUPTED`, реальные ошибки — как `FAILED`. Для `AWAITING_INPUT` доступно явное создание follow-up миссии с исходной задачей и вопросом Manager; прерванные миссии автоматически не повторяются. Ограничения времени и отмена сохраняются.
 
 ## Ограничения текущей реализации
 
 Это **первый runtime slice**, а не законченная экосистема:
-- Новый Local-first Council control plane — foundation контрактов и исполнения поручений через адаптеры. On-device inference engine, production WebView session adapters, UI/DI integration и durable binding к MissionJournal пока не подключены.
-- Текущий legacy Council использует HTTP gateway; синтезатор Manager работает через основной выбранный профиль AI Studio. Переход на локальную модель Manager ещё впереди.
+- Локальный Manager и восемь локальных executor adapters подключены к AI Studio, но on-device inference, model loading, ABI и производительность ещё не проверены на физическом устройстве.
+- Remote Council использует настроенные provider gateways; локальный Council использует активную on-device модель Model Center. Ollama на домашнем ПК остаётся отдельным сетевым профилем и не считается on-device Manager.
 - Для каждой роли Council поддерживается выбор провайдера. Конфигурация endpoint/model хранится на уровне профиля провайдера, поэтому индивидуальный выбор разных моделей одного и того же провайдера для каждой роли ещё не реализован.
 - OpenAI-compatible сервер должен поддерживать Chat Completions и SSE. Совместимость по одному лишь названию провайдера не гарантируется.
 - Добавлены on-device адаптеры LiteRT-LM и llama.cpp. Их сборка, загрузка модели и генерация на физическом устройстве ещё не проверялись. llama.cpp сейчас собирается под arm64-v8a и CPU, его встроенный chat template ориентирован на Qwen3 ChatML.
@@ -52,7 +52,7 @@
 - NEXUS FORGE пока архитектурный этап: встроенная среда разработки и сборка APK на Android ещё не реализованы.
 - Mission Journal и NEXUS CHAT шифруют содержимое миссий, результаты агентов, заголовки и тексты сообщений на уровне полей с помощью AES-GCM/Android Keystore. Идентификаторы, статусы, временные метки, endpoint и названия моделей остаются метаданными SQLite. Вложения, полнотекстовый индекс, семантический поиск и поиск по архиву ещё не реализованы.
 - Recovery фиксирует прерванное состояние; автоматический безопасный resume и WorkManager orchestration ещё не реализованы. Тайм-ауты агентов и синтезатора покрыты unit-тестами. SQLite-операции экрана выполняются вне главного UI-потока.
-- Tool Gateway, MCP client, production browser automation, Material Library processing, Voice, Android Bridge executor, Shizuku/Root и ряд исполнительных частей Evolution остаются будущими этапами. Evolution executor уже хранит и применяет одобренные prompt/skill-конфигурации с журналом и откатом; routing/tool/model-конфигурации ещё не полностью подключены к исполнительным механизмам.
+- Tool Gateway, MCP client, production browser automation, Material Library processing, Voice, Android Bridge executor, Shizuku/Root и часть исполнительных механизмов Evolution остаются будущими этапами. Evolution применяет одобренные prompt/skill-конфигурации и строгую routing policy v1. `TOOL_DESCRIPTION` и `MODEL_CONFIGURATION` пока только версионируются и не управляют runtime.
 - Каталог моделей запрашивает первую страницу ответа провайдера; постраничная загрузка и расширенная диагностика лимитов/прав доступа пока не реализованы.
 - Unit tests добавлены, но прохождение тестов и Android APK build должны быть подтверждены GitHub Actions.
 - UI не сообщает об успешном действии Android Bridge, пока bridge не реализован.
