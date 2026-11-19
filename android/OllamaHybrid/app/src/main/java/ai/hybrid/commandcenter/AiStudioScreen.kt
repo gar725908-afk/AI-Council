@@ -151,7 +151,7 @@ fun AiStudioScreen(
                 }
                 Text(
                     if (hasSavedKey) "Ключ сохранён в зашифрованном виде через Android Keystore."
-                    else "Ключ не задан. Это допустимо для локального сервера без авторизации; облачный API обычно потребует ключ.",
+                    else "Ключ не задан. Это подходит локальному серверу без авторизации; для облачного API обычно нужен ключ.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
@@ -195,7 +195,7 @@ fun AiStudioScreen(
                                 goal = prompt,
                                 endpoint = endpoint,
                                 model = model,
-                                apiKey = activeKey!!
+                                apiKey = activeKey.orEmpty()
                             )
                             answer = result.synthesis.orEmpty()
                             status = result.error ?: if (result.completed) {
