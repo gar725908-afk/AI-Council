@@ -72,7 +72,9 @@ fun AiStudioScreen(
                 .getOrDefault(ProviderKind.OPENAI_COMPATIBLE)
         )
     }
-    val gateway = remember(providerKind) { createModelGateway(providerKind) }
+    val gateway = remember(providerKind, context) { createModelGateway(providerKind, context) }
+    val usesOnDeviceModel = providerKind == ProviderKind.ON_DEVICE_LITERT ||
+        providerKind == ProviderKind.ON_DEVICE_LLAMA_CPP
     val modelCatalog = remember { ProviderModelCatalog() }
     val routingStore = remember(context) { CouncilRoutingStore(context) }
     val councilAgents = remember { CouncilOrchestrator.defaultAgents() }
@@ -192,13 +194,14 @@ fun AiStudioScreen(
                     value = endpoint,
                     onValueChange = { endpoint = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("API endpoint") },
+                    label = { Text(if (usesOnDeviceModel) "Endpoint не используется для on-device модели" else "API endpoint") },
                     placeholder = {
                         Text(defaultProviderEndpoint(providerKind).ifBlank {
                             "http://IP-АДРЕС-ПК:11434/v1"
                         })
                     },
-                    singleLine = true
+                    singleLine = true,
+                    enabled = !usesOnDeviceModel
                 )
                 OutlinedTextField(
                     value = model,
@@ -222,6 +225,8 @@ fun AiStudioScreen(
                                 ProviderKind.OLLAMA -> "имя установленной модели из Ollama"
                                 ProviderKind.ANTHROPIC -> "имя Claude модели из Anthropic Console"
                                 ProviderKind.GEMINI -> "имя Gemini модели из Google AI Studio"
+                                ProviderKind.ON_DEVICE_LITERT -> "активная модель LiteRT-LM из Model Center"
+                                ProviderKind.ON_DEVICE_LLAMA_CPP -> "активная GGUF-модель из Model Center"
                             }
                         )
                     },
@@ -304,8 +309,8 @@ fun AiStudioScreen(
                     Button(
                         onClick = {
                             try {
-                                require(endpoint.isNotBlank()) { "Укажите API endpoint." }
-                                require(model.isNotBlank()) { "Укажите имя модели." }
+                                require(usesOnDeviceModel || endpoint.isNotBlank()) { "Укажите API endpoint." }
+                                require(usesOnDeviceModel || model.isNotBlank()) { "Укажите имя модели." }
                                 settingsStore.save(ProviderSettings(endpoint, model, providerKind.name))
                                 if (apiKey.isNotBlank()) {
                                     credentialVault.put(providerKeyId, apiKey)
@@ -465,7 +470,7 @@ fun AiStudioScreen(
                     status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
                     var missionId: String? = null
                     try {
-                        require(endpoint.isNotBlank() && model.isNotBlank()) {
+                        require(usesOnDeviceModel || (endpoint.isNotBlank() && model.isNotBlank())) {
                             "Сначала укажите endpoint и модель."
                         }
                         missionId = withContext(Dispatchers.IO) {
@@ -508,15 +513,19 @@ fun AiStudioScreen(
                                         )
                                     } else {
                                         val profile = settingsStore.load(routeKind.name)
-                                        val routeModel = modelOverride ?: profile.model
+                                        val routeModel = modelOverride ?: profile.model.ifBlank {
+                                            if (localRoute) "active-device-model" else ""
+                                        }
                                         require(routeModel.isNotBlank()) {
                                             "Для роли " + agent.name + " не настроена модель " + routeKind.displayName +
                                                 ". Укажите модель для роли или сохраните модель в профиле провайдера."
                                         }
+                                        val localRoute = routeKind == ProviderKind.ON_DEVICE_LITERT ||
+                                            routeKind == ProviderKind.ON_DEVICE_LLAMA_CPP
                                         val routeEndpoint = profile.endpoint.ifBlank {
                                             defaultProviderEndpoint(routeKind)
                                         }
-                                        require(routeEndpoint.isNotBlank()) {
+                                        require(localRoute || routeEndpoint.isNotBlank()) {
                                             "Для роли " + agent.name + " не указан endpoint провайдера " +
                                                 routeKind.displayName + ". Укажите адрес сервера и сохраните профиль."
                                         }
@@ -528,7 +537,7 @@ fun AiStudioScreen(
                                                 routeKind.displayName + "."
                                         }
                                         CouncilModelRoute(
-                                            gateway = createModelGateway(routeKind),
+                                            gateway = if (routeKind == providerKind) gateway else createModelGateway(routeKind, context),
                                             endpoint = routeEndpoint,
                                             model = routeModel,
                                             apiKey = routeKey
@@ -712,6 +721,7 @@ private fun defaultProviderEndpoint(kind: ProviderKind): String = when (kind) {
     ProviderKind.OLLAMA -> ""
     ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
     ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
+    ProviderKind.ON_DEVICE_LITERT, ProviderKind.ON_DEVICE_LLAMA_CPP -> ""
 }
 
 private fun buildProviderConversationMessages(
