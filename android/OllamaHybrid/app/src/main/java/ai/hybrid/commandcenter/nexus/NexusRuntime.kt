@@ -175,7 +175,7 @@ class OpenAiCompatibleGateway(
 }
 
 enum class CouncilAgentRole {
-    PLANNER, RESEARCHER, ANALYST, CRITIC, CREATIVE, TECHNICAL, RISK_REVIEWER, SYNTHESIZER
+    PLANNER, RESEARCHER, ANALYST, CRITIC, CREATIVE, TECHNICAL, RISK_REVIEWER, VERIFIER
 }
 
 data class CouncilAgent(
@@ -381,7 +381,7 @@ class CouncilOrchestrator(
                 "Оцени безопасность, приватность, правовые и операционные риски."),
             CouncilAgent("planner", "Планировщик", CouncilAgentRole.PLANNER,
                 "Сформируй последовательность действий, критерии готовности и контрольные точки."),
-            CouncilAgent("verifier", "Проверяющий", CouncilAgentRole.SYNTHESIZER,
+            CouncilAgent("verifier", "Проверяющий", CouncilAgentRole.VERIFIER,
                 "Проверь согласованность ответов и явно укажи, какие утверждения не подтверждены.")
         )
     }
