@@ -93,6 +93,7 @@ fun AiStudioScreen(
     val journal = remember(context) { (context.applicationContext as NexusApplication).missionJournal }
     val evolutionExecutor = remember(context) { NexusEvolutionExecutor(context) }
     val scope = rememberCoroutineScope()
+    val providerKeyId = AndroidCredentialVault.providerKeyId(providerKind.name)
 
     var endpoint by remember {
         mutableStateOf(initialSettings.endpoint.ifBlank { defaultProviderEndpoint(providerKind) })
@@ -118,11 +119,7 @@ fun AiStudioScreen(
     }
     var expandedAgentRoute by remember { mutableStateOf<String?>(null) }
     var apiKey by remember { mutableStateOf("") }
-    var hasSavedKey by remember(providerKind) {
-        mutableStateOf(
-            credentialVault.get(AndroidCredentialVault.providerKeyId(providerKind.name)) != null
-        )
-    }
+    var hasSavedKey by remember { mutableStateOf(false) }
     var prompt by remember { mutableStateOf("") }
     var answer by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Провайдер не проверен") }
@@ -140,7 +137,11 @@ fun AiStudioScreen(
         conversationMessages = initial.second
         recentMissions = withContext(Dispatchers.IO) { journal.getRecentMissions(8) }
     }
-    val providerKeyId = AndroidCredentialVault.providerKeyId(providerKind.name)
+    LaunchedEffect(providerKind) {
+        hasSavedKey = withContext(Dispatchers.IO) {
+            credentialVault.get(providerKeyId) != null
+        }
+    }
 
     Column(
         modifier = modifier
@@ -190,9 +191,6 @@ fun AiStudioScreen(
                                     val saved = settingsStore.load(kind.name)
                                     endpoint = saved.endpoint.ifBlank { defaultProviderEndpoint(kind) }
                                     model = saved.model
-                                    hasSavedKey = credentialVault.get(
-                                        AndroidCredentialVault.providerKeyId(kind.name)
-                                    ) != null
                                     apiKey = ""
                                     discoveredModels = emptyList()
                                     modelMenuExpanded = false
@@ -264,10 +262,13 @@ fun AiStudioScreen(
                                 isCheckingModels = true
                                 status = "Проверяю endpoint и получаю список моделей…"
                                 try {
-                                    val candidateKey = if (apiKey.isNotBlank()) {
-                                        apiKey
+                                    val enteredKey = apiKey
+                                    val candidateKey = if (enteredKey.isNotBlank()) {
+                                        enteredKey
                                     } else {
-                                        credentialVault.get(providerKeyId).orEmpty()
+                                        withContext(Dispatchers.IO) {
+                                            credentialVault.get(providerKeyId).orEmpty()
+                                        }
                                     }
                                     discoveredModels = modelCatalog.listModels(
                                         kind = providerKind,
@@ -332,18 +333,23 @@ fun AiStudioScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = {
-                            try {
-                                require(usesOnDeviceModel || endpoint.isNotBlank()) { "Укажите API endpoint." }
-                                require(usesOnDeviceModel || model.isNotBlank()) { "Укажите имя модели." }
-                                settingsStore.save(ProviderSettings(endpoint, model, providerKind.name))
-                                if (apiKey.isNotBlank()) {
-                                    credentialVault.put(providerKeyId, apiKey)
-                                    apiKey = ""
-                                    hasSavedKey = true
+                            scope.launch {
+                                try {
+                                    require(usesOnDeviceModel || endpoint.isNotBlank()) { "Укажите API endpoint." }
+                                    require(usesOnDeviceModel || model.isNotBlank()) { "Укажите имя модели." }
+                                    val enteredKey = apiKey
+                                    withContext(Dispatchers.IO) {
+                                        settingsStore.save(ProviderSettings(endpoint, model, providerKind.name))
+                                        if (enteredKey.isNotBlank()) credentialVault.put(providerKeyId, enteredKey)
+                                    }
+                                    if (enteredKey.isNotBlank()) {
+                                        apiKey = ""
+                                        hasSavedKey = true
+                                    }
+                                    status = "Настройки сохранены для " + providerKind.displayName
+                                } catch (error: Exception) {
+                                    status = error.message ?: "Не удалось сохранить настройки"
                                 }
-                                status = "Настройки сохранены для " + providerKind.displayName
-                            } catch (error: Exception) {
-                                status = error.message ?: "Не удалось сохранить настройки"
                             }
                         }
                     ) {
@@ -351,10 +357,12 @@ fun AiStudioScreen(
                     }
                     TextButton(
                         onClick = {
-                            credentialVault.remove(providerKeyId)
-                            hasSavedKey = false
-                            apiKey = ""
-                            status = "API-ключ этого провайдера удалён"
+                            scope.launch {
+                                withContext(Dispatchers.IO) { credentialVault.remove(providerKeyId) }
+                                hasSavedKey = false
+                                apiKey = ""
+                                status = "API-ключ этого провайдера удалён"
+                            }
                         }
                     ) {
                         Text("Удалить ключ")
@@ -518,13 +526,16 @@ fun AiStudioScreen(
                         activeConversationId = chatState.first
                         conversationMessages = chatState.second
 
-                        val activeKey = if (apiKey.isNotBlank()) {
-                            credentialVault.put(providerKeyId, apiKey)
+                        val enteredKey = apiKey
+                        val activeKey = withContext(Dispatchers.IO) {
+                            if (enteredKey.isNotBlank()) {
+                                credentialVault.put(providerKeyId, enteredKey)
+                            }
+                            credentialVault.get(providerKeyId)
+                        }
+                        if (enteredKey.isNotBlank()) {
                             apiKey = ""
                             hasSavedKey = true
-                            credentialVault.get(providerKeyId)
-                        } else {
-                            credentialVault.get(providerKeyId)
                         }
                         if (councilMode) {
                             val councilGoal = withContext(Dispatchers.IO) {
