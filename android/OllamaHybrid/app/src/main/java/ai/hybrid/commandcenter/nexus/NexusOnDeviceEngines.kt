@@ -52,6 +52,7 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
             "Для локальной модели необходимо user-сообщение."
         }
         val requestGeneration = generation.incrementAndGet()
+        val producer = this
         val job = launch {
             try {
                 withContext(dispatcher) {
@@ -65,7 +66,7 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
                         val current = checkNotNull(conversation)
                         val lastUser = request.messages.last { it.role == "user" }
                         current.sendMessageAsync(lastUser.content).collect { chunk ->
-                            if (generation.get() == requestGeneration) send(chunk.toString())
+                            if (generation.get() == requestGeneration) producer.send(chunk.toString())
                         }
                     }
                 }
