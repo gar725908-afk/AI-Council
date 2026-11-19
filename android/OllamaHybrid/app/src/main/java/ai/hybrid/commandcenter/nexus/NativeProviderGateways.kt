@@ -106,8 +106,8 @@ internal object ProviderEndpointPolicy {
     }
 }
 
-private object SseTransport {
-    private val client = OkHttpClient.Builder()
+internal object SseTransport {
+    private val defaultClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(180, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
@@ -115,7 +115,11 @@ private object SseTransport {
         .build()
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun stream(request: Request, parseData: (String) -> String?): Flow<String> = callbackFlow {
+    fun stream(
+        request: Request,
+        client: OkHttpClient = defaultClient,
+        parseData: (String) -> String?
+    ): Flow<String> = callbackFlow {
         val call = client.newCall(request)
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, error: IOException) {
