@@ -45,6 +45,37 @@ class ProviderHttpException(
     message: String
 ) : IOException("Provider HTTP $statusCode: $message")
 
+private class OutputLimitReached : RuntimeException()
+
+/** Collects a bounded response and cancels the upstream stream as soon as it exceeds the limit. */
+private suspend fun Flow<String>.collectBounded(maxChars: Int): String {
+    require(maxChars > 0)
+    val output = StringBuilder()
+    var truncated = false
+    try {
+        collect { chunk ->
+            val remaining = maxChars - output.length
+            if (chunk.length <= remaining) {
+                output.append(chunk)
+            } else {
+                output.append(chunk, 0, remaining)
+                truncated = true
+                throw OutputLimitReached()
+            }
+        }
+    } catch (_: OutputLimitReached) {
+        // The collector exception cancels the upstream HTTP call; keep the bounded partial text.
+    }
+    if (truncated) {
+        val marker = "\\n[output truncated]"
+        if (output.length + marker.length > maxChars) {
+            output.setLength((maxChars - marker.length).coerceAtLeast(0))
+        }
+        output.append(marker)
+    }
+    return output.toString()
+}
+
 /**
  * OpenAI Chat Completions-compatible streaming transport.
  * HTTP is restricted to loopback/private LAN hosts for local inference endpoints.
@@ -116,7 +147,12 @@ class OpenAiCompatibleGateway(
                                 ?.optJSONObject("delta")
                                 ?.optString("content")
                             if (!delta.isNullOrEmpty()) {
-                                trySend(delta)
+                                val sent = trySend(delta)
+                                if (sent.isFailure && !channel.isClosedForSend) {
+                                    close(IOException("The provider stream outpaced the Council consumer; partial output was discarded."))
+                                    call.cancel()
+                                    return
+                                }
                             }
                         }
                         close()
@@ -232,8 +268,12 @@ class CouncilOrchestrator(
         agents: List<CouncilAgent> = defaultAgents()
     ): CouncilRunResult {
         require(goal.isNotBlank()) { "Задача не может быть пустой." }
+        require(goal.length <= MAX_GOAL_CHARS) { "Задача превышает лимит $MAX_GOAL_CHARS символов." }
         require(agents.isNotEmpty()) { "В Council должен быть хотя бы один исполнитель." }
         require(agents.size <= 8) { "В этой версии поддерживается не более восьми агентов." }
+        require(agents.map { it.id }.distinct().size == agents.size) {
+            "ID участников Council должны быть уникальными."
+        }
 
         val results = coroutineScope {
             agents.map { agent ->
@@ -260,9 +300,7 @@ class CouncilOrchestrator(
                                         ProviderMessage("user", goal)
                                     )
                                 )
-                                val chunks = mutableListOf<String>()
-                                selectedGateway.stream(request).collect { chunk -> chunks += chunk }
-                                chunks.joinToString("")
+                                selectedGateway.stream(request).collectBounded(MAX_AGENT_OUTPUT_CHARS)
                             }
                             if (output == null) {
                                 AgentRunResult(
@@ -315,9 +353,11 @@ class CouncilOrchestrator(
                     appendLine("АГЕНТЫ С ОШИБКАМИ:")
                     failures.forEach { appendLine("- ${it.agent.name}: ${it.error}") }
                 }
+            }.let { built ->
+                if (built.length <= MAX_SYNTHESIS_INPUT_CHARS) built
+                else built.take(MAX_SYNTHESIS_INPUT_CHARS - TRUNCATION_MARKER.length) + TRUNCATION_MARKER
             }
             val synthesis = withTimeoutOrNull(synthesisTimeoutMillis) {
-                val chunks = mutableListOf<String>()
                 gateway.stream(
                     CompletionRequest(
                         endpoint = endpoint,
@@ -335,8 +375,7 @@ class CouncilOrchestrator(
                         ),
                         temperature = 0.1
                     )
-                ).collect { chunk -> chunks += chunk }
-                chunks.joinToString("")
+                ).collectBounded(MAX_SYNTHESIS_OUTPUT_CHARS)
             }
             if (synthesis == null) {
                 CouncilRunResult(
@@ -368,6 +407,12 @@ class CouncilOrchestrator(
     }
 
     companion object {
+        private const val MAX_GOAL_CHARS = 32_000
+        private const val MAX_AGENT_OUTPUT_CHARS = 12_000
+        private const val MAX_SYNTHESIS_INPUT_CHARS = 110_000
+        private const val MAX_SYNTHESIS_OUTPUT_CHARS = 16_000
+        private const val TRUNCATION_MARKER = "\\n[context truncated]"
+
         fun defaultAgents(): List<CouncilAgent> = listOf(
             CouncilAgent("research", "Исследователь", CouncilAgentRole.RESEARCHER,
                 "Ищи ключевые направления решения и перечисляй, какие сведения требуют внешней проверки."),
