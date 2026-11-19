@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
@@ -64,7 +65,7 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
                         val current = checkNotNull(conversation)
                         val lastUser = request.messages.last { it.role == "user" }
                         current.sendMessageAsync(lastUser.content).collect { chunk ->
-                            if (generation.get() == requestGeneration) trySend(chunk.toString())
+                            if (generation.get() == requestGeneration) send(chunk.toString())
                         }
                     }
                 }
@@ -182,7 +183,12 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
                     nativeHandle, prompt, 512, request.temperature.toFloat(),
                     object : LlamaTokenSink {
                         override fun onToken(value: String) {
-                            if (generation.get() == requestGeneration) trySend(value)
+                            if (generation.get() == requestGeneration) {
+                                val sent = channel.trySendBlocking(value)
+                                if (sent.isFailure && !channel.isClosedForSend) {
+                                    NativeLlamaBridge.nativeCancel(nativeHandle)
+                                }
+                            }
                         }
                     }
                 )
