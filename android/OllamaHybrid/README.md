@@ -7,6 +7,7 @@ This directory currently contains the Android architecture/specification and the
 - [Cyberpunk UI design system and screen specification v1](docs/UI_DESIGN_SYSTEM_RU.md)
 - [Hybrid Universe Experimental Edition — visual system and detailed screens v2](docs/HYBRID_UNIVERSE_EXPERIMENTAL_V2_RU.md)
 - [V3 — Full AI Ecosystem Architecture](docs/V3_FULL_AI_ECOSYSTEM_ARCHITECTURE_RU.md)
+- [Evolution Core — self-improvement and self-optimization architecture](docs/EVOLUTION_CORE_ARCHITECTURE_RU.md)
 - [Universal Internet Access and Agent Browser specification](docs/WEB_ACCESS_AND_AGENT_BROWSER_RU.md)
 - [Android Bridge architecture](docs/ANDROID_BRIDGE_ARCHITECTURE_RU.md)
 - [Android Bridge test plan](docs/ANDROID_BRIDGE_TEST_PLAN_RU.md)
@@ -15,6 +16,7 @@ This directory currently contains the Android architecture/specification and the
 - Product master specification and accumulated decisions.
 - UI design system v1 and Hybrid Universe Experimental Edition v2.
 - V3 full AI ecosystem target architecture, service boundaries, data model, mission lifecycle, security, verification, resilience and staged implementation plan.
+- Evolution Core architecture: intelligence, runtime and software evolution; Resource Governor; MCP/tool governance; evidence-based strategy optimization; sandboxed code evolution.
 - Universal Internet Access / Agent Browser architecture specification.
 - Hybrid Android Bridge architecture, including Standard / Shizuku Extended / Root profiles.
 - Test plan and device matrix.
