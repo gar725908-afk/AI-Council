@@ -84,6 +84,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
+    // Real JVM JSON implementation; Android's unit-test stubs throw "Method not mocked".
+    testImplementation("org.json:json:20260814")
     // Use a real JVM JSON implementation in local unit tests instead of android.jar mock stubs.
     testImplementation("org.json:json:20260814")
     debugImplementation("androidx.compose.ui:ui-tooling")
