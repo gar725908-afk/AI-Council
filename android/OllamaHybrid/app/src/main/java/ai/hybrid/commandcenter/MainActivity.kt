@@ -80,7 +80,7 @@ private fun NexusApp() {
             when (selected) {
                 0 -> CommandDeckScreen(onNavigate = { selected = it }, modifier = Modifier.padding(padding))
                 1 -> AiStudioScreen(councilMode = false, modifier = Modifier.padding(padding))
-                2 -> AiStudioScreen(councilMode = true, modifier = Modifier.padding(padding))
+                2 -> CouncilScreen(Modifier.padding(padding))
                 3 -> ModelCenterScreen(Modifier.padding(padding))
                 4 -> DeviceCoreScreen(Modifier.padding(padding))
                 else -> PlatformCenterScreen(Modifier.padding(padding))
