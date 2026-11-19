@@ -113,7 +113,7 @@ class NexusUpdateChecker(
 
     private companion object {
         const val LATEST_RELEASE_URL =
-            "https://api.github.com/repos/gar725908-afk/AI-Council/releases?per_page=30"
+            "https://api.github.com/repos/gar725908-afk/AI-Council/releases?per_page=100"
         const val NEXUS_TAG_PREFIX = "nexus-v"
         const val RELEASES_URL = "https://github.com/gar725908-afk/AI-Council/releases"
     }
