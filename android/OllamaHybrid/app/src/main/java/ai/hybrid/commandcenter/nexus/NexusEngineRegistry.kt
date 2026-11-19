@@ -333,6 +333,12 @@ suspend fun NexusEngineRegistry.runLocalCouncil(
         synthesis = execution.summary,
         completed = execution.status == LocalCouncilExecutionStatus.COMPLETED &&
             !execution.summary.isNullOrBlank(),
+        needsUserInput = execution.status == LocalCouncilExecutionStatus.NEEDS_USER_INPUT,
+        paused = execution.status in setOf(
+            LocalCouncilExecutionStatus.PAUSED,
+            LocalCouncilExecutionStatus.WAITING_FOR_APPROVAL,
+            LocalCouncilExecutionStatus.MANAGER_TURN_LIMIT
+        ),
         error = execution.message ?: when (execution.status) {
             LocalCouncilExecutionStatus.NEEDS_USER_INPUT ->
                 "The local Manager needs additional user input: ${execution.question.orEmpty()}"
