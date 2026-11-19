@@ -119,7 +119,7 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
         val config = ConversationConfig(
             systemInstruction = Contents.of(systemText),
             initialMessages = initial,
-            samplerConfig = SamplerConfig(temperature = request.temperature)
+            samplerConfig = SamplerConfig(topK = 40, topP = 0.9, temperature = request.temperature)
         )
         conversation = checkNotNull(engine).createConversation(config)
     }
