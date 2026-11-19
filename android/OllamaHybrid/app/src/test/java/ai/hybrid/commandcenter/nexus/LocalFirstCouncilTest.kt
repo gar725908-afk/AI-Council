@@ -18,13 +18,16 @@ class LocalFirstCouncilTest {
         )
         val adapter = RecordingAdapter(web)
         val manager = QueueManager(
-            LocalCouncilDecision.Delegate(
-                listOf(CouncilAssignment(web.id, "Find an approach to the task"))
-            ),
-            LocalCouncilDecision.Delegate(
-                listOf(CouncilAssignment(web.id, "Critically review your previous answer"))
-            ),
-            LocalCouncilDecision.Finish("Final result after two rounds")
+            "on-device-model",
+            listOf(
+                LocalCouncilDecision.Delegate(
+                    listOf(CouncilAssignment(web.id, "Find an approach to the task"))
+                ),
+                LocalCouncilDecision.Delegate(
+                    listOf(CouncilAssignment(web.id, "Critically review your previous answer"))
+                ),
+                LocalCouncilDecision.Finish("Final result after two rounds")
+            )
         )
         val profile = LocalCouncilProfile(
             mode = CouncilControlMode.LOCAL_AUTONOMOUS,
@@ -65,6 +68,36 @@ class LocalFirstCouncilTest {
     }
 
     @Test
+    fun networkHostedModelCannotPretendToBeOnDeviceManager() = runBlocking {
+        val web = CouncilParticipantDescriptor(
+            "web",
+            "Web session",
+            CouncilParticipantTransport.ANDROID_WEBVIEW_SESSION,
+            externalContextConsentGranted = true
+        )
+        val manager = QueueManager(
+            "local",
+            emptyList(),
+            LocalModelExecutionLocation.NETWORK_ENDPOINT
+        )
+        val orchestrator = LocalFirstCouncilOrchestrator(
+            manager,
+            listOf(RecordingAdapter(web)),
+            CouncilDispatchApproval { _, _, _ -> true }
+        )
+        val profile = LocalCouncilProfile(
+            mode = CouncilControlMode.LOCAL_AUTONOMOUS,
+            managerModelId = "local",
+            participants = listOf(web)
+        )
+
+        val result = orchestrator.runManaged(profile, "Test")
+
+        assertEquals(LocalCouncilExecutionStatus.INVALID_PROFILE, result.status)
+        assertTrue(result.message.orEmpty().contains("Android-устройстве"))
+    }
+
+    @Test
     fun optionalApiParticipantsRequireExplicitOptIn() {
         val api = CouncilParticipantDescriptor(
             "api-agent",
@@ -93,7 +126,8 @@ class LocalFirstCouncilTest {
         )
         val adapter = RecordingAdapter(web)
         val manager = QueueManager(
-            LocalCouncilDecision.Delegate(listOf(CouncilAssignment("web", "Analyze this")))
+            "local",
+            listOf(LocalCouncilDecision.Delegate(listOf(CouncilAssignment("web", "Analyze this"))))
         )
         val profile = LocalCouncilProfile(
             mode = CouncilControlMode.LOCAL_ASSISTED,
@@ -112,7 +146,6 @@ class LocalFirstCouncilTest {
         assertTrue(adapter.tasks.isEmpty())
     }
 
-
     @Test
     fun autonomousModeStillRequiresConsentBeforeSendingContextToWebAi() = runBlocking {
         val web = CouncilParticipantDescriptor(
@@ -123,7 +156,8 @@ class LocalFirstCouncilTest {
         )
         val adapter = RecordingAdapter(web)
         val manager = QueueManager(
-            LocalCouncilDecision.Delegate(listOf(CouncilAssignment("web", "Analyze private context")))
+            "local",
+            listOf(LocalCouncilDecision.Delegate(listOf(CouncilAssignment("web", "Analyze private context"))))
         )
         val profile = LocalCouncilProfile(
             mode = CouncilControlMode.LOCAL_AUTONOMOUS,
@@ -156,7 +190,7 @@ class LocalFirstCouncilTest {
             participants = listOf(web)
         )
         val orchestrator = LocalFirstCouncilOrchestrator(
-            QueueManager(LocalCouncilDecision.Finish("unused")),
+            QueueManager("unused", emptyList()),
             listOf(adapter),
             CouncilDispatchApproval { _, _, _ -> false }
         )
@@ -168,8 +202,15 @@ class LocalFirstCouncilTest {
     }
 
     private class QueueManager(
-        private vararg val decisions: LocalCouncilDecision
+        modelId: String,
+        private val decisions: List<LocalCouncilDecision>,
+        executionLocation: LocalModelExecutionLocation = LocalModelExecutionLocation.ON_DEVICE
     ) : LocalCouncilManager {
+        override val runtimeInfo = LocalManagerRuntimeInfo(
+            runtimeId = "fake-runtime",
+            modelId = modelId,
+            executionLocation = executionLocation
+        )
         val contexts = mutableListOf<LocalCouncilContext>()
         private var index = 0
 
