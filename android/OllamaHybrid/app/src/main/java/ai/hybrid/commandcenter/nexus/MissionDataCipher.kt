@@ -16,7 +16,7 @@ import javax.crypto.spec.GCMParameterSpec
  */
 internal class MissionDataCipher {
     fun encrypt(value: String?): String? {
-        if (value == null || value.startsWith(PREFIX)) return value
+        if (value == null) return null
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
