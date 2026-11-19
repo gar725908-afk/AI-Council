@@ -493,11 +493,16 @@ fun AiStudioScreen(
                     status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
                     var missionId: String? = null
                     try {
-                        require(usesOnDeviceModel || (endpoint.isNotBlank() && model.isNotBlank())) {
+                        val selectedModelId = if (usesOnDeviceModel) {
+                            engineRegistry.activeModel().id
+                        } else {
+                            model.trim()
+                        }
+                        require(usesOnDeviceModel || (endpoint.isNotBlank() && selectedModelId.isNotBlank())) {
                             "Сначала укажите endpoint и модель."
                         }
                         missionId = withContext(Dispatchers.IO) {
-                            journal.createMission(prompt, endpoint, model).also { id ->
+                            journal.createMission(prompt, endpoint, selectedModelId).also { id ->
                                 journal.transition(id, MissionStatus.QUEUED, "Миссия поставлена в очередь")
                                 journal.transition(id, MissionStatus.RUNNING, "Запрос отправлен провайдеру")
                             }
