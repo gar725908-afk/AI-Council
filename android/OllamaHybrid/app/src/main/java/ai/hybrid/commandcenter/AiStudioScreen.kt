@@ -101,7 +101,7 @@ fun AiStudioScreen(
             if (councilMode) {
                 "Коллективное выполнение: восемь ролей, не более трёх параллельных агентов по умолчанию."
             } else {
-                "Подключение OpenAI-compatible API с потоковой генерацией ответа."
+                "Потоковая генерация через выбранный API-протокол."
             },
             style = MaterialTheme.typography.bodyMedium
         )
