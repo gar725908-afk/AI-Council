@@ -23,6 +23,9 @@ class ProviderModelCatalog(
         endpoint: String,
         apiKey: String
     ): List<String> {
+        if (kind == ProviderKind.ON_DEVICE_LITERT || kind == ProviderKind.ON_DEVICE_LLAMA_CPP) {
+            return listOf("Активная модель из NEXUS Model Center")
+        }
         if (kind.requiresApiKey()) {
             require(apiKey.isNotBlank()) { "Для этого провайдера требуется API-ключ." }
         }
@@ -54,6 +57,7 @@ class ProviderModelCatalog(
                 builder.header("anthropic-version", "2023-06-01")
             }
             ProviderKind.GEMINI -> builder.header("x-goog-api-key", apiKey)
+            ProviderKind.ON_DEVICE_LITERT, ProviderKind.ON_DEVICE_LLAMA_CPP -> Unit
         }
         val request = builder.build()
 
@@ -82,6 +86,7 @@ class ProviderModelCatalog(
                     }
                 }
             }
+            ProviderKind.ON_DEVICE_LITERT, ProviderKind.ON_DEVICE_LLAMA_CPP -> listOf("Активная модель из NEXUS Model Center")
             ProviderKind.GEMINI -> {
                 val data = json.optJSONArray("models")
                     ?: throw IOException("В ответе Gemini отсутствует массив models.")
@@ -151,6 +156,8 @@ class ProviderModelCatalog(
         ProviderKind.GEMINI -> base.newBuilder()
             .addPathSegment("models")
             .build()
+        ProviderKind.ON_DEVICE_LITERT, ProviderKind.ON_DEVICE_LLAMA_CPP ->
+            throw IllegalArgumentException("Локальные модели не используют сетевой каталог.")
     }
 
     private fun parseBase(endpoint: String): HttpUrl {
@@ -196,5 +203,6 @@ class ProviderModelCatalog(
         ProviderKind.OLLAMA -> ""
         ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
         ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
+        ProviderKind.ON_DEVICE_LITERT, ProviderKind.ON_DEVICE_LLAMA_CPP -> ""
     }
 }
