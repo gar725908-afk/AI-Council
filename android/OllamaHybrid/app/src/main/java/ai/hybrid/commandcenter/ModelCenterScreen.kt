@@ -61,6 +61,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
     var activeId by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf(emptyList<NexusEvolutionRecord>()) }
     var versions by remember { mutableStateOf(emptyList<Long>()) }
+    var auditEvents by remember { mutableStateOf(emptyList<String>()) }
     var status by remember { mutableStateOf("Каталог подготовлен. Файлы моделей хранятся в закрытом каталоге NEXUS.") }
     var downloadingId by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
@@ -81,6 +82,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
             activeId = loaded.second
             pending = loaded.third
             versions = withContext(Dispatchers.IO) { evolution.availableVersions() }
+            auditEvents = withContext(Dispatchers.IO) { evolution.auditTrail().takeLast(8).reversed() }
         }
     }
 
@@ -292,14 +294,29 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.primary)
             Text("Текущая версия: v" + evolution.activeVersion(),
                 style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val previous = versions.firstOrNull { it < evolution.activeVersion() }
-                OutlinedButton(enabled = previous != null, onClick = {
-                    val target = previous ?: return@OutlinedButton
-                    evolution.rollbackTo(target)
-                        .onSuccess { status = "Восстановлена версия " + it; refresh() }
-                        .onFailure { status = it.message ?: "Откат не выполнен." }
-                }) { Text("Откатить на v" + (previous?.toString() ?: "—")) }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                versions.filter { it < evolution.activeVersion() }.take(6).forEach { version ->
+                    OutlinedButton(onClick = {
+                        evolution.rollbackTo(version)
+                            .onSuccess { status = "Восстановлена версия " + it; refresh() }
+                            .onFailure { status = it.message ?: "Откат не выполнен." }
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Восстановить версию v$version")
+                    }
+                }
+                if (versions.none { it < evolution.activeVersion() }) {
+                    Text("Предыдущих версий пока нет.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Text("ЖУРНАЛ EVOLUTION", fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary)
+            if (auditEvents.isEmpty()) {
+                Text("Событий пока нет.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                auditEvents.forEach { event ->
+                    Text(event, style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
 
