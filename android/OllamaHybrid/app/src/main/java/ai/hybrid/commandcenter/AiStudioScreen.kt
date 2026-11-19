@@ -40,6 +40,7 @@ import ai.hybrid.commandcenter.nexus.CouncilModelRoute
 import ai.hybrid.commandcenter.nexus.CouncilRoutingStore
 import ai.hybrid.commandcenter.nexus.CompletionRequest
 import ai.hybrid.commandcenter.nexus.ProviderKind
+import ai.hybrid.commandcenter.nexus.requiresApiKey
 import ai.hybrid.commandcenter.nexus.createModelGateway
 import ai.hybrid.commandcenter.nexus.ProviderMessage
 import ai.hybrid.commandcenter.nexus.ProviderSettings
@@ -176,7 +177,11 @@ fun AiStudioScreen(
                     onValueChange = { endpoint = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("API endpoint") },
-                    placeholder = { Text(defaultProviderEndpoint(providerKind)) },
+                    placeholder = {
+                        Text(defaultProviderEndpoint(providerKind).ifBlank {
+                            "http://IP-АДРЕС-ПК:11434/v1"
+                        })
+                    },
                     singleLine = true
                 )
                 OutlinedTextField(
@@ -187,7 +192,15 @@ fun AiStudioScreen(
                     placeholder = {
                         Text(
                             when (providerKind) {
-                                ProviderKind.OPENAI_COMPATIBLE -> "gpt-4.1-mini, deepseek-chat или локальная модель"
+                                ProviderKind.OPENAI_COMPATIBLE,
+                                ProviderKind.OPENAI -> "gpt-4.1-mini"
+                                ProviderKind.DEEPSEEK -> "deepseek-flash или deepseek-v4-pro"
+                                ProviderKind.OPENROUTER -> "provider/model"
+                                ProviderKind.GROQ -> "точное имя модели из каталога Groq"
+                                ProviderKind.MISTRAL -> "mistral-large-latest"
+                                ProviderKind.TOGETHER -> "provider/model"
+                                ProviderKind.FIREWORKS -> "accounts/fireworks/models/..."
+                                ProviderKind.OLLAMA -> "имя локальной модели, например qwen3"
                                 ProviderKind.ANTHROPIC -> "имя Claude модели из Anthropic Console"
                                 ProviderKind.GEMINI -> "имя Gemini модели из Google AI Studio"
                             }
@@ -261,9 +274,8 @@ fun AiStudioScreen(
                     label = {
                         Text(
                             if (hasSavedKey) "Новый API-ключ (необязательно)" else
-                                if (providerKind == ProviderKind.OPENAI_COMPATIBLE)
-                                    "API-ключ (можно пустым для локального сервера)"
-                                else "API-ключ провайдера"
+                                if (providerKind.requiresApiKey()) "API-ключ провайдера"
+                                else "API-ключ (необязательно для локального сервера)"
                         )
                     },
                     visualTransformation = PasswordVisualTransformation(),
@@ -302,9 +314,11 @@ fun AiStudioScreen(
                 }
                 Text(
                     if (hasSavedKey) "Ключ сохранён в зашифрованном виде через Android Keystore."
-                    else if (providerKind == ProviderKind.OPENAI_COMPATIBLE)
-                        "Ключ можно не указывать для локального сервера без авторизации."
-                    else "Для выбранного облачного провайдера требуется API-ключ.",
+                    else if (providerKind.requiresApiKey())
+                        "Для выбранного провайдера требуется API-ключ."
+                    else if (providerKind == ProviderKind.OLLAMA)
+                        "Для физического телефона укажите LAN IP компьютера, на котором запущен Ollama."
+                    else "Ключ можно не указывать для локального OpenAI-compatible сервера без авторизации.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
@@ -582,7 +596,14 @@ fun AiStudioScreen(
 }
 
 private fun defaultProviderEndpoint(kind: ProviderKind): String = when (kind) {
-    ProviderKind.OPENAI_COMPATIBLE -> "https://api.openai.com/v1"
+    ProviderKind.OPENAI_COMPATIBLE, ProviderKind.OPENAI -> "https://api.openai.com/v1"
+    ProviderKind.DEEPSEEK -> "https://api.deepseek.com"
+    ProviderKind.OPENROUTER -> "https://openrouter.ai/api/v1"
+    ProviderKind.GROQ -> "https://api.groq.com/openai/v1"
+    ProviderKind.MISTRAL -> "https://api.mistral.ai/v1"
+    ProviderKind.TOGETHER -> "https://api.together.ai/v1"
+    ProviderKind.FIREWORKS -> "https://api.fireworks.ai/inference/v1"
+    ProviderKind.OLLAMA -> ""
     ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
     ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
 }
