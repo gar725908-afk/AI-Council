@@ -20,6 +20,7 @@ import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class InstalledNexusModel(
     val id: String,
@@ -109,6 +110,7 @@ class NexusModelStorage(context: Context) {
             .build()
         val call = client.newCall(request)
         onCallCreated(call)
+        val cancelled = AtomicBoolean(false)
 
         try {
             call.execute().use { response ->
@@ -132,6 +134,7 @@ class NexusModelStorage(context: Context) {
                     val input = body.byteStream()
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
                     while (true) {
+                        if (cancelled.get()) throw kotlinx.coroutines.CancellationException("Загрузка отменена пользователем.")
                         currentCoroutineContext().ensureActive()
                         val count = input.read(buffer)
                         if (count < 0) break
@@ -166,6 +169,8 @@ class NexusModelStorage(context: Context) {
                 record
             }
         } catch (error: Throwable) {
+            cancelled.set(true)
+            call.cancel()
             partial.delete()
             throw error
         }
