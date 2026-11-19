@@ -189,7 +189,7 @@ class NexusLocalCouncilManager(
             require(normalized.isNotBlank() && normalized.length <= maxLength) {
                 "Manager field '$key' must contain 1 to $maxLength characters."
             }
-            require(normalized.none { (it.code < 0x20 && it !in setOf('\\n', '\\r', '\\t')) || it.code == 0x7f }) {
+            require(normalized.none { (it.code < 0x20 && it !in setOf('\n', '\r', '\t')) || it.code == 0x7f }) {
                 "Manager field '$key' contains unsupported control characters."
             }
             return normalized
