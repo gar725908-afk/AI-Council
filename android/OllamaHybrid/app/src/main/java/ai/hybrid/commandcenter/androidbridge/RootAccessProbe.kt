@@ -15,14 +15,15 @@ data class RootProbeResult(
  */
 object RootAccessProbe {
     fun check(timeoutSeconds: Long = 8): RootProbeResult {
+        val boundedTimeout = timeoutSeconds.coerceIn(1L, 15L)
         return try {
             val process = ProcessBuilder("su", "-c", "id -u")
                 .redirectErrorStream(true)
                 .start()
-            val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            val finished = process.waitFor(boundedTimeout, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
-                return RootProbeResult(false, null, "timeout", "Root manager did not answer within ${timeoutSeconds}s")
+                return RootProbeResult(false, null, "timeout", "Root manager did not answer within ${boundedTimeout}s")
             }
             val output = process.inputStream.bufferedReader().use { it.readText().take(4096).trim() }
             val uid = output.lineSequence().lastOrNull()?.trim()?.toIntOrNull()
