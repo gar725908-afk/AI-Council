@@ -83,6 +83,9 @@ fun AiStudioScreen(
     val gateway = remember(providerKind, engineRegistry) { engineRegistry.gateway(providerKind) }
     val usesOnDeviceModel = providerKind == ProviderKind.ON_DEVICE_LITERT ||
         providerKind == ProviderKind.ON_DEVICE_LLAMA_CPP
+    val activeOnDeviceModel = if (usesOnDeviceModel) {
+        runCatching { engineRegistry.activeModel() }.getOrNull()
+    } else null
     val modelCatalog = remember { ProviderModelCatalog() }
     val routingStore = remember(context) { CouncilRoutingStore(context) }
     val councilAgents = remember { CouncilOrchestrator.defaultAgents() }
@@ -213,10 +216,10 @@ fun AiStudioScreen(
                     enabled = !usesOnDeviceModel
                 )
                 OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it },
+                    value = if (usesOnDeviceModel) activeOnDeviceModel?.id.orEmpty() else model,
+                    onValueChange = { if (!usesOnDeviceModel) model = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Имя модели") },
+                    label = { Text(if (usesOnDeviceModel) "Активная модель из Model Center" else "Имя модели") },
                     placeholder = {
                         Text(
                             when (providerKind) {
@@ -239,8 +242,19 @@ fun AiStudioScreen(
                             }
                         )
                     },
-                    singleLine = true
+                    singleLine = true,
+                    enabled = !usesOnDeviceModel
                 )
+                if (usesOnDeviceModel) {
+                    Text(
+                        activeOnDeviceModel?.let {
+                            "ACTIVE • ${it.displayName} • ${it.runtime} • ${it.sizeBytes / (1024L * 1024L)} MB"
+                        } ?: "No active model. Install or import a model and activate it in Model Center.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (activeOnDeviceModel == null) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         enabled = !isCheckingModels,
@@ -684,7 +698,8 @@ fun AiStudioScreen(
                     }
                 }
             },
-            enabled = !isRunning && activeConversationId != null && prompt.isNotBlank(),
+            enabled = !isRunning && activeConversationId != null && prompt.isNotBlank() &&
+                (!usesOnDeviceModel || activeOnDeviceModel != null),
             modifier = Modifier.fillMaxWidth()
         ) {
             if (isRunning) {
