@@ -19,6 +19,8 @@ import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.net.Inet6Address
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 enum class ProviderKind(val displayName: String) {
@@ -93,13 +95,28 @@ internal object ProviderEndpointPolicy {
     private fun isPrivateHost(host: String): Boolean {
         val normalized = host.lowercase()
         if (normalized == "localhost" || normalized.endsWith(".localhost") ||
-            normalized.endsWith(".local") || normalized == "::1" ||
-            normalized.startsWith("fc") || normalized.startsWith("fd") ||
-            normalized.startsWith("fe80:")) return true
-        val octets = normalized.split(".").mapNotNull { it.toIntOrNull() }
-        if (octets.size != 4 || octets.any { it !in 0..255 }) return false
-        val a = octets[0]
-        val b = octets[1]
+            normalized.endsWith(".local")) return true
+
+        if (normalized.contains(':')) {
+            val address = runCatching { InetAddress.getByName(normalized) }.getOrNull()
+                as? Inet6Address ?: return false
+            val bytes = address.address
+            val first = bytes[0].toInt() and 0xFF
+            val second = bytes[1].toInt() and 0xFF
+            val uniqueLocal = (first and 0xFE) == 0xFC
+            val linkLocal = first == 0xFE && (second and 0xC0) == 0x80
+            return address.isLoopbackAddress || uniqueLocal || linkLocal
+        }
+
+        val octets = normalized.split(".")
+        if (octets.size != 4 || octets.any { part ->
+                part.isEmpty() || part.any { !it.isDigit() }
+            }
+        ) return false
+        val values = octets.map { it.toIntOrNull() ?: return false }
+        if (values.any { it !in 0..255 }) return false
+        val a = values[0]
+        val b = values[1]
         return a == 10 || a == 127 ||
             (a == 192 && b == 168) ||
             (a == 172 && b in 16..31) ||
