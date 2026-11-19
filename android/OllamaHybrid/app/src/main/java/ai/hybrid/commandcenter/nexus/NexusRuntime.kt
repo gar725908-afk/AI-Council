@@ -131,24 +131,28 @@ class OpenAiCompatibleGateway(
     }
 
     private fun buildUrl(endpoint: String): String {
-        val trimmed = endpoint.trim().trimEnd('/')
-        require(trimmed.isNotEmpty()) { "Не указан адрес API." }
-        val candidate = if (trimmed.endsWith("/chat/completions")) {
-            trimmed
-        } else {
-            "$trimmed/chat/completions"
-        }
-        val parsed = candidate.toHttpUrlOrNull()
+        val base = endpoint.trim().trimEnd('/').toHttpUrlOrNull()
             ?: throw IllegalArgumentException("Некорректный URL провайдера.")
-        if (parsed.scheme == "http") {
-            require(isPrivateHost(parsed.host)) {
+        require(base.username.isEmpty() && base.password.isEmpty()) {
+            "Не указывайте логин или пароль внутри URL endpoint."
+        }
+        require(base.query == null && base.fragment == null) {
+            "Укажите базовый endpoint без query-параметров и fragment."
+        }
+        if (base.scheme == "http") {
+            require(isPrivateHost(base.host)) {
                 "Незащищённый HTTP разрешён только для localhost и частной локальной сети. Для внешнего сервера используйте HTTPS."
             }
         }
-        require(parsed.scheme == "https" || parsed.scheme == "http") {
+        require(base.scheme == "https" || base.scheme == "http") {
             "Поддерживаются только HTTP и HTTPS endpoint."
         }
-        return parsed.toString()
+        val target = if (base.encodedPath.endsWith("/chat/completions")) {
+            base
+        } else {
+            base.newBuilder().addPathSegments("chat/completions").build()
+        }
+        return target.toString()
     }
 
     private fun isPrivateHost(host: String): Boolean {
