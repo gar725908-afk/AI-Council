@@ -25,7 +25,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION="\${GITHUB_REF_NAME#nexus-v}"
+          VERSION="${GITHUB_REF_NAME#nexus-v}"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Tag must have the form nexus-vMAJOR.MINOR.PATCH (for example nexus-v0.6.1)."
             exit 1
