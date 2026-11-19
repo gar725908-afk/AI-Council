@@ -189,7 +189,7 @@ class LocalFirstCouncilOrchestrator(
         const val MAX_TASK_CHARS = 8_000
         const val MAX_PARTICIPANT_OUTPUT_CHARS = 12_000
         const val MAX_MANAGER_MESSAGE_CHARS = 8_000
-        const val OUTPUT_TRUNCATION_MARKER = "\\n[participant output truncated]"
+        const val OUTPUT_TRUNCATION_MARKER = "\n[participant output truncated]"
     }
 
     suspend fun runManaged(
