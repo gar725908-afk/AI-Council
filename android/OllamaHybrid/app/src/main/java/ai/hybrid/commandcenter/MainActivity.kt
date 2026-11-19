@@ -81,6 +81,7 @@ private fun NexusApp() {
                 0 -> CommandDeck(Modifier.padding(padding))
                 1 -> AiStudioScreen(councilMode = false, modifier = Modifier.padding(padding))
                 2 -> AiStudioScreen(councilMode = true, modifier = Modifier.padding(padding))
+                3 -> ModelCenterScreen(Modifier.padding(padding))
                 else -> PlaceholderScreen(destinations[selected], Modifier.padding(padding))
             }
         }
