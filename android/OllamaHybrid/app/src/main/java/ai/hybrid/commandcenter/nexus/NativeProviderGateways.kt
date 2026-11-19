@@ -121,7 +121,8 @@ private object SseTransport {
                             val line = source.readUtf8Line() ?: continue
                             if (!line.startsWith("data:")) continue
                             val data = line.removePrefix("data:").trim()
-                            if (data.isEmpty() || data == "[DONE]") continue
+                            if (data == "[DONE]") break
+                            if (data.isEmpty()) continue
                             val fragment = parseData(data)
                             if (!fragment.isNullOrEmpty()) trySend(fragment)
                         }
