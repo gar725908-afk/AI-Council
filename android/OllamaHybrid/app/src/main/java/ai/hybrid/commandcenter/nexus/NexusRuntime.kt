@@ -41,7 +41,7 @@ class ProviderHttpException(
 private class OutputLimitReached : RuntimeException()
 
 /** Collects a bounded response and cancels the upstream stream as soon as it exceeds the limit. */
-private suspend fun Flow<String>.collectBounded(maxChars: Int): String {
+internal suspend fun Flow<String>.collectBounded(maxChars: Int): String {
     require(maxChars > 0)
     val output = StringBuilder()
     var truncated = false
