@@ -52,12 +52,12 @@ class NexusModelStorage(context: Context) {
         prefs.all.entries
             .filter { it.key.startsWith("model.") && it.value is String }
             .mapNotNull { (_, value) -> runCatching { decodeRecord(value as String) }.getOrNull() }
-            .filter { File(it.path).isFile }
+            .filter(::hasValidManagedFile)
             .sortedBy { it.displayName.lowercase(Locale.ROOT) }
 
     fun installed(id: String): InstalledNexusModel? =
         prefs.getString(recordKey(id), null)?.let { runCatching { decodeRecord(it) }.getOrNull() }
-            ?.takeIf { File(it.path).isFile }
+            ?.takeIf(::hasValidManagedFile)
 
     fun activeModel(): InstalledNexusModel? =
         prefs.getString(ACTIVE_ID, null)?.let(::installed)
@@ -73,6 +73,7 @@ class NexusModelStorage(context: Context) {
 
     fun activate(id: String): InstalledNexusModel {
         val record = installed(id) ?: throw IllegalArgumentException("Модель не установлена или файл отсутствует.")
+        verifyArtifactIntegrity(record)
         check(prefs.edit().putString(ACTIVE_ID, id).commit()) { "Не удалось сохранить активную модель." }
         return record
     }
@@ -100,19 +101,21 @@ class NexusModelStorage(context: Context) {
             "Загрузчик принимает только HTTPS-источники."
         }
 
-        val destination = File(root, safeId(model.id) + extensionFor(manifest.artifactFileName))
-        val partial = File(root, safeId(model.id) + ".download")
-        partial.delete()
+        // Immutable, unique artifact names prevent a re-download from overwriting a model
+        // that may still be loaded by the active inference engine.
+        val artifactToken = UUID.randomUUID().toString()
+        val destination = File(root, safeId(model.id) + "-" + artifactToken + extensionFor(manifest.artifactFileName))
+        val partial = File(root, safeId(model.id) + "-" + artifactToken + ".download")
         val request = Request.Builder()
             .url(verified.downloadUrl)
             .header("Accept", "application/octet-stream")
             .get()
             .build()
         val call = client.newCall(request)
-        onCallCreated(call)
         val cancelled = AtomicBoolean(false)
 
         try {
+            onCallCreated(call)
             call.execute().use { response ->
                 require(response.request.url.isHttps) {
                     "Источник перенаправил загрузку на незашифрованный HTTP. Файл не будет сохранён."
@@ -191,15 +194,16 @@ class NexusModelStorage(context: Context) {
             lower.endsWith(".litertlm") -> ModelRuntimeKind.LITERT_LM
             else -> throw IllegalArgumentException("Поддерживаются только .gguf и .litertlm файлы.")
         }
-        val targetName = UUID.randomUUID().toString() + if (runtime == ModelRuntimeKind.LLAMA_CPP) ".gguf" else ".litertlm"
-        val target = File(root, targetName)
+        val extension = if (runtime == ModelRuntimeKind.LLAMA_CPP) ".gguf" else ".litertlm"
+        val target = File(root, UUID.randomUUID().toString() + extension)
+        val partial = File(root, UUID.randomUUID().toString() + ".importing")
         val digest = MessageDigest.getInstance("SHA-256")
         var total = 0L
         val availableAtStart = StatFs(root.absolutePath).availableBytes
         try {
             val input = resolver.openInputStream(uri) ?: throw IOException("Не удалось открыть выбранный файл.")
             input.use { source ->
-                FileOutputStream(target).use { output ->
+                FileOutputStream(partial).use { output ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
                     while (true) {
                         currentCoroutineContext().ensureActive()
@@ -218,12 +222,13 @@ class NexusModelStorage(context: Context) {
             require(total > 0L) { "Выбран пустой файл." }
             if (runtime == ModelRuntimeKind.LLAMA_CPP) {
                 val magic = ByteArray(4)
-                FileInputStream(target).use { check(it.read(magic) == 4 && String(magic, Charsets.US_ASCII) == "GGUF") {
+                FileInputStream(partial).use { check(it.read(magic) == 4 && String(magic, Charsets.US_ASCII) == "GGUF") {
                     "Файл имеет расширение GGUF, но заголовок формата не распознан."
                 } }
             }
             val id = "imported-" + UUID.randomUUID().toString().take(8)
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            promote(partial, target)
             val record = InstalledNexusModel(
                 id = id,
                 displayName = displayName,
@@ -236,6 +241,7 @@ class NexusModelStorage(context: Context) {
             saveRecord(record)
             record
         } catch (error: Throwable) {
+            partial.delete()
             target.delete()
             throw error
         }
@@ -275,6 +281,33 @@ class NexusModelStorage(context: Context) {
             sha256 = json.getString("sha256"),
             imported = json.optBoolean("imported", false)
         )
+    }
+
+    private fun hasValidManagedFile(record: InstalledNexusModel): Boolean = runCatching {
+        val managedRoot = root.canonicalFile
+        val artifact = File(record.path).canonicalFile
+        artifact.parentFile == managedRoot && artifact.isFile &&
+            artifact.length() == record.sizeBytes && record.sizeBytes > 0L &&
+            record.sha256.matches(Regex("[A-Fa-f0-9]{64}"))
+    }.getOrDefault(false)
+
+    private fun verifyArtifactIntegrity(record: InstalledNexusModel) {
+        check(hasValidManagedFile(record)) {
+            "Файл модели отсутствует, имеет неверный размер или находится вне хранилища NEXUS."
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(record.path).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        check(actual.equals(record.sha256, ignoreCase = true)) {
+            "SHA-256 файла модели не совпадает с реестром. Модель не будет активирована."
+        }
     }
 
     private fun recordKey(id: String) = "model." + id
