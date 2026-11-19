@@ -39,3 +39,7 @@ venv/
 .idea/
 build/
 dist/
+
+*.jks
+*.keystore
+*.keystores
