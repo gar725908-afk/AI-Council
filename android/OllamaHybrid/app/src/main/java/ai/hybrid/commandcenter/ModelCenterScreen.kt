@@ -1,5 +1,8 @@
 package ai.hybrid.commandcenter
 
+import ai.hybrid.commandcenter.androidbridge.DeviceInspector
+import ai.hybrid.commandcenter.nexus.ResourceGovernor
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -157,9 +160,21 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                     },
                     onDownload = {
                         scope.launch {
+                            val verdict = withContext(Dispatchers.IO) {
+                                val diag = DeviceInspector(context.applicationContext).diagnostics()
+                                ResourceGovernor.evaluate(
+                                    ResourceGovernor.Workload.MODEL_DOWNLOAD,
+                                    diag.batteryPercent, diag.charging, diag.thermalStatus, diag.ramFreeBytes
+                                )
+                            }
+                            if (verdict is ResourceGovernor.Verdict.Deny) {
+                                status = verdict.reason
+                                return@launch
+                            }
                             downloadingId = model.id
                             progress = 0f
-                            status = "Загрузка " + model.displayName + "…"
+                            status = (if (verdict is ResourceGovernor.Verdict.Warn) verdict.reason + " " else "") +
+                                "Загрузка " + model.displayName + "…"
                             runCatching {
                                 storage.download(
                                     model,

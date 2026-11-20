@@ -36,6 +36,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import ai.hybrid.commandcenter.nexus.AndroidCredentialVault
+import ai.hybrid.commandcenter.androidbridge.DeviceInspector
+import ai.hybrid.commandcenter.nexus.ResourceGovernor
 import ai.hybrid.commandcenter.nexus.CouncilAgentEvent
 import ai.hybrid.commandcenter.nexus.CouncilAgentPhase
 import ai.hybrid.commandcenter.nexus.CouncilMissionRunner
@@ -545,6 +547,23 @@ fun AiStudioScreen(
                     try {
                         require(submittedPrompt.isNotBlank() && submittedPrompt.length <= 32_000) {
                             "Задача должна содержать от 1 до 32 000 символов."
+                        }
+                        // Resource Governor (handoff 11.2): measured device state gates heavy work.
+                        val governorVerdict = withContext(Dispatchers.IO) {
+                            val diag = DeviceInspector(context.applicationContext).diagnostics()
+                            ResourceGovernor.evaluate(
+                                workload = if (usesOnDeviceModel) ResourceGovernor.Workload.LOCAL_INFERENCE
+                                else ResourceGovernor.Workload.REMOTE_REQUEST,
+                                batteryPercent = diag.batteryPercent,
+                                charging = diag.charging,
+                                thermalStatus = diag.thermalStatus,
+                                ramFreeBytes = diag.ramFreeBytes
+                            )
+                        }
+                        when (governorVerdict) {
+                            is ResourceGovernor.Verdict.Deny -> throw IllegalStateException(governorVerdict.reason)
+                            is ResourceGovernor.Verdict.Warn -> status = governorVerdict.reason + " " + status
+                            ResourceGovernor.Verdict.Allow -> Unit
                         }
                         val selectedModelId = if (usesOnDeviceModel) {
                             withContext(Dispatchers.IO) { engineRegistry.activeModel().id }

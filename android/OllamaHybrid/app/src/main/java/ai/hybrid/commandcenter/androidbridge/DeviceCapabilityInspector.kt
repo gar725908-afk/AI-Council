@@ -174,6 +174,8 @@ data class DeviceDiagnostics(
     val storageFreeBytes: Long,
     val storageTotalBytes: Long,
     val thermalLabel: String,
+    /** Raw PowerManager.THERMAL_STATUS_* value, null when unavailable. */
+    val thermalStatus: Int?,
     val networkLabel: String,
     val measuredAtEpochMillis: Long
 )
@@ -203,6 +205,7 @@ class DeviceInspector(private val context: Context) {
             storageFreeBytes = stats.availableBytes,
             storageTotalBytes = stats.totalBytes,
             thermalLabel = thermalLabel(),
+            thermalStatus = thermalStatus(),
             networkLabel = networkLabel(),
             measuredAtEpochMillis = System.currentTimeMillis()
         )
@@ -217,6 +220,12 @@ class DeviceInspector(private val context: Context) {
             rootProbeAttempted = rootProbeAttempted,
             rootConfirmed = rootConfirmed
         )
+
+    private fun thermalStatus(): Int? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return null
+        return power.currentThermalStatus
+    }
 
     private fun thermalLabel(): String {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
