@@ -10,11 +10,21 @@ import kotlinx.coroutines.withTimeoutOrNull
  * validation → capability check → approval policy → transport selection →
  * bounded execution → audit, and every outcome is typed — never fake success.
  *
- * Postcondition verification beyond the tool's own typed result is not
- * implemented yet; the audit entry says which checks actually ran.
+ * Tools that implement VerifiableBridgeTool get their postconditions checked
+ * after a successful execute; the audit entry says which checks actually ran.
  */
+/** Optional postcondition check a tool can declare; the gateway runs it after a successful execute. */
+interface VerifiableBridgeTool : AndroidBridgeTool {
+    sealed class Verification {
+        object Passed : Verification()
+        data class Failed(val reason: String) : Verification()
+    }
+
+    suspend fun verify(request: BridgeRequest, result: BridgeResult): Verification
+}
+
 sealed class GatewayOutcome {
-    enum class Stage { VALIDATION, CAPABILITY, APPROVAL, TRANSPORT, EXECUTION }
+    enum class Stage { VALIDATION, CAPABILITY, APPROVAL, TRANSPORT, EXECUTION, VERIFICATION }
 
     data class Success(val result: BridgeResult, val auditId: String) : GatewayOutcome()
     data class Denied(val stage: Stage, val reason: String, val auditId: String) : GatewayOutcome()
@@ -119,6 +129,24 @@ class BridgeGateway(
         )
 
         return if (bounded.success) {
+            if (tool is VerifiableBridgeTool) {
+                val verification = try {
+                    withTimeoutOrNull(executionTimeoutMillis) { tool.verify(request, bounded) }
+                        ?: VerifiableBridgeTool.Verification.Failed("Проверка постусловий превысила лимит времени.")
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    VerifiableBridgeTool.Verification.Failed(
+                        "Проверка постусловий упала: " + (error.message ?: error::class.java.simpleName)
+                    )
+                }
+                if (verification is VerifiableBridgeTool.Verification.Failed) {
+                    val auditId = audit(request, tool, transport, initiator, "VERIFY_FAILED", verification.reason.take(300))
+                    return GatewayOutcome.Failed(GatewayOutcome.Stage.VERIFICATION, verification.reason, auditId)
+                }
+                val auditId = audit(request, tool, transport, initiator, "SUCCESS", "Постусловия проверены. " + bounded.message.take(250))
+                return GatewayOutcome.Success(bounded, auditId)
+            }
             val auditId = audit(
                 request, tool, transport, initiator, "SUCCESS",
                 bounded.message.take(300)

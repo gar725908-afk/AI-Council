@@ -202,6 +202,41 @@ class BridgeGatewayTest {
         assertTrue((outcome as GatewayOutcome.Failed).reason.contains("E_DENIED"))
     }
 
+    private class VerifiableFake(
+        private val verification: VerifiableBridgeTool.Verification
+    ) : VerifiableBridgeTool {
+        override val id = "test.verifiable"
+        override val capability = BridgeCapability.DEVICE_DIAGNOSTICS
+        override val risk = ActionRisk.READ_ONLY
+        override val supportedTransports = setOf(BridgeTransport.NATIVE)
+        override suspend fun execute(request: BridgeRequest, transport: BridgeTransport) =
+            BridgeResult(true, transport, "done")
+        override suspend fun verify(request: BridgeRequest, result: BridgeResult) = verification
+    }
+
+    @Test
+    fun `failed postconditions turn a successful execute into a typed failure`() = runBlocking {
+        val sink = RecordingSink()
+        val outcome = gateway(sink, VerifiableFake(VerifiableBridgeTool.Verification.Failed("файл не появился"))).execute(
+            BridgeRequest("req-1", "test.verifiable"),
+            snapshot(), setOf(BridgeTransport.NATIVE), "user"
+        )
+        assertTrue(outcome is GatewayOutcome.Failed)
+        assertEquals(GatewayOutcome.Stage.VERIFICATION, (outcome as GatewayOutcome.Failed).stage)
+        assertEquals(listOf("STARTED", "VERIFY_FAILED"), sink.entries.map { it.outcome })
+    }
+
+    @Test
+    fun `passed postconditions are recorded in the success audit`() = runBlocking {
+        val sink = RecordingSink()
+        val outcome = gateway(sink, VerifiableFake(VerifiableBridgeTool.Verification.Passed)).execute(
+            BridgeRequest("req-1", "test.verifiable"),
+            snapshot(), setOf(BridgeTransport.NATIVE), "user"
+        )
+        assertTrue(outcome is GatewayOutcome.Success)
+        assertTrue(sink.entries.last().detail.contains("Постусловия проверены"))
+    }
+
     @Test
     fun `broken audit sink never breaks the pipeline`() = runBlocking {
         val throwingSink = BridgeAuditSink { throw RuntimeException("audit db down") }
