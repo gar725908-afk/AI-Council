@@ -29,6 +29,7 @@ import ai.hybrid.commandcenter.nexus.NexusModelStorage
 import ai.hybrid.commandcenter.nexus.PetEvent
 import ai.hybrid.commandcenter.nexus.PetRules
 import ai.hybrid.commandcenter.nexus.PetSnapshot
+import androidx.compose.runtime.snapshots.Snapshot
 import ai.hybrid.commandcenter.nexus.ProviderKind
 import ai.hybrid.commandcenter.nexus.ProviderMessage
 import ai.hybrid.commandcenter.nexus.ProviderModelCatalog
@@ -127,6 +128,8 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
     var messages by mutableStateOf(emptyList<ChatMessageRecord>()); private set
     var streamingAnswer by mutableStateOf(""); private set
     var isRunning by mutableStateOf(false); private set
+    /** True while the live «передача…» bubble should show; cleared in the same snapshot that saves the answer. */
+    var streamVisible by mutableStateOf(false); private set
     var lastRunFailed by mutableStateOf(false); private set
     var lastError by mutableStateOf<String?>(null); private set
     var status by mutableStateOf(""); private set
@@ -534,9 +537,11 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
         spokeEarly = false
         activeRun = scope.launch {
             isRunning = true
+            streamVisible = true
             lastRunFailed = false
             lastError = null
             streamingAnswer = ""
+            android.util.Log.i(LOG_TAG, "run start council=$council onDevice=$usesOnDeviceModel")
             status = if (council) "Совет разбирает задачу…" else "NEX отвечает…"
             if (council) {
                 liveAgentEvents = emptyMap()
@@ -626,10 +631,11 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
                     status = outcome.statusLine
                     recentMissions = withContext(Dispatchers.IO) { journal.getRecentMissions(8) }
                     if (outcome.answer.isNotBlank()) {
-                        messages = withContext(Dispatchers.IO) {
+                        val saved = withContext(Dispatchers.IO) {
                             journal.appendChatMessage(chatState.first, "assistant", outcome.answer)
                             journal.getChatMessages(chatState.first, 100)
                         }
+                        commitAnswer(saved)
                     }
                 } else {
                     val instructions = withContext(Dispatchers.IO) {
@@ -655,12 +661,13 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
                     chunker?.flush()?.let { speakSentence(it) }
                     require(streamingAnswer.isNotBlank()) { "Модель завершила ответ без текста." }
                     val answer = streamingAnswer
-                    messages = withContext(Dispatchers.IO) {
+                    val saved = withContext(Dispatchers.IO) {
                         journal.appendChatMessage(chatState.first, "assistant", answer)
                         journal.transition(missionId!!, MissionStatus.VERIFYING, "Ответ потока получен")
                         journal.transition(missionId!!, MissionStatus.COMPLETED, "Запрос завершён", result = answer)
                         journal.getChatMessages(chatState.first, 100)
                     }
+                    commitAnswer(saved)
                     status = "Ответ получен"
                 }
                 lastLatencyMs = System.currentTimeMillis() - started
@@ -701,10 +708,27 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
             } finally {
                 if (council) lastCouncilStatus = recentMissions.firstOrNull { it.id == missionId }?.status
                 speakNextAnswer = false
-                isRunning = false
+                Snapshot.withMutableSnapshot {
+                    isRunning = false
+                    streamVisible = false
+                }
                 activeRun = null
+                android.util.Log.i(LOG_TAG, "run end in ${System.currentTimeMillis() - started} ms failed=$lastRunFailed")
             }
         }
+    }
+
+    /**
+     * The saved answer replaces the live bubble in one snapshot: no frame can show
+     * both the stored message and the still-streaming copy of the same text.
+     */
+    private fun commitAnswer(saved: List<ChatMessageRecord>) {
+        Snapshot.withMutableSnapshot {
+            messages = saved
+            streamVisible = false
+            streamingAnswer = ""
+        }
+        android.util.Log.i(LOG_TAG, "answer saved (${saved.size} messages)")
     }
 
     private fun flashSuccess() {
@@ -745,6 +769,8 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
         }
     }
 }
+
+private const val LOG_TAG = "NexusChat"
 
 @Composable
 fun rememberChatController(): ChatController {

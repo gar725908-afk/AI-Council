@@ -193,6 +193,7 @@ private fun interface LlamaTokenSink {
  */
 class LlamaCppGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
     private val storage = NexusModelStorage(context.applicationContext)
+    private val nativeLibraryDir: String = context.applicationContext.applicationInfo.nativeLibraryDir.orEmpty()
     private val mutex = Mutex()
     private val handleLock = ReentrantReadWriteLock()
     private val closed = AtomicBoolean(false)
@@ -290,6 +291,7 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
                 loadedKey = null
                 if (previous != 0L) NativeLlamaBridge.nativeDestroy(previous)
 
+                NativeLlamaBridge.backends(nativeLibraryDir)
                 val threads = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(2, 6)
                 val created = if (verified.location == ModelLocation.EXTERNAL_URI) {
                     storage.openReadDescriptor(verified).use { descriptor ->
@@ -356,8 +358,20 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
     }
 }
 
+/** Which llama.cpp CPU build this phone uses, e.g. «CPU: NEON ARM_FMA FP16_VA DOTPROD»; null if the engine cannot load. */
+fun llamaCpuBackends(context: Context): String? =
+    runCatching { NativeLlamaBridge.backends(context.applicationContext.applicationInfo.nativeLibraryDir.orEmpty()) }.getOrNull()
+
 private object NativeLlamaBridge {
     init { System.loadLibrary("nexus_llama_jni") }
+
+    @Volatile private var loaded: String? = null
+
+    /** Loads the CPU variant for this processor once; returns e.g. «CPU: NEON ARM_FMA FP16_VA DOTPROD». */
+    @Synchronized
+    fun backends(nativeLibraryDir: String): String = loaded ?: nativeInitBackends(nativeLibraryDir).also { loaded = it }
+
+    private external fun nativeInitBackends(libDir: String): String
 
     external fun nativeCreate(modelPath: String, contextSize: Int, threads: Int): Long
     external fun nativeCreateFromFd(fd: Int, contextSize: Int, threads: Int): Long

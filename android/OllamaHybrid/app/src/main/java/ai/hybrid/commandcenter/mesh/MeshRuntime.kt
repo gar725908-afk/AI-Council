@@ -52,6 +52,7 @@ class AppMeshWorker(context: Context) : MeshWorker {
             .put("charging", diag?.charging == true)
             .put("thermal", diag?.thermalStatus ?: 0)
             .put("runtimes", JSONArray(listOf("llama.cpp", "litert-lm", "ollama-lan", "cloud")))
+            .put("llamaCpu", ai.hybrid.commandcenter.nexus.llamaCpuBackends(appContext) ?: "не загружен")
             .put("core", coreLabel())
             .put("profile", policy.profile.name)
             .put("acceptsTasks", policy.profile != MeshProfile.OFF)

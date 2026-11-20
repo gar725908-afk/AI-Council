@@ -143,7 +143,7 @@ fun ChatTab(
     val itemCount = chat.messages.takeLast(60).size +
         (if (chat.pendingAction != null) 1 else 0) +
         (if (chat.isRunning && chat.councilMode) 1 else 0) +
-        (if (chat.isRunning) 1 else 0) +
+        (if (chat.isRunning && chat.streamVisible) 1 else 0) +
         (if (chat.lastRunFailed && !chat.isRunning) 1 else 0)
     LaunchedEffect(chat.conversationId, chat.messages.size, chat.streamingAnswer.length, chat.isRunning, chat.lastRunFailed, chat.pendingAction, empty) {
         if (!empty && itemCount > 0) listState.scrollToItem(itemCount - 1, 100_000)
@@ -262,7 +262,7 @@ fun ChatTab(
                     if (chat.isRunning && chat.councilMode) {
                         item(key = "council-live") { CouncilLiveCard(chat, effects.effective) }
                     }
-                    if (chat.isRunning) {
+                    if (chat.isRunning && chat.streamVisible) {
                         item(key = "streaming") { NexTransmission(text = chat.streamingAnswer, streaming = true) }
                     }
                     if (chat.lastRunFailed && !chat.isRunning) {

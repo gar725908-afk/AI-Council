@@ -9,7 +9,10 @@ NEXUS MODEL CENTER отвечает за выбор локальной моде�
 Поддерживаются два on-device runtime:
 
 - **LiteRT-LM** — Android runtime для файлов `.litertlm`. В проект закреплена зависимость `com.google.ai.edge.litertlm:litertlm-android:0.16.1`; выбор этой версии согласован с текущим Kotlin 2.2.20 toolchain. Начальная конфигурация движка — CPU backend. Аппаратное ускорение и NPU/GPU пока не включены в обещания совместимости.
-- **llama.cpp** — GGUF runtime через JNI/NDK и CMake. Исходный проект llama.cpp закреплён на release tag `v1.0.0`; начальная сборка ограничена ABI `arm64-v8a` и CPU inference. Android GPU offload пока не заявлен.
+- **llama.cpp** — GGUF runtime через JNI/NDK и CMake. Исходный проект llama.cpp закреплён на release tag `v1.0.0`; ABI `arm64-v8a` (для эмулятора CI ещё `x86_64`), только CPU, Android GPU offload не заявлен.
+  - Движок всегда собирается с оптимизацией (`-O3`, `Release`), в том числе внутри debug-APK — сборка `-O0` отвечала в разы медленнее.
+  - CPU-часть ggml — отдельные библиотеки под разные процессоры: ARMv8.0, v8.2 + dotprod, v8.2 + fp16, v8.6 + i8mm, v9 + SVE2/SME. При первом запуске модели выбирается лучшая для этого телефона (`ggml_backend_load_all_from_path`, как в официальном Android-примере llama.cpp); KleidiAI включён. Что выбрано — видно в Model Center («Движок GGUF: llama.cpp · CPU: …») и в профиле узла Mesh.
+  - Библиотеки выровнены под страницы 16 КБ (Android 15+) и распаковываются при установке (`useLegacyPackaging`), чтобы их можно было найти в папке приложения.
 
 Оба движка реализуют общий `ModelGateway`, используемый AI Studio и доступный для маршрутизации Council через выбор локального provider profile. On-device inference не использует платный API и не зависит от домашнего ПК.
 

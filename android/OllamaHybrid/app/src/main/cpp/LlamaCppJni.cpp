@@ -1,11 +1,13 @@
 #include <jni.h>
 #include <android/log.h>
 #include <llama.h>
+#include <ggml-backend.h>
 
 #include <atomic>
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <unistd.h>
@@ -118,6 +120,45 @@ static jlong finish_create(JNIEnv * env, NexusLlamaState * state, jint context_s
     return static_cast<jlong>(reinterpret_cast<intptr_t>(state));
 }
 
+static std::once_flag g_backends_once;
+static std::string g_backends;
+
+// Loads the CPU backend variant that fits this processor (the libraries sit in the
+// app's native library folder) and describes what was loaded, e.g. "CPU: NEON DOTPROD FP16".
+extern "C" JNIEXPORT jstring JNICALL
+Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeInitBackends(JNIEnv * env, jobject, jstring lib_dir) {
+    const char * dir = lib_dir == nullptr ? nullptr : env->GetStringUTFChars(lib_dir, nullptr);
+    std::string path = dir == nullptr ? std::string() : std::string(dir);
+    if (dir != nullptr) env->ReleaseStringUTFChars(lib_dir, dir);
+    std::call_once(g_backends_once, [&path]() {
+        if (!path.empty()) ggml_backend_load_all_from_path(path.c_str());
+        llama_backend_init();
+        std::string info;
+        for (size_t i = 0; i < ggml_backend_reg_count(); ++i) {
+            ggml_backend_reg_t reg = ggml_backend_reg_get(i);
+            if (!info.empty()) info += "; ";
+            info += ggml_backend_reg_name(reg);
+            auto features = reinterpret_cast<ggml_backend_get_features_t>(
+                ggml_backend_reg_get_proc_address(reg, "ggml_backend_get_features"));
+            if (features == nullptr) continue;
+            std::string flags;
+            for (ggml_backend_feature * f = features(reg); f != nullptr && f->name != nullptr; ++f) {
+                if (f->value != nullptr && std::strcmp(f->value, "1") == 0) flags += std::string(" ") + f->name;
+            }
+            if (!flags.empty()) info += ":" + flags;
+        }
+        g_backends = info;
+    });
+    // ASCII only (backend and feature names), safe for NewStringUTF.
+    return env->NewStringUTF(g_backends.c_str());
+}
+
+static bool has_cpu_backend(JNIEnv * env) {
+    if (ggml_backend_dev_count() > 0) return true;
+    throw_java(env, "Движок llama.cpp не нашёл вычислительный модуль для этого процессора.");
+    return false;
+}
+
 static llama_model_params cpu_model_params() {
     llama_model_params model_params = llama_model_default_params();
     model_params.n_gpu_layers = 0;
@@ -131,6 +172,10 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeCreate(
     const char * path = env->GetStringUTFChars(model_path, nullptr);
     if (path == nullptr) return 0;
     llama_backend_init();
+    if (!has_cpu_backend(env)) {
+        env->ReleaseStringUTFChars(model_path, path);
+        return 0;
+    }
     auto state = new NexusLlamaState();
     state->model = llama_model_load_from_file(path, cpu_model_params());
     env->ReleaseStringUTFChars(model_path, path);
@@ -155,6 +200,10 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeCreateFromFd(
         return 0;
     }
     llama_backend_init();
+    if (!has_cpu_backend(env)) {
+        fclose(file);
+        return 0;
+    }
     auto state = new NexusLlamaState();
     state->file = file;
     state->model = llama_model_load_from_file_ptr(file, cpu_model_params());

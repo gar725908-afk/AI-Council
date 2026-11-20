@@ -34,6 +34,11 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
+                // The engine is always optimised: testers install debug APKs, and an -O0
+                // llama.cpp answers many times slower (CI saw minutes per sentence).
+                arguments += "-DCMAKE_BUILD_TYPE=Release"
+                // 16 KB page devices (Android 15+) refuse 4 KB-aligned libraries.
+                arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
             }
         }
     }
@@ -61,6 +66,12 @@ android {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
+    }
+
+    packaging {
+        // The CPU-specific llama.cpp backends are found by scanning nativeLibraryDir,
+        // so the libraries must be extracted there on install.
+        jniLibs { useLegacyPackaging = true }
     }
 
     buildFeatures {

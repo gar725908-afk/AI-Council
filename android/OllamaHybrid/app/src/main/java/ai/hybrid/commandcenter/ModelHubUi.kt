@@ -123,6 +123,9 @@ fun PhoneModelHub(chat: ChatController?, onActivated: (InstalledNexusModel) -> U
     }
 
     LaunchedEffect(Unit) { reload() }
+    // Which llama.cpp CPU build this processor got (dotprod, i8mm…) — shown so speed is explainable.
+    var cpuBuild by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { cpuBuild = withContext(Dispatchers.IO) { ai.hybrid.commandcenter.nexus.llamaCpuBackends(context) } }
     LaunchedEffect(hasAccess, scanRound) {
         scanning = true
         found = withContext(Dispatchers.IO) { runCatching { LocalModelScanner.scan(context) }.getOrDefault(emptyList()) }
@@ -227,6 +230,7 @@ fun PhoneModelHub(chat: ChatController?, onActivated: (InstalledNexusModel) -> U
             "Если модель уже скачана (в «Загрузках», «Документах» или скопирована с ПК), качать её заново не нужно — NEXUS запустит файл прямо там, где он лежит.",
             style = NexusTypography.bodySmall, color = Cyber.TextDim
         )
+        cpuBuild?.takeIf { it.isNotBlank() }?.let { HudLabel("Движок GGUF: llama.cpp · " + it, color = Cyber.TextFaint, maxLines = 3) }
         if (!hasAccess) {
             Text(
                 if (StorageAccess.usesAllFilesAccess)
@@ -235,15 +239,16 @@ fun PhoneModelHub(chat: ChatController?, onActivated: (InstalledNexusModel) -> U
                 style = NexusTypography.bodySmall, color = Cyber.Amber
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Stacked: side by side the labels were cut to «ИСКАТЬ СН…» on a 6-inch phone.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!hasAccess) {
-                HudButton("Разрешить поиск", { requestAccess() }, Modifier.weight(1f).testTag("found-allow"),
+                HudButton("Разрешить поиск", { requestAccess() }, Modifier.fillMaxWidth().testTag("found-allow"),
                     icon = NexIcons.Radar, accent = Cyber.Yellow, height = 44.dp)
             } else {
-                HudButton(if (scanning) "Ищу…" else "Искать снова", { scanRound++ }, Modifier.weight(1f).testTag("found-rescan"),
+                HudButton(if (scanning) "Ищу…" else "Искать снова", { scanRound++ }, Modifier.fillMaxWidth().testTag("found-rescan"),
                     icon = NexIcons.Radar, accent = Cyber.Yellow, enabled = !scanning, height = 44.dp)
             }
-            HudButton("Указать файл", { pickLauncher.launch(arrayOf("*/*")) }, Modifier.weight(1f).testTag("found-pick"),
+            HudButton("Указать файл вручную", { pickLauncher.launch(arrayOf("*/*")) }, Modifier.fillMaxWidth().testTag("found-pick"),
                 style = HudButtonStyle.Secondary, icon = NexIcons.FolderOpen, accent = Cyber.Yellow,
                 enabled = busyKey == null, height = 44.dp)
         }
