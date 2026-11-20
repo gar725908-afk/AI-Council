@@ -15,21 +15,27 @@ on:
       - "android/OllamaHybrid/**"
       - ".github/workflows/nexus-android-emulator.yml"
   workflow_dispatch:
+    inputs:
+      gemma:
+        description: "Also download Gemma 4 E2B (2.4 GB) and test LiteRT-LM"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: nexus-android-emulator-${{ github.ref }}
+  group: nexus-android-emulator-${{ github.ref }}-${{ inputs.gemma }}
   cancel-in-progress: true
 
 jobs:
   emulator-e2e:
     name: Owner journey on an emulator
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       NEXUS_OLLAMA_MODEL: qwen2.5:0.5b
+      NEXUS_GEMMA: ${{ inputs.gemma && 'true' || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,7 +77,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           ram-size: 4096M
-          disk-size: 6000M
+          disk-size: 8000M
           disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
           working-directory: android/OllamaHybrid

@@ -150,6 +150,27 @@ class ShellFlowTest {
     }
 
     @Test
+    fun finishingSetupFromSettingsReturnsToChat() {
+        NexusProfile.markSetupPrompted(app)
+        server.enqueue(
+            MockResponse().setBody("""{"models":[{"name":"qwen3:8b"}]}""").setHeader("Content-Type", "application/json")
+        )
+        compose.setContent { NexusApp(startTab = AppTab.SETTINGS) }
+        awaitTag("settings-change-core")
+        compose.onNodeWithTag("settings-change-core").performClick()
+        awaitTag("path-pc")
+        compose.onNodeWithTag("path-pc").performClick()
+        awaitTag("ollama-address")
+        compose.onNodeWithTag("ollama-address").performTextInput("127.0.0.1:" + server.port)
+        compose.onNodeWithTag("ollama-check").performClick()
+        awaitTag("ollama-connect")
+        compose.onNodeWithTag("ollama-connect").performScrollTo().performClick()
+        awaitTag("setup-finish")
+        compose.onNodeWithTag("setup-finish").performClick()
+        awaitTag("composer")
+    }
+
+    @Test
     fun settingsShowCoreAndProfile() {
         NexusProfile.markSetupPrompted(app)
         compose.setContent { NexusApp(startTab = AppTab.SETTINGS) }

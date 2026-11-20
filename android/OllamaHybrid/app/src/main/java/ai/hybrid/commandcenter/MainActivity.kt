@@ -154,7 +154,13 @@ fun NexusApp(
             }
             if (setupOpen) {
                 CyberBackdrop(Modifier.fillMaxSize(), scene = BackdropScene.PLAIN) {
-                    CoreSetupScreen(chat, onClose = { setupOpen = false }, modifier = frame.imePadding())
+                    CoreSetupScreen(
+                        chat,
+                        onClose = { setupOpen = false },
+                        modifier = frame.imePadding(),
+                        // «В чат» means exactly that, wherever the setup was opened from
+                        onFinish = { setupOpen = false; module = null; tab = AppTab.CHAT }
+                    )
                 }
             }
             if (voiceOpen) {

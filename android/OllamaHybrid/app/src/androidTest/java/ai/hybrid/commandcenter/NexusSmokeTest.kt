@@ -176,4 +176,40 @@ class NexusSmokeTest {
         shot("17_phone_answer")
         assertTrue("NEX must answer from the on-device model", count("error-panel") == 0)
     }
+
+    /**
+     * The recommended phone model (Gemma 4 E2B on LiteRT-LM, ≈2.4 GB). Heavy, so
+     * it runs only when the workflow is started with gemma=true.
+     */
+    @Test
+    fun c_gemmaJourney() {
+        org.junit.Assume.assumeTrue(args.getString("gemma") == "true")
+        awaitTag("tab-settings")
+        compose.onNodeWithTag("tab-settings").performClick()
+        awaitTag("settings-change-core")
+        compose.onNodeWithTag("settings-change-core").performClick()
+        awaitTag("path-phone")
+        compose.onNodeWithTag("path-phone").performClick()
+        awaitTag("download-google-gemma-4-e2b-it")
+        compose.onNodeWithTag("download-google-gemma-4-e2b-it").performScrollTo().performClick()
+        compose.waitUntil(1_800_000) {
+            compose.onAllNodesWithTag("setup-done", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithTag("setup-error", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        shot("18_gemma_ready")
+        assertTrue("Gemma must download and activate", count("setup-error") == 0)
+        compose.onNodeWithTag("setup-finish").performClick()
+        awaitTag("composer")
+        compose.onNode(hasContentDescription("Новый чат")).performClick()
+        Thread.sleep(1_000)
+        compose.onNodeWithTag("composer").performTextInput("Привет! Ответь одним предложением: чем ты можешь помочь?")
+        awaitTag("send")
+        compose.onNodeWithTag("send").performClick()
+        compose.waitUntil(900_000) {
+            compose.onAllNodes(hasTestTag("nex-message")).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodes(hasTestTag("error-panel")).fetchSemanticsNodes().isNotEmpty()
+        }
+        shot("19_gemma_answer")
+        assertTrue("NEX must answer from Gemma on LiteRT-LM", count("error-panel") == 0)
+    }
 }

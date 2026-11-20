@@ -25,6 +25,7 @@ adb shell am instrument -w \
   -e class "$PKG.NexusSmokeTest" \
   -e ollamaUrl "http://10.0.2.2:11434" \
   -e ollamaModel "$MODEL" \
+  -e gemma "${NEXUS_GEMMA:-false}" \
   "$PKG.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument.txt"
 
 echo "== collect test screenshots"

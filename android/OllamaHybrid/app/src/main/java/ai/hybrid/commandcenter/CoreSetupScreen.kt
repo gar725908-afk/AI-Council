@@ -130,7 +130,13 @@ internal fun formatSize(bytes: Long): String = when {
  * cloud provider by key — each ends with a real check before it is saved.
  */
 @Composable
-fun CoreSetupScreen(chat: ChatController, onClose: () -> Unit, modifier: Modifier = Modifier, startPath: SetupPath? = null) {
+fun CoreSetupScreen(
+    chat: ChatController,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    startPath: SetupPath? = null,
+    onFinish: () -> Unit = onClose
+) {
     var step by remember {
         mutableStateOf(
             when (startPath) {
@@ -163,7 +169,7 @@ fun CoreSetupScreen(chat: ChatController, onClose: () -> Unit, modifier: Modifie
                 SetupStep.PHONE -> PhoneStep(chat, finish)
                 SetupStep.PC -> PcStep(chat, finish)
                 SetupStep.CLOUD -> CloudStep(chat, finish)
-                SetupStep.DONE -> DoneStep(doneLine, onClose)
+                SetupStep.DONE -> DoneStep(doneLine, onFinish)
             }
             Spacer(Modifier.height(24.dp))
         }
