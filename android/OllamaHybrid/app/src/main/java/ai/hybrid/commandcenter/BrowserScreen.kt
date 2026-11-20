@@ -1,5 +1,30 @@
 package ai.hybrid.commandcenter
 
+import ai.hybrid.commandcenter.ui.CircleIconButton
+import ai.hybrid.commandcenter.ui.Dot
+import ai.hybrid.commandcenter.ui.ListRow
+import ai.hybrid.commandcenter.ui.NexIcon
+import ai.hybrid.commandcenter.ui.NexIcons
+import ai.hybrid.commandcenter.ui.NexusBrushes
+import ai.hybrid.commandcenter.ui.NexusColors
+import ai.hybrid.commandcenter.ui.NexusShapes
+import ai.hybrid.commandcenter.ui.SectionHeader
+import ai.hybrid.commandcenter.ui.SoftButton
+import ai.hybrid.commandcenter.ui.glass
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import ai.hybrid.commandcenter.nexus.BrowserHistoryEntry
 import ai.hybrid.commandcenter.nexus.BrowserHistoryStore
 import ai.hybrid.commandcenter.nexus.BrowserTabs
@@ -57,14 +82,14 @@ import kotlinx.coroutines.withContext
 import org.json.JSONTokener
 
 private val Void = Color(0xFF080B12)
-private val SurfaceDeep = Color(0xFF0E1420)
-private val SurfaceRaised = Color(0xFF151E2D)
+private val SurfaceDeep = Color(0x14FFFFFF)
+private val SurfaceRaised = Color(0x0DFFFFFF)
 private val Cyan = Color(0xFF42D9F5)
 private val Violet = Color(0xFF9B7BFF)
 private val SignalGreen = Color(0xFF43D6A0)
 private val SignalRed = Color(0xFFFF647C)
-private val PrimaryText = Color(0xFFF1F5FA)
-private val SecondaryText = Color(0xFFA4B1C2)
+private val PrimaryText = Color(0xFFF4F6FB)
+private val SecondaryText = Color(0xFFA3ABBD)
 
 private const val MAX_PAGE_TEXT_CHARS = 200_000
 
@@ -131,6 +156,8 @@ fun BrowserScreen(
     }
 
     fun createWebView(ctx: Context, tabId: String): WebView = WebView(ctx).apply {
+        // Empty tabs match the dark interface instead of flashing white.
+        setBackgroundColor(android.graphics.Color.parseColor("#0D0F16"))
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.allowFileAccess = false
@@ -186,216 +213,255 @@ fun BrowserScreen(
         }
     }
 
-    Column(modifier.fillMaxSize().background(Void)) {
+    Column(modifier.fillMaxSize()) {
+        // Tabs
         LazyRow(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             items(tabs.tabs.size) { index ->
                 val tab = tabs.tabs[index]
                 val selected = tab.id == tabs.selectedId
-                OutlinedButton(
-                    onClick = {
-                        tabs = tabs.select(tab.id)
-                        address = tab.url.orEmpty()
-                        progress = 100
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (selected) Cyan else SecondaryText,
-                        containerColor = if (selected) SurfaceRaised else Color.Transparent
-                    )
+                Row(
+                    Modifier
+                        .clip(NexusShapes.Pill)
+                        .then(if (selected) Modifier.background(NexusBrushes.Primary) else Modifier.glass(NexusShapes.Pill))
+                        .clickable {
+                            tabs = tabs.select(tab.id)
+                            address = tab.url.orEmpty()
+                            progress = 100
+                        }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    NexIcon(NexIcons.Globe, tint = if (selected) Color.White else SecondaryText, size = 15.dp)
                     Text(
                         (tab.title.ifBlank { tab.url?.let(BrowserUrlPolicy::displayHost) ?: "Новая вкладка" }).take(18),
-                        fontSize = 11.sp
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (selected) Color.White else SecondaryText,
+                        maxLines = 1
                     )
                 }
             }
             item {
-                OutlinedButton(
+                CircleIconButton(
+                    NexIcons.Plus,
                     onClick = {
                         tabs = tabs.open()
                         address = ""
                         progress = 100
                     },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
-                ) { Text("+", fontSize = 12.sp) }
+                    size = 38.dp,
+                    contentDescription = "Новая вкладка"
+                )
             }
             item {
-                OutlinedButton(
+                CircleIconButton(
+                    NexIcons.X,
                     onClick = {
                         val closing = tabs.selectedId
                         webViews.remove(closing)?.destroy()
                         tabs = tabs.close(closing)
                         address = tabs.selected.url.orEmpty()
                     },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SignalRed)
-                ) { Text("×", fontSize = 12.sp) }
+                    size = 38.dp,
+                    tint = SignalRed,
+                    contentDescription = "Закрыть вкладку"
+                )
             }
         }
 
+        // Address bar
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .glass(NexusShapes.Panel)
+                .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            OutlinedTextField(
-                value = address,
-                onValueChange = { address = it.take(2048) },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = { Text("Адрес") },
-                placeholder = { Text("zakupki.gov.ru") }
-            )
-            OutlinedButton(
+            NexIcon(if (current.url?.startsWith("https") == true) NexIcons.Lock else NexIcons.Search, tint = SecondaryText, size = 18.dp)
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (address.isEmpty()) {
+                    Text("Адрес или поиск", style = MaterialTheme.typography.bodyLarge, color = NexusColors.TextMuted)
+                }
+                BasicTextField(
+                    value = address,
+                    onValueChange = { address = it.take(2048) },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = PrimaryText),
+                    cursorBrush = SolidColor(Cyan),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { navigateTo(address) }),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            CircleIconButton(
+                NexIcons.ArrowUp,
                 onClick = { navigateTo(address) },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
-            ) { Text("Открыть", fontSize = 12.sp) }
+                size = 40.dp,
+                filled = address.isNotBlank(),
+                tint = NexusColors.TextMuted,
+                contentDescription = "Открыть"
+            )
         }
 
         if (progress in 0..99) {
             LinearProgressIndicator(
                 progress = { progress / 100f },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 6.dp).height(3.dp).clip(NexusShapes.Pill),
                 color = Cyan,
-                trackColor = SurfaceDeep
+                trackColor = Color(0x14FFFFFF),
+                drawStopIndicator = {}
             )
+        } else {
+            Spacer(Modifier.height(10.dp))
         }
 
+        // Page title and actions
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                current.title.ifBlank { current.url?.let(BrowserUrlPolicy::displayHost) ?: "Страница не открыта" },
-                color = PrimaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    current.title.ifBlank { current.url?.let(BrowserUrlPolicy::displayHost) ?: "Страница не открыта" },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = PrimaryText,
+                    maxLines = 1
+                )
+                Text(
+                    current.url?.let(BrowserUrlPolicy::displayHost) ?: "Введите адрес выше",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SecondaryText,
+                    maxLines = 1
+                )
+            }
+            CircleIconButton(
+                NexIcons.ArrowLeft,
+                onClick = { currentWebView?.let { if (it.canGoBack()) it.goBack() } },
+                size = 38.dp,
+                tint = SecondaryText,
+                contentDescription = "Назад"
             )
-            Text(current.url?.let(BrowserUrlPolicy::displayHost) ?: "", color = SecondaryText, fontSize = 10.sp)
+            CircleIconButton(
+                NexIcons.RefreshCw,
+                onClick = { currentWebView?.reload() },
+                size = 38.dp,
+                tint = SecondaryText,
+                contentDescription = "Обновить"
+            )
+            CircleIconButton(
+                NexIcons.History,
+                onClick = {
+                    showHistory = !showHistory
+                    if (showHistory) loadHistory()
+                },
+                size = 38.dp,
+                tint = if (showHistory) Cyan else SecondaryText,
+                contentDescription = "История"
+            )
         }
 
+        // Agent Dock: page text to Studio, Council or the Archive
         LazyRow(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            Modifier.fillMaxWidth().padding(vertical = 10.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                OutlinedButton(
-                    onClick = { currentWebView?.let { if (it.canGoBack()) it.goBack() } },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SecondaryText)
-                ) { Text("Назад", fontSize = 11.sp) }
+                SoftButton("В Studio", {
+                    withPageText { text ->
+                        onSendToStudio(MaterialContext.buildPrompt(current.title.ifBlank { current.url.orEmpty() }, text))
+                    }
+                }, icon = NexIcons.Sparkles, tint = Violet)
             }
             item {
-                OutlinedButton(
-                    onClick = { currentWebView?.reload() },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SecondaryText)
-                ) { Text("Обновить", fontSize = 11.sp) }
+                SoftButton("В Council", {
+                    withPageText { text ->
+                        onSendToCouncil(MaterialContext.buildPrompt(current.title.ifBlank { current.url.orEmpty() }, text))
+                    }
+                }, icon = NexIcons.Orbit, tint = Violet)
             }
             item {
-                OutlinedButton(
-                    onClick = {
-                        showHistory = !showHistory
-                        if (showHistory) loadHistory()
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = if (showHistory) Cyan else SecondaryText)
-                ) { Text("История", fontSize = 11.sp) }
-            }
-            item {
-                OutlinedButton(
-                    onClick = {
-                        withPageText { text ->
-                            onSendToStudio(MaterialContext.buildPrompt(current.title.ifBlank { current.url.orEmpty() }, text))
-                        }
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
-                ) { Text("Текст → AI Studio", fontSize = 11.sp) }
-            }
-            item {
-                OutlinedButton(
-                    onClick = {
-                        withPageText { text ->
-                            onSendToCouncil(MaterialContext.buildPrompt(current.title.ifBlank { current.url.orEmpty() }, text))
-                        }
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
-                ) { Text("Текст → Council", fontSize = 11.sp) }
-            }
-            item {
-                OutlinedButton(
-                    onClick = {
-                        withPageText { text ->
-                            scope.launch {
-                                val host = current.url?.let(BrowserUrlPolicy::displayHost) ?: "page"
-                                val name = (current.title.ifBlank { host }).take(80) + " ($host).txt"
-                                val result = withContext(Dispatchers.IO) {
-                                    MaterialLibrary(context.applicationContext).import(name, text.toByteArray())
-                                }
-                                when (result) {
-                                    is LibraryImportResult.Imported -> setStatus("Сохранено в Архив: ${result.item.displayName}", false)
-                                    is LibraryImportResult.Rejected -> setStatus(result.reason, true)
-                                }
+                SoftButton("В архив", {
+                    withPageText { text ->
+                        scope.launch {
+                            val host = current.url?.let(BrowserUrlPolicy::displayHost) ?: "page"
+                            val name = (current.title.ifBlank { host }).take(80) + " ($host).txt"
+                            val result = withContext(Dispatchers.IO) {
+                                MaterialLibrary(context.applicationContext).import(name, text.toByteArray())
+                            }
+                            when (result) {
+                                is LibraryImportResult.Imported -> setStatus("Сохранено в Архив: ${result.item.displayName}", false)
+                                is LibraryImportResult.Rejected -> setStatus(result.reason, true)
                             }
                         }
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
-                ) { Text("Сохранить в Архив", fontSize = 11.sp) }
+                    }
+                }, icon = NexIcons.Archive, tint = Cyan)
             }
         }
 
         val status = statusLine
         if (status != null) {
-            Text(
-                status,
-                color = if (statusIsError) SignalRed else SignalGreen,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-            )
+            Row(
+                Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Dot(if (statusIsError) SignalRed else SignalGreen, size = 6.dp)
+                Text(status, style = MaterialTheme.typography.bodySmall, color = if (statusIsError) SignalRed else SignalGreen)
+            }
         }
 
         if (showHistory) {
             LazyColumn(
-                Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                Modifier.fillMaxWidth().weight(1f),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("ИСТОРИЯ (${historyEntries.size})", color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    withContext(Dispatchers.IO) { history.clear() }
-                                    loadHistory()
-                                }
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SignalRed)
-                        ) { Text("Очистить", fontSize = 10.sp) }
-                    }
+                    SectionHeader(
+                        "История · ${historyEntries.size}",
+                        action = "Очистить",
+                        onAction = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { history.clear() }
+                                loadHistory()
+                            }
+                        }
+                    )
                 }
                 if (historyEntries.isEmpty()) {
-                    item { Text("История пуста.", color = SecondaryText, fontSize = 12.sp) }
+                    item { Text("История пуста.", style = MaterialTheme.typography.bodyMedium, color = SecondaryText) }
                 }
                 items(historyEntries.size) { index ->
                     val entry = historyEntries[index]
-                    OutlinedButton(
+                    ListRow(
+                        icon = NexIcons.Globe,
+                        accent = Cyan,
+                        title = entry.title.ifBlank { BrowserUrlPolicy.displayHost(entry.url) },
+                        meta = timeLabel(entry.visitedAtEpochMillis) + " · " + BrowserUrlPolicy.displayHost(entry.url),
                         onClick = {
                             address = entry.url
                             navigateTo(entry.url)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryText)
-                    ) {
-                        Column(Modifier.fillMaxWidth()) {
-                            Text(entry.title.ifBlank { BrowserUrlPolicy.displayHost(entry.url) }.take(60), fontSize = 11.sp)
-                            Text(
-                                timeLabel(entry.visitedAtEpochMillis) + " · " + BrowserUrlPolicy.displayHost(entry.url),
-                                color = SecondaryText, fontSize = 9.sp
-                            )
                         }
-                    }
+                    )
                 }
             }
         } else {
             key(current.id) {
                 AndroidView(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp)
+                        .clip(NexusShapes.Card),
                     factory = { ctx ->
                         val view = webViews.getOrPut(current.id) { createWebView(ctx, current.id) }
                         (view.parent as? ViewGroup)?.removeView(view)
@@ -408,4 +474,4 @@ fun BrowserScreen(
 }
 
 private fun timeLabel(epochMillis: Long): String =
-    SimpleDateFormat("HH:mm dd.MM", Locale.getDefault()).format(Date(epochMillis))
+    SimpleDateFormat("HH:mm, d MMM", Locale.forLanguageTag("ru")).format(Date(epochMillis))

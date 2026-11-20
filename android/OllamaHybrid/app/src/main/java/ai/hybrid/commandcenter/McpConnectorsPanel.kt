@@ -49,15 +49,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val Void = Color(0xFF080B12)
-private val SurfaceDeep = Color(0xFF0E1420)
-private val SurfaceRaised = Color(0xFF151E2D)
+private val SurfaceDeep = Color(0x14FFFFFF)
+private val SurfaceRaised = Color(0x0DFFFFFF)
 private val Cyan = Color(0xFF42D9F5)
 private val Violet = Color(0xFF9B7BFF)
 private val SignalGreen = Color(0xFF43D6A0)
 private val SignalAmber = Color(0xFFF2B65D)
 private val SignalRed = Color(0xFFFF647C)
-private val PrimaryText = Color(0xFFF1F5FA)
-private val SecondaryText = Color(0xFFA4B1C2)
+private val PrimaryText = Color(0xFFF4F6FB)
+private val SecondaryText = Color(0xFFA3ABBD)
 
 /**
  * Connectors (handoff 8) on the open MCP standard: the user adds a server,
@@ -146,17 +146,19 @@ fun McpConnectorsPanel(modifier: Modifier = Modifier) {
     }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(Void).padding(horizontal = 18.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Spacer(Modifier.height(18.dp))
-            Text("КОННЕКТОРЫ", color = PrimaryText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text("MCP · ЛЮБОЙ СЕРВЕР ПО ОТКРЫТОМУ СТАНДАРТУ · ВСЁ ЧЕРЕЗ GATEWAY", color = Cyan, fontSize = 11.sp, letterSpacing = 1.sp)
+            ai.hybrid.commandcenter.ui.ScreenHeader(
+                "Коннекторы",
+                subtitle = "Любой MCP-сервер, всё через Gateway",
+                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Plug, ai.hybrid.commandcenter.ui.NexusColors.NeonMagenta, size = 48.dp) }
+            )
         }
 
         item {
-            PanelCard(title = "ДОБАВИТЬ СЕРВЕР", accent = Cyan) {
+            PanelCard(title = "Добавить сервер", accent = Cyan) {
                 Text(
                     "Укажите адрес MCP-сервера (Streamable HTTP). Инструменты только для чтения выполняются сразу, " +
                         "изменяющие — после вашего подтверждения. Каждый вызов записывается в аудит.",
@@ -180,7 +182,7 @@ fun McpConnectorsPanel(modifier: Modifier = Modifier) {
             }
         }
 
-        item { Text("СЕРВЕРЫ (${servers.size})", color = Violet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp) }
+        item { Text(ai.hybrid.commandcenter.ui.prettyTitle("Серверы (${servers.size})"), color = Violet, style = androidx.compose.material3.MaterialTheme.typography.titleSmall) }
 
         if (servers.isEmpty()) {
             item { Text("Серверов пока нет.", color = SecondaryText, fontSize = 13.sp) }
@@ -215,8 +217,8 @@ fun McpConnectorsPanel(modifier: Modifier = Modifier) {
         if (active != null && tools.isNotEmpty()) {
             item {
                 Text(
-                    "ИНСТРУМЕНТЫ «${active.name}» (${tools.size})",
-                    color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp
+                    "Инструменты «${active.name}» (${tools.size})",
+                    color = Cyan, style = androidx.compose.material3.MaterialTheme.typography.titleSmall
                 )
             }
             items(tools.size) { index ->
@@ -228,7 +230,7 @@ fun McpConnectorsPanel(modifier: Modifier = Modifier) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(tool.remote.name, color = PrimaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                             Text(
-                                if (sensitive) "ТРЕБУЕТ ОДОБРЕНИЯ" else "ТОЛЬКО ЧТЕНИЕ",
+                                if (sensitive) "Требует одобрения" else "Только чтение",
                                 color = if (sensitive) SignalAmber else SignalGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold
                             )
                         }
@@ -255,7 +257,7 @@ fun McpConnectorsPanel(modifier: Modifier = Modifier) {
                                 }
                             },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = if (armed) SignalRed else Violet)
-                        ) { Text(if (armed) "ПОДТВЕРДИТЬ ВЫПОЛНЕНИЕ" else "Выполнить через Gateway", fontSize = 11.sp) }
+                        ) { Text(if (armed) "Подтвердить выполнение" else "Выполнить через Gateway", fontSize = 11.sp) }
                     }
                 }
             }
@@ -275,12 +277,11 @@ fun McpConnectorsPanel(modifier: Modifier = Modifier) {
 
 @Composable
 private fun PanelCard(title: String, accent: Color, content: @Composable () -> Unit) {
-    Surface(color = SurfaceDeep, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-            content()
-        }
-    }
+    ai.hybrid.commandcenter.ui.SectionCard(
+        title = title,
+        icon = ai.hybrid.commandcenter.ui.iconForTitle(title),
+        accent = accent
+    ) { content() }
 }
 
 /** `{"json":...}` for raw JSON, otherwise `key=value;key2=value2`. */

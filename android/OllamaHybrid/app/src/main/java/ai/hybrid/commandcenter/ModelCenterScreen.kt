@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import ai.hybrid.commandcenter.ui.GlassSurface
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LinearProgressIndicator
@@ -112,29 +112,33 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
     }
 
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 14.dp),
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("NEXUS MODEL CENTER", style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        Text("Локальные модели, веса, движки и управление активной конфигурацией.",
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        ai.hybrid.commandcenter.ui.ScreenHeader(
+            "Модели",
+            subtitle = "Локальные модели, движки и активная конфигурация",
+            leading = {
+                ai.hybrid.commandcenter.ui.IconBadge(
+                    ai.hybrid.commandcenter.ui.NexIcons.Boxes,
+                    ai.hybrid.commandcenter.ui.NexusColors.NeonMagenta,
+                    size = 48.dp
+                )
+            }
+        )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { tab = ModelCenterTab.MODELS }, modifier = Modifier.weight(1f)) {
-                Text("МОДЕЛИ")
-            }
-            OutlinedButton(onClick = { tab = ModelCenterTab.EVOLUTION }, modifier = Modifier.weight(1f)) {
-                Text("EVOLUTION")
-            }
-        }
+        ai.hybrid.commandcenter.ui.SegmentedTabs(
+            options = listOf("Модели", "Evolution"),
+            selected = if (tab == ModelCenterTab.MODELS) 0 else 1,
+            onSelect = { tab = if (it == 0) ModelCenterTab.MODELS else ModelCenterTab.EVOLUTION }
+        )
 
         if (tab == ModelCenterTab.MODELS) {
             val active = installed.firstOrNull { it.id == activeId }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            GlassSurface(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("АКТИВНАЯ ЛОКАЛЬНАЯ МОДЕЛЬ", fontWeight = FontWeight.Bold,
+                    Text("Активная локальная модель", fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary)
                     Text(active?.displayName ?: "Не выбрана",
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -221,7 +225,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                 )
             }
 
-            Text("ИМПОРТ СВОИХ МОДЕЛЕЙ", fontWeight = FontWeight.Bold,
+            Text("Импорт своих моделей", fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary)
             Text("Можно выбрать файл .gguf для llama.cpp или .litertlm для LiteRT-LM. NEXUS скопирует его в app-private storage.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -232,7 +236,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
             }
 
             installed.filter { it.imported }.forEach { model ->
-                Card(modifier = Modifier.fillMaxWidth()) {
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(model.displayName, fontWeight = FontWeight.SemiBold)
                         Text(model.runtime.name + " • " + formatBytes(model.sizeBytes),
@@ -246,7 +250,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                                         .onSuccess { status = "Активная модель: " + it.displayName; refresh() }
                                         .onFailure { status = it.message ?: "Ошибка активации." }
                                 }
-                            }) { Text(if (activeId == model.id) "АКТИВНА" else "Активировать") }
+                            }) { Text(if (activeId == model.id) "Активна" else "Активировать") }
                             TextButton(onClick = {
                                 scope.launch {
                                     runCatching { withContext(Dispatchers.IO) { storage.remove(model.id) } }
@@ -259,10 +263,10 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                 }
             }
         } else {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            GlassSurface(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("КОНТРОЛИРУЕМОЕ САМОРАЗВИТИЕ", fontWeight = FontWeight.Bold,
+                    Text("Контролируемое саморазвитие", fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary)
                     Text("Evolution создаёт версии промптов, навыков, маршрутов и конфигураций. Изменение сначала сохраняется как предложение; активация выполняется только после вашего подтверждения. Веса нейросетей и системные разрешения этим механизмом не изменяются.",
                         style = MaterialTheme.typography.bodySmall)
@@ -285,8 +289,8 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                     proposalPayload = """{
   "version": 1,
   "routes": {
-    "research": "OPENAI",
-    "analysis": "ON_DEVICE_LITERT"
+    "research": "Openai",
+    "analysis": "On_device_litert"
   },
   "modelOverrides": {
     "research": "gpt-model-id"
@@ -322,11 +326,11 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                 }, modifier = Modifier.fillMaxWidth()
             ) { Text("Создать предложение Evolution") }
 
-            Text("ОЖИДАЮТ ПОДТВЕРЖДЕНИЯ", fontWeight = FontWeight.Bold,
+            Text("Ожидают подтверждения", fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary)
             if (pending.isEmpty()) Text("Нет ожидающих предложений.", style = MaterialTheme.typography.bodySmall)
             pending.forEach { record ->
-                Card(modifier = Modifier.fillMaxWidth()) {
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(record.proposal.title, fontWeight = FontWeight.SemiBold)
                         Text(record.proposal.kind.name + " • v" + record.proposal.beforeVersion +
@@ -357,7 +361,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                 }
             }
 
-            Text("ВЕРСИИ И ОТКАТ", fontWeight = FontWeight.Bold,
+            Text("Версии и откат", fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary)
             Text("Текущая версия: v" + activeEvolutionVersion,
                 style = MaterialTheme.typography.bodyMedium)
@@ -378,7 +382,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
                     Text("Предыдущих версий пока нет.", style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Text("ЖУРНАЛ EVOLUTION", fontWeight = FontWeight.Bold,
+            Text("Журнал Evolution", fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary)
             if (auditEvents.isEmpty()) {
                 Text("Событий пока нет.", style = MaterialTheme.typography.bodySmall)
@@ -410,13 +414,14 @@ private fun ModelCatalogCard(
     onCancelDownload: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(),
+    GlassSurface(modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(model.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                if (model.recommendedForBalancedProfile) Text("BALANCED", color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                if (model.recommendedForBalancedProfile) {
+                    ai.hybrid.commandcenter.ui.Tag("Рекомендуем", ai.hybrid.commandcenter.ui.NexusColors.SignalGreen)
+                }
             }
             Text(model.publisher + " • " + model.approximateParameterLabel,
                 style = MaterialTheme.typography.bodySmall)
@@ -452,7 +457,7 @@ private fun ModelCatalogCard(
                             Text(if (isDownloading) "Загрузка…" else "Скачать веса")
                         }
                     } else {
-                        Button(onClick = onActivate) { Text(if (isActive) "АКТИВНА" else "Активировать") }
+                        Button(onClick = onActivate) { Text(if (isActive) "Активна" else "Активировать") }
                         TextButton(onClick = onDelete, enabled = !isActive) { Text("Удалить") }
                     }
                 }

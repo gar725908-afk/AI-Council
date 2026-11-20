@@ -47,23 +47,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val Void = Color(0xFF080B12)
-private val SurfaceDeep = Color(0xFF0E1420)
-private val SurfaceRaised = Color(0xFF151E2D)
+private val SurfaceDeep = Color(0x14FFFFFF)
+private val SurfaceRaised = Color(0x0DFFFFFF)
 private val Cyan = Color(0xFF42D9F5)
 private val Violet = Color(0xFF9B7BFF)
 private val SignalGreen = Color(0xFF43D6A0)
 private val SignalAmber = Color(0xFFF2B65D)
 private val SignalRed = Color(0xFFFF647C)
-private val PrimaryText = Color(0xFFF1F5FA)
-private val SecondaryText = Color(0xFFA4B1C2)
+private val PrimaryText = Color(0xFFF4F6FB)
+private val SecondaryText = Color(0xFFA3ABBD)
 
-enum class SystemTab(val label: String) {
-    DEVICE("УСТРОЙСТВО"),
-    MODELS("МОДЕЛИ"),
-    SETTINGS("НАСТРОЙКИ"),
-    CONNECTORS("КОННЕКТОРЫ"),
-    REPAIRS("ИСПРАВЛЕНИЯ"),
-    CENTER("ЦЕНТР")
+enum class SystemTab(val label: String, @androidx.annotation.DrawableRes val icon: Int) {
+    DEVICE("Устройство", ai.hybrid.commandcenter.ui.NexIcons.Smartphone),
+    MODELS("Модели", ai.hybrid.commandcenter.ui.NexIcons.Boxes),
+    SETTINGS("Настройки", ai.hybrid.commandcenter.ui.NexIcons.Settings2),
+    CONNECTORS("Коннекторы", ai.hybrid.commandcenter.ui.NexIcons.Plug),
+    REPAIRS("Исправления", ai.hybrid.commandcenter.ui.NexIcons.Wrench),
+    CENTER("Центр", ai.hybrid.commandcenter.ui.NexIcons.Layers)
 }
 
 /** System space: Device Core, Model Center, Settings and the Platform Center. */
@@ -74,25 +74,13 @@ fun SystemScreen(
     onSendToCouncil: (String) -> Unit = {}
 ) {
     var tab by remember(initialTab) { mutableIntStateOf(initialTab.coerceIn(0, SystemTab.values().lastIndex)) }
-    Column(modifier.fillMaxSize().background(Void)) {
-        ScrollableTabRow(
-            selectedTabIndex = tab,
-            containerColor = SurfaceDeep,
-            contentColor = Cyan,
-            edgePadding = 8.dp
-        ) {
-            SystemTab.values().forEachIndexed { index, entry ->
-                Tab(selected = tab == index, onClick = { tab = index }) {
-                    Text(
-                        entry.label,
-                        color = if (tab == index) Cyan else SecondaryText,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 6.dp)
-                    )
-                }
-            }
-        }
+    Column(modifier.fillMaxSize()) {
+        ai.hybrid.commandcenter.ui.ChipTabs(
+            options = SystemTab.entries.map { it.label to it.icon },
+            selected = tab,
+            onSelect = { tab = it },
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp)
+        )
         when (SystemTab.values()[tab]) {
             SystemTab.DEVICE -> DeviceCoreScreen(Modifier.fillMaxSize())
             SystemTab.MODELS -> ModelCenterScreen(Modifier.fillMaxSize())
@@ -188,19 +176,21 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
     }
 
     LazyColumn(
-        modifier = modifier.background(Void).padding(horizontal = 18.dp),
+        modifier = modifier.padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Spacer(Modifier.height(18.dp))
-            Text("НАСТРОЙКИ", color = PrimaryText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text("ДАННЫЕ · ПРИВАТНОСТЬ · ДИАГНОСТИКА", color = Cyan, fontSize = 11.sp, letterSpacing = 1.sp)
+            ai.hybrid.commandcenter.ui.ScreenHeader(
+                "Настройки",
+                subtitle = "Данные, приватность, оформление",
+                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Settings2, ai.hybrid.commandcenter.ui.NexusColors.NeonViolet, size = 48.dp) }
+            )
         }
 
         item { EffectsCard() }
 
         item {
-            SettingsCard(title = "ХРАНИЛИЩЕ", accent = Cyan) {
+            SettingsCard(title = "Хранилище", accent = Cyan) {
                 val current = facts
                 if (current == null) {
                     Text("Чтение…", color = SecondaryText, fontSize = 13.sp)
@@ -217,7 +207,7 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
         }
 
         item {
-            SettingsCard(title = "ПРИВАТНОСТЬ — КАК ЕСТЬ В КОДЕ", accent = Violet) {
+            SettingsCard(title = "Приватность — как есть в коде", accent = Violet) {
                 FactText("Ключи провайдеров хранятся в Android Keystore, не в базе и не в логах.")
                 FactText("Содержимое миссий и чатов шифруется локальным ключом устройства.")
                 FactText("Сеть используется только для настроенных endpoint-ов и источников моделей по HTTPS; загрузки проверяются по SHA-256.")
@@ -227,7 +217,7 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
         }
 
         item {
-            SettingsCard(title = "ЭКСПОРТ", accent = Cyan) {
+            SettingsCard(title = "Экспорт", accent = Cyan) {
                 FactText("Ваши данные — ваши. Миссии и результаты агентов выгружаются в JSON через системный диалог сохранения.")
                 OutlinedButton(
                     onClick = { exportLauncher.launch("nexus-missions.json") },
@@ -237,7 +227,7 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
         }
 
         item {
-            SettingsCard(title = "УПРАВЛЕНИЕ ДАННЫМИ", accent = SignalAmber) {
+            SettingsCard(title = "Управление данными", accent = SignalAmber) {
                 FactText("Каждое действие требует двух нажатий. Отменить после выполнения нельзя.")
                 DestructiveButton(
                     label = "Очистить миссии и чаты",
@@ -280,7 +270,7 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
         }
 
         item {
-            SettingsCard(title = "ДИАГНОСТИКА", accent = Cyan) {
+            SettingsCard(title = "Диагностика", accent = Cyan) {
                 var recentAudit by remember { mutableStateOf<List<String>>(emptyList()) }
                 LaunchedEffect(facts) {
                     recentAudit = withContext(Dispatchers.IO) {
@@ -302,7 +292,7 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
         }
 
         item {
-            SettingsCard(title = "О ПРОГРАММЕ", accent = Violet) {
+            SettingsCard(title = "О программе", accent = Violet) {
                 FactRow("NEXUS", BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")")
                 FactRow("Пакет", BuildConfig.APPLICATION_ID)
                 FactRow("Сборка", if (BuildConfig.DEBUG) "debug" else "release")
@@ -317,19 +307,12 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
 @Composable
 private fun EffectsCard() {
     val effects = LocalEffects.current
-    SettingsCard(title = "ОФОРМЛЕНИЕ И ЭФФЕКТЫ", accent = Violet) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            EffectsMode.entries.forEach { mode ->
-                val selected = effects.choice == mode
-                OutlinedButton(
-                    onClick = { effects.choose(mode) },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (selected) Void else Violet,
-                        containerColor = if (selected) Violet else Color.Transparent
-                    )
-                ) { Text(mode.title, fontSize = 11.sp) }
-            }
-        }
+    SettingsCard(title = "Оформление и эффекты", accent = Violet) {
+        ai.hybrid.commandcenter.ui.SegmentedTabs(
+            options = listOf("Статично", "Сдержанно", "Ярко"),
+            selected = EffectsMode.entries.indexOf(effects.choice),
+            onSelect = { effects.choose(EffectsMode.entries[it]) }
+        )
         FactText(
             when (effects.choice) {
                 EffectsMode.STATIC -> "Без анимаций: ядро и NEX неподвижны, состояние передаётся цветом и текстом."
@@ -349,12 +332,11 @@ private fun EffectsCard() {
 
 @Composable
 private fun SettingsCard(title: String, accent: Color, content: @Composable () -> Unit) {
-    Surface(color = SurfaceDeep, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-            content()
-        }
-    }
+    ai.hybrid.commandcenter.ui.SectionCard(
+        title = title,
+        icon = ai.hybrid.commandcenter.ui.iconForTitle(title),
+        accent = accent
+    ) { content() }
 }
 
 @Composable

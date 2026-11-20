@@ -48,14 +48,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val Void = Color(0xFF080B12)
-private val SurfaceDeep = Color(0xFF0E1420)
-private val SurfaceRaised = Color(0xFF151E2D)
+private val SurfaceDeep = Color(0x14FFFFFF)
+private val SurfaceRaised = Color(0x0DFFFFFF)
 private val Cyan = Color(0xFF42D9F5)
 private val Violet = Color(0xFF9B7BFF)
 private val SignalGreen = Color(0xFF43D6A0)
 private val SignalRed = Color(0xFFFF647C)
-private val PrimaryText = Color(0xFFF1F5FA)
-private val SecondaryText = Color(0xFFA4B1C2)
+private val PrimaryText = Color(0xFFF4F6FB)
+private val SecondaryText = Color(0xFFA3ABBD)
 
 /**
  * Repairs: the loop that closes error → diagnosis → fix → release.
@@ -101,17 +101,19 @@ fun RepairPanel(
     LaunchedEffect(Unit) { refresh() }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(Void).padding(horizontal = 18.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Spacer(Modifier.height(18.dp))
-            Text("ИСПРАВЛЕНИЯ", color = PrimaryText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text("ОШИБКА · COUNCIL · PULL REQUEST · ОБНОВЛЕНИЕ", color = Cyan, fontSize = 11.sp, letterSpacing = 1.sp)
+            ai.hybrid.commandcenter.ui.ScreenHeader(
+                "Исправления",
+                subtitle = "Ошибка → Council → pull request → обновление",
+                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Wrench, ai.hybrid.commandcenter.ui.NexusColors.SignalAmber, size = 48.dp) }
+            )
         }
 
         item {
-            RepairCard(title = "РЕПОЗИТОРИЙ", accent = Cyan) {
+            RepairCard(title = "Репозиторий", accent = Cyan) {
                 Text(
                     "Исправления всегда уходят в отдельную ветку и pull request. " +
                         "Ни одна правка не попадает в основную ветку без вашей проверки. " +
@@ -162,7 +164,7 @@ fun RepairPanel(
         }
 
         item {
-            RepairCard(title = "ИСХОДНЫЙ КОД", accent = Violet) {
+            RepairCard(title = "Исходный код", accent = Violet) {
                 Text(
                     "Council получает ошибку вместе с настоящим кодом из репозитория, " +
                         "а не догадывается по названию файла.",
@@ -221,7 +223,7 @@ fun RepairPanel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("ЖУРНАЛ ОШИБОК (${errors.size})", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+                Text(ai.hybrid.commandcenter.ui.prettyTitle("Журнал ошибок (${errors.size})"), color = Cyan, style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
                 if (errors.isNotEmpty()) {
                     OutlinedButton(
                         onClick = {
@@ -297,12 +299,11 @@ fun RepairPanel(
 
 @Composable
 private fun RepairCard(title: String, accent: Color, content: @Composable () -> Unit) {
-    Surface(color = SurfaceDeep, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-            content()
-        }
-    }
+    ai.hybrid.commandcenter.ui.SectionCard(
+        title = title,
+        icon = ai.hybrid.commandcenter.ui.iconForTitle(title),
+        accent = accent
+    ) { content() }
 }
 
 private fun timeLabel(epochMillis: Long): String =

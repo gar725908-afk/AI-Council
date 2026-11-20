@@ -1,8 +1,5 @@
 package ai.hybrid.commandcenter
 
-import ai.hybrid.commandcenter.ui.ConstellationModel
-import ai.hybrid.commandcenter.ui.CouncilConstellation
-import ai.hybrid.commandcenter.ui.EffectsMode
 import ai.hybrid.commandcenter.nexus.AgentJournalRecord
 import ai.hybrid.commandcenter.nexus.CouncilAgent
 import ai.hybrid.commandcenter.nexus.CouncilAgentRole
@@ -10,10 +7,32 @@ import ai.hybrid.commandcenter.nexus.CouncilOrchestrator
 import ai.hybrid.commandcenter.nexus.CouncilRoutingStore
 import ai.hybrid.commandcenter.nexus.MissionRecord
 import ai.hybrid.commandcenter.nexus.MissionStatus
+import ai.hybrid.commandcenter.ui.ConstellationModel
+import ai.hybrid.commandcenter.ui.CouncilConstellation
+import ai.hybrid.commandcenter.ui.EffectsMode
+import ai.hybrid.commandcenter.ui.GlassCard
+import ai.hybrid.commandcenter.ui.HairlineDivider
+import ai.hybrid.commandcenter.ui.IconBadge
+import ai.hybrid.commandcenter.ui.InfoLine
+import ai.hybrid.commandcenter.ui.ListRow
+import ai.hybrid.commandcenter.ui.NexAvatar
+import ai.hybrid.commandcenter.ui.NexIcon
+import ai.hybrid.commandcenter.ui.NexIcons
+import ai.hybrid.commandcenter.ui.NexState
+import ai.hybrid.commandcenter.ui.NexusColors
+import ai.hybrid.commandcenter.ui.NexusShapes
+import ai.hybrid.commandcenter.ui.ScreenHeader
+import ai.hybrid.commandcenter.ui.SectionCard
+import ai.hybrid.commandcenter.ui.SectionHeader
+import ai.hybrid.commandcenter.ui.SegmentedTabs
+import ai.hybrid.commandcenter.ui.SoftButton
+import ai.hybrid.commandcenter.ui.Tag
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,12 +40,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,28 +52,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-private val Void = Color(0xFF080B12)
-private val SurfaceDeep = Color(0xFF0E1420)
-private val SurfaceRaised = Color(0xFF151E2D)
-private val Cyan = Color(0xFF42D9F5)
-private val Violet = Color(0xFF9B7BFF)
-private val SignalGreen = Color(0xFF43D6A0)
-private val SignalAmber = Color(0xFFF2B65D)
-private val SignalRed = Color(0xFFFF647C)
-private val PrimaryText = Color(0xFFF1F5FA)
-private val SecondaryText = Color(0xFFA4B1C2)
 
 /**
  * NEXUS COUNCIL per handoff section 4.3: a dedicated command center.
@@ -78,23 +81,13 @@ fun CouncilScreen(
     LaunchedEffect(initialPrompt) {
         if (!initialPrompt.isNullOrBlank()) tab = 1
     }
-    Column(modifier.fillMaxSize().background(Void)) {
-        TabRow(
-            selectedTabIndex = tab,
-            containerColor = SurfaceDeep,
-            contentColor = Violet
-        ) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }) {
-                Text("ЦЕНТР", color = if (tab == 0) Violet else SecondaryText,
-                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(vertical = 12.dp))
-            }
-            Tab(selected = tab == 1, onClick = { tab = 1 }) {
-                Text("ЗАПУСК", color = if (tab == 1) Violet else SecondaryText,
-                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(vertical = 12.dp))
-            }
-        }
+    Column(modifier.fillMaxSize()) {
+        SegmentedTabs(
+            options = listOf("Центр", "Запуск"),
+            selected = tab,
+            onSelect = { tab = it },
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)
+        )
         when (tab) {
             0 -> CouncilCommandCenter(
                 onRepeatMission = { goal ->
@@ -154,77 +147,82 @@ private fun CouncilCommandCenter(
     LaunchedEffect(Unit) { refresh() }
 
     LazyColumn(
-        modifier = modifier.background(Void).padding(horizontal = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = modifier,
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Spacer(Modifier.height(18.dp))
-            Text("NEXUS COUNCIL", color = PrimaryText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text("КОМАНДНЫЙ ЦЕНТР · СТАТУСЫ ИЗ ЖУРНАЛА МИССИЙ", color = Violet, fontSize = 11.sp, letterSpacing = 1.sp)
+            ScreenHeader(
+                "Council",
+                subtitle = "Командный центр · всё из журнала миссий",
+                leading = { NexAvatar(NexState.STANDBY, diameter = 48.dp) }
+            )
         }
 
         item {
             val latest = missions.firstOrNull()
             val nodes = ConstellationModel.fromJournal(agents, latestResults)
             val inFlight = latest?.status in setOf(MissionStatus.QUEUED, MissionStatus.RUNNING, MissionStatus.VERIFYING)
-            CenterCard(title = "NEURAL CONSTELLATION", accent = Violet) {
-                Text(
-                    if (latest == null) "Миссий ещё не было — показан состав совета."
-                    else "Последняя миссия: " + latest.goal.take(90),
-                    color = SecondaryText,
-                    fontSize = 11.sp
-                )
+            SectionCard(
+                title = "Созвездие совета",
+                icon = NexIcons.Orbit,
+                accent = NexusColors.NeonViolet,
+                subtitle = if (latest == null) "Миссий ещё не было — показан состав" else "Последняя миссия: " + latest.goal.take(70)
+            ) {
                 CouncilConstellation(
                     nodes = nodes,
                     manager = ConstellationModel.managerPhase(nodes, inFlight, latest?.status),
                     // History from the journal: states only, no replayed motion.
                     mode = EffectsMode.STATIC,
-                    height = 280.dp
+                    height = 300.dp
                 )
             }
         }
 
         item {
-            CenterCard(title = "ОРКЕСТРАТОР", accent = Violet) {
-                InfoRow("Исполнителей в составе", agents.size.toString())
-                InfoRow("Параллельно", "до 3 агентов")
-                InfoRow("Таймаут агента / синтеза", "120 с / 120 с")
+            SectionCard(title = "Оркестратор", icon = NexIcons.Waypoints, accent = NexusColors.NeonCyan) {
+                InfoLine("Исполнителей в составе", agents.size.toString())
+                InfoLine("Параллельно", "до 3 агентов")
+                InfoLine("Таймаут агента / синтеза", "120 с / 120 с")
                 Text(
-                    "Параметры соответствуют текущему коду CouncilOrchestrator. " +
-                        "Живой прогресс не рисуется: показываются только события, записанные в журнал.",
-                    color = SecondaryText, fontSize = 11.sp
+                    "Параметры совпадают с кодом оркестратора. Живой прогресс не рисуется — только события из журнала.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NexusColors.TextSecondary
                 )
             }
         }
 
         item {
-            CenterCard(title = "СОСТАВ И МАРШРУТЫ", accent = Cyan) {
-                agents.forEach { agent ->
-                    AgentRow(agent, routes[agent.id] ?: "Общий маршрут (активный провайдер)")
+            SectionCard(title = "Состав и маршруты", icon = NexIcons.Route, accent = NexusColors.NeonMagenta) {
+                agents.forEachIndexed { index, agent ->
+                    ListRow(
+                        icon = roleIcon(agent.role),
+                        accent = roleAccent(agent.role),
+                        title = agent.name,
+                        meta = routes[agent.id] ?: "Общий маршрут (активный провайдер)",
+                        trailing = { Tag(roleLabel(agent.role), roleAccent(agent.role)) }
+                    )
+                    if (index < agents.lastIndex) HairlineDivider()
                 }
             }
         }
 
         item {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("МИССИИ", color = Violet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-                OutlinedButton(
-                    onClick = { refresh() },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
-                ) { Text("Обновить", fontSize = 12.sp) }
-            }
+            SectionHeader("Миссии", action = "Обновить", onAction = { refresh() })
         }
 
         if (loaded && missions.isEmpty()) {
             item {
-                Text(
-                    "Миссий ещё не было. Запустите первую на вкладке «Запуск».",
-                    color = SecondaryText, fontSize = 13.sp
-                )
+                GlassCard {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        IconBadge(NexIcons.History, NexusColors.TextSecondary)
+                        Text(
+                            "Миссий ещё не было. Запустите первую на вкладке «Запуск».",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = NexusColors.TextSecondary
+                        )
+                    }
+                }
             }
         }
 
@@ -253,8 +251,6 @@ private fun CouncilCommandCenter(
                 }
             )
         }
-
-        item { Spacer(Modifier.height(22.dp)) }
     }
 }
 
@@ -262,45 +258,6 @@ private fun routeLabel(store: CouncilRoutingStore, agentId: String): String {
     val kind = store.load(agentId) ?: return "Общий маршрут (активный провайдер)"
     val override = store.loadModelOverride(agentId)
     return if (override.isNullOrBlank()) kind.displayName else "${kind.displayName} · $override"
-}
-
-@Composable
-private fun CenterCard(title: String, accent: Color, content: @Composable () -> Unit) {
-    Surface(color = SurfaceDeep, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-            content()
-        }
-    }
-}
-
-@Composable
-private fun InfoRow(name: String, value: String) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(name, color = SecondaryText, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        Text(value, color = PrimaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun AgentRow(agent: CouncilAgent, route: String) {
-    Surface(color = SurfaceRaised, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(agent.name, color = PrimaryText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text(roleLabel(agent.role), color = Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
-            Text("Маршрут: $route", color = SecondaryText, fontSize = 11.sp)
-        }
-    }
 }
 
 @Composable
@@ -312,50 +269,48 @@ private fun MissionCard(
     onRepeat: (String) -> Unit
 ) {
     val (label, color) = missionStatusLabel(mission.status)
-    Surface(
-        color = SurfaceDeep,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().clickable { onToggle() }
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+    GlassCard(onClick = onToggle, accent = if (expanded) color else null, spacing = 8.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            IconBadge(NexIcons.Orbit, color, size = 38.dp)
+            Column(Modifier.weight(1f)) {
                 Text(
-                    mission.goal.take(72),
-                    color = PrimaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
+                    mission.goal,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = NexusColors.TextPrimary,
+                    maxLines = if (expanded) 4 else 2,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Text(label, color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(timeLabel(mission.updatedAt), style = MaterialTheme.typography.bodySmall, color = NexusColors.TextSecondary)
             }
-            Text(timeLabel(mission.updatedAt), color = SecondaryText, fontSize = 10.sp)
-            val missionError = mission.error
-            if (!missionError.isNullOrBlank()) {
-                Text(missionError.take(160), color = SignalRed, fontSize = 11.sp)
+            Tag(label, color)
+        }
+        val missionError = mission.error
+        if (!missionError.isNullOrBlank()) {
+            Text(missionError.take(200), style = MaterialTheme.typography.bodySmall, color = NexusColors.SignalRed)
+        }
+        if (expanded) {
+            HairlineDivider()
+            when {
+                results == null -> Text("Читаю результаты…", style = MaterialTheme.typography.bodySmall, color = NexusColors.TextSecondary)
+                results.isEmpty() -> Text(
+                    "В журнале нет результатов агентов для этой миссии.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NexusColors.TextSecondary
+                )
+                else -> results.forEach { record -> AgentResultRow(record) }
             }
-            if (expanded) {
-                when {
-                    results == null -> Text("Чтение результатов…", color = SecondaryText, fontSize = 11.sp)
-                    results.isEmpty() -> Text(
-                        "В журнале нет результатов агентов для этой миссии.",
-                        color = SecondaryText, fontSize = 11.sp
-                    )
-                    else -> results.forEach { record -> AgentResultRow(record) }
-                }
-                val result = mission.result
-                if (!result.isNullOrBlank()) {
-                    Text("ИТОГ", color = SignalGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(result.take(400), color = PrimaryText, fontSize = 11.sp)
-                }
-                OutlinedButton(
-                    onClick = { onRepeat(mission.goal) },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
-                ) { Text("Повторить задачу", fontSize = 11.sp) }
-            } else {
-                Text("Нажмите, чтобы раскрыть результаты агентов", color = SecondaryText, fontSize = 10.sp)
+            val result = mission.result
+            if (!result.isNullOrBlank()) {
+                Text("Итог", style = MaterialTheme.typography.labelLarge, color = NexusColors.SignalGreen)
+                Text(result.take(600), style = MaterialTheme.typography.bodyMedium, color = NexusColors.TextPrimary)
             }
+            SoftButton("Повторить задачу", { onRepeat(mission.goal) }, icon = NexIcons.RotateCcw, tint = NexusColors.NeonViolet)
+        } else {
+            Text(
+                "Нажмите, чтобы раскрыть результаты агентов",
+                style = MaterialTheme.typography.bodySmall,
+                color = NexusColors.TextMuted
+            )
         }
     }
 }
@@ -363,53 +318,76 @@ private fun MissionCard(
 @Composable
 private fun AgentResultRow(record: AgentJournalRecord) {
     val success = record.status.equals("COMPLETED", ignoreCase = true)
-    Surface(color = SurfaceRaised, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(record.agentName, color = PrimaryText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    if (success) "ВЫПОЛНЕНО" else "ОШИБКА",
-                    color = if (success) SignalGreen else SignalRed,
-                    fontSize = 9.sp, fontWeight = FontWeight.Bold
-                )
-            }
-            val output = record.output
-            val error = record.error
-            when {
-                !output.isNullOrBlank() -> Text(output.take(240), color = SecondaryText, fontSize = 10.sp)
-                !error.isNullOrBlank() -> Text(error.take(240), color = SignalRed, fontSize = 10.sp)
-                else -> Text("Пустой результат", color = SecondaryText, fontSize = 10.sp)
-            }
+    val color = if (success) NexusColors.SignalGreen else NexusColors.SignalRed
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(NexusShapes.Control)
+            .background(Color(0x0AFFFFFF))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NexIcon(if (success) NexIcons.CircleCheck else NexIcons.CircleX, tint = color, size = 16.dp)
+            Text(
+                "  " + record.agentName,
+                style = MaterialTheme.typography.labelLarge,
+                color = NexusColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Tag(if (success) "Выполнено" else "Ошибка", color)
+        }
+        val output = record.output
+        val error = record.error
+        when {
+            !output.isNullOrBlank() -> Text(output.take(320), style = MaterialTheme.typography.bodySmall, color = NexusColors.TextSecondary)
+            !error.isNullOrBlank() -> Text(error.take(320), style = MaterialTheme.typography.bodySmall, color = NexusColors.SignalRed)
+            else -> Text("Пустой результат", style = MaterialTheme.typography.bodySmall, color = NexusColors.TextMuted)
         }
     }
 }
 
+@DrawableRes
+private fun roleIcon(role: CouncilAgentRole): Int = when (role) {
+    CouncilAgentRole.PLANNER -> NexIcons.ListChecks
+    CouncilAgentRole.RESEARCHER -> NexIcons.Search
+    CouncilAgentRole.ANALYST -> NexIcons.ChartColumn
+    CouncilAgentRole.CRITIC -> NexIcons.MessageSquareWarning
+    CouncilAgentRole.CREATIVE -> NexIcons.Lightbulb
+    CouncilAgentRole.TECHNICAL -> NexIcons.CodeXml
+    CouncilAgentRole.RISK_REVIEWER -> NexIcons.ShieldAlert
+    CouncilAgentRole.VERIFIER -> NexIcons.BadgeCheck
+}
+
+private fun roleAccent(role: CouncilAgentRole): Color = when (role) {
+    CouncilAgentRole.PLANNER, CouncilAgentRole.VERIFIER -> NexusColors.NeonViolet
+    CouncilAgentRole.RESEARCHER, CouncilAgentRole.TECHNICAL -> NexusColors.NeonCyan
+    CouncilAgentRole.ANALYST, CouncilAgentRole.CREATIVE -> NexusColors.NeonMagenta
+    CouncilAgentRole.CRITIC, CouncilAgentRole.RISK_REVIEWER -> NexusColors.SignalAmber
+}
+
 private fun roleLabel(role: CouncilAgentRole): String = when (role) {
-    CouncilAgentRole.PLANNER -> "ПЛАНИРОВЩИК"
-    CouncilAgentRole.RESEARCHER -> "ИССЛЕДОВАТЕЛЬ"
-    CouncilAgentRole.ANALYST -> "АНАЛИТИК"
-    CouncilAgentRole.CRITIC -> "КРИТИК"
-    CouncilAgentRole.CREATIVE -> "ГЕНЕРАТОР"
-    CouncilAgentRole.TECHNICAL -> "ТЕХЭКСПЕРТ"
-    CouncilAgentRole.RISK_REVIEWER -> "РИСКИ"
-    CouncilAgentRole.VERIFIER -> "ПРОВЕРЯЮЩИЙ"
+    CouncilAgentRole.PLANNER -> "План"
+    CouncilAgentRole.RESEARCHER -> "Поиск"
+    CouncilAgentRole.ANALYST -> "Анализ"
+    CouncilAgentRole.CRITIC -> "Критика"
+    CouncilAgentRole.CREATIVE -> "Идеи"
+    CouncilAgentRole.TECHNICAL -> "Техника"
+    CouncilAgentRole.RISK_REVIEWER -> "Риски"
+    CouncilAgentRole.VERIFIER -> "Проверка"
 }
 
 private fun missionStatusLabel(status: MissionStatus): Pair<String, Color> = when (status) {
-    MissionStatus.DRAFT -> "ЧЕРНОВИК" to SecondaryText
-    MissionStatus.QUEUED -> "В ОЧЕРЕДИ" to SignalAmber
-    MissionStatus.RUNNING -> "ВЫПОЛНЯЕТСЯ" to SignalAmber
-    MissionStatus.VERIFYING -> "ПРОВЕРКА" to SignalAmber
-    MissionStatus.AWAITING_INPUT -> "ЖДЁТ ОТВЕТА" to SignalAmber
-    MissionStatus.COMPLETED -> "ЗАВЕРШЕНА" to SignalGreen
-    MissionStatus.FAILED -> "ОШИБКА" to SignalRed
-    MissionStatus.CANCELLED -> "ОТМЕНЕНА" to SecondaryText
-    MissionStatus.INTERRUPTED -> "ПРЕРВАНА" to SignalRed
+    MissionStatus.DRAFT -> "Черновик" to NexusColors.TextSecondary
+    MissionStatus.QUEUED -> "В очереди" to NexusColors.SignalAmber
+    MissionStatus.RUNNING -> "Выполняется" to NexusColors.NeonViolet
+    MissionStatus.VERIFYING -> "Проверка" to NexusColors.NeonViolet
+    MissionStatus.AWAITING_INPUT -> "Ждёт ответа" to NexusColors.SignalAmber
+    MissionStatus.COMPLETED -> "Завершена" to NexusColors.SignalGreen
+    MissionStatus.FAILED -> "Ошибка" to NexusColors.SignalRed
+    MissionStatus.CANCELLED -> "Отменена" to NexusColors.TextSecondary
+    MissionStatus.INTERRUPTED -> "Прервана" to NexusColors.SignalRed
 }
 
 private fun timeLabel(epochMillis: Long): String =
-    SimpleDateFormat("HH:mm dd.MM", Locale.getDefault()).format(Date(epochMillis))
+    SimpleDateFormat("HH:mm, d MMM", Locale.forLanguageTag("ru")).format(Date(epochMillis))

@@ -57,14 +57,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val Void = Color(0xFF080B12)
-private val SurfaceDeep = Color(0xFF0E1420)
-private val SurfaceRaised = Color(0xFF151E2D)
+private val SurfaceDeep = Color(0x14FFFFFF)
+private val SurfaceRaised = Color(0x0DFFFFFF)
 private val Cyan = Color(0xFF42D9F5)
 private val Violet = Color(0xFF9B7BFF)
 private val SignalGreen = Color(0xFF43D6A0)
 private val SignalRed = Color(0xFFFF647C)
-private val PrimaryText = Color(0xFFF1F5FA)
-private val SecondaryText = Color(0xFFA4B1C2)
+private val PrimaryText = Color(0xFFF4F6FB)
+private val SecondaryText = Color(0xFFA3ABBD)
 
 private const val MAX_IMPORT_BYTES = 8_000_000
 private const val MAX_OCR_PAGES = 30
@@ -154,20 +154,19 @@ fun ArchiveScreen(
     }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(Void).padding(horizontal = 18.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Spacer(Modifier.height(18.dp))
-            Text("АРХИВ", color = PrimaryText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "MATERIAL LIBRARY · ПОИСК С ЦИТАТАМИ ИЗ ИСТОЧНИКОВ",
-                color = Cyan, fontSize = 11.sp, letterSpacing = 1.sp
+            ai.hybrid.commandcenter.ui.ScreenHeader(
+                "Архив",
+                subtitle = "Ваши материалы и поиск с цитатами",
+                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Archive, ai.hybrid.commandcenter.ui.NexusColors.NeonCyan, size = 48.dp) }
             )
         }
 
         item {
-            ArchiveCard(title = "ИМПОРТ", accent = Cyan) {
+            ArchiveCard(title = "Импорт", accent = Cyan) {
                 Text(
                     "Файл выбирается через системный диалог — широкие разрешения на " +
                         "хранилище не нужны. Поддерживаются: " +
@@ -194,7 +193,7 @@ fun ArchiveScreen(
         }
 
         item {
-            ArchiveCard(title = "ПОИСК ПО МАТЕРИАЛАМ", accent = Violet) {
+            ArchiveCard(title = "Поиск по материалам", accent = Violet) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it.take(200) },
@@ -250,8 +249,8 @@ fun ArchiveScreen(
 
         item {
             Text(
-                "МАТЕРИАЛЫ (${items.size})",
-                color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp
+                "Материалы (${items.size})",
+                color = Cyan, style = androidx.compose.material3.MaterialTheme.typography.titleSmall
             )
         }
 
@@ -399,7 +398,7 @@ private fun MaterialViewer(
     }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(Void).padding(horizontal = 12.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -429,7 +428,7 @@ private fun MaterialViewer(
             item {
                 Surface(color = SurfaceDeep, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("ОПЕРАЦИИ С PDF", color = Violet, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text(ai.hybrid.commandcenter.ui.prettyTitle("Операции с PDF"), color = Violet, style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
                         Text(
                             "Распознавание нужно для сканов без текстового слоя. " + OcrEngine.SCOPE_NOTE,
                             color = SecondaryText, fontSize = 10.sp
@@ -600,12 +599,11 @@ private fun MaterialViewer(
 
 @Composable
 private fun ArchiveCard(title: String, accent: Color, content: @Composable () -> Unit) {
-    Surface(color = SurfaceDeep, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-            content()
-        }
-    }
+    ai.hybrid.commandcenter.ui.SectionCard(
+        title = title,
+        icon = ai.hybrid.commandcenter.ui.iconForTitle(title),
+        accent = accent
+    ) { content() }
 }
 
 private fun formatKb(bytes: Long): String =

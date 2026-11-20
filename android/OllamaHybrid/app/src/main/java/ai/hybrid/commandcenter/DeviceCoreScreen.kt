@@ -75,15 +75,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val Void = Color(0xFF080B12)
-private val SurfaceDeep = Color(0xFF0E1420)
-private val SurfaceRaised = Color(0xFF151E2D)
+private val SurfaceDeep = Color(0x14FFFFFF)
+private val SurfaceRaised = Color(0x0DFFFFFF)
 private val Cyan = Color(0xFF42D9F5)
 private val Violet = Color(0xFF9B7BFF)
 private val SignalGreen = Color(0xFF43D6A0)
 private val SignalAmber = Color(0xFFF2B65D)
 private val SignalRed = Color(0xFFFF647C)
-private val PrimaryText = Color(0xFFF1F5FA)
-private val SecondaryText = Color(0xFFA4B1C2)
+private val PrimaryText = Color(0xFFF4F6FB)
+private val SecondaryText = Color(0xFFA3ABBD)
 
 /**
  * Device Core / NEXUS Bridge: real measured device state and an honest
@@ -202,17 +202,19 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) { refresh() }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(Void).padding(horizontal = 18.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Spacer(Modifier.height(18.dp))
-            Text("DEVICE CORE", color = PrimaryText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text("NEXUS BRIDGE · STANDARD-ПРОФИЛЬ АКТИВЕН", color = Cyan, fontSize = 11.sp, letterSpacing = 1.sp)
+            ai.hybrid.commandcenter.ui.ScreenHeader(
+                "Устройство",
+                subtitle = "Мост NEXUS · стандартный профиль активен",
+                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Smartphone, ai.hybrid.commandcenter.ui.NexusColors.NeonCyan, size = 48.dp) }
+            )
         }
 
         item {
-            SectionCard(title = "ДИАГНОСТИКА УСТРОЙСТВА", accent = Cyan) {
+            SectionCard(title = "Диагностика устройства", accent = Cyan) {
                 val diag = diagnostics
                 if (diag == null) {
                     Text("Измерение…", color = SecondaryText, fontSize = 13.sp)
@@ -239,10 +241,10 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         }
 
         item {
-            SectionCard(title = "ПРИВИЛЕГИИ ДОСТУПА", accent = Violet) {
+            SectionCard(title = "Привилегии доступа", accent = Violet) {
                 PrivilegeRow(
                     name = "Standard",
-                    status = "АКТИВЕН",
+                    status = "Активен",
                     statusColor = SignalGreen,
                     detail = "Публичные Android API, SAF и Intent. Root не требуется."
                 )
@@ -252,11 +254,11 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                 PrivilegeRow(
                     name = "Shizuku",
                     status = when (shizukuStatus.state) {
-                        ShizukuTransport.State.READY -> "ПОДКЛЮЧЁН (ADB)"
-                        ShizukuTransport.State.PERMISSION_REQUIRED -> "НУЖНО РАЗРЕШЕНИЕ"
-                        ShizukuTransport.State.SERVICE_NOT_RUNNING -> "СЛУЖБА НЕ ЗАПУЩЕНА"
-                        ShizukuTransport.State.VERSION_TOO_OLD -> "УСТАРЕВШАЯ ВЕРСИЯ"
-                        ShizukuTransport.State.NOT_INSTALLED -> "НЕ НАЙДЕН"
+                        ShizukuTransport.State.READY -> "Подключён (ADB)"
+                        ShizukuTransport.State.PERMISSION_REQUIRED -> "Нужно разрешение"
+                        ShizukuTransport.State.SERVICE_NOT_RUNNING -> "Служба не запущена"
+                        ShizukuTransport.State.VERSION_TOO_OLD -> "Устаревшая версия"
+                        ShizukuTransport.State.NOT_INSTALLED -> "Не найден"
                     },
                     statusColor = if (shizukuStatus.usable) SignalGreen else SignalAmber,
                     detail = shizukuStatus.detail
@@ -274,10 +276,10 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                 PrivilegeRow(
                     name = "Root",
                     status = when {
-                        rootProbing -> "ПРОВЕРКА…"
-                        root == null -> "НЕ ПРОВЕРЯЛСЯ"
+                        rootProbing -> "Проверка…"
+                        root == null -> "Не проверялся"
                         root.available -> "ПОДТВЕРЖДЁН (uid=0)"
-                        else -> "НЕДОСТУПЕН"
+                        else -> "Недоступен"
                     },
                     statusColor = when {
                         rootProbing -> SignalAmber
@@ -308,7 +310,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         }
 
         item {
-            SectionCard(title = "МАТРИЦА ВОЗМОЖНОСТЕЙ", accent = Cyan) {
+            SectionCard(title = "Матрица возможностей", accent = Cyan) {
                 if (capabilityStates.isEmpty()) {
                     Text("Сбор данных…", color = SecondaryText, fontSize = 13.sp)
                 } else {
@@ -318,7 +320,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         }
 
         item {
-            SectionCard(title = "ИНСТРУМЕНТЫ ЧЕРЕЗ GATEWAY", accent = Violet) {
+            SectionCard(title = "Инструменты через Gateway", accent = Violet) {
                 Text(
                     "Единственный путь исполнения инструментов: проверка возможностей, " +
                         "одобрений и лимитов, затем запись в аудит. Прямых вызовов в обход нет.",
@@ -326,7 +328,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                 )
                 PrivilegeRow(
                     name = "device.diagnostics",
-                    status = "READ_ONLY",
+                    status = "Только чтение",
                     statusColor = SignalGreen,
                     detail = "Диагностика устройства через NATIVE-транспорт; одобрение не требуется."
                 )
@@ -409,7 +411,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         }
 
         item {
-            SectionCard(title = "ЭКРАН И ЖЕСТЫ (ACCESSIBILITY)", accent = Cyan) {
+            SectionCard(title = "Экран и жесты (Accessibility)", accent = Cyan) {
                 val serviceOn = NexusAccessibilityService.isRunning()
                 Text(
                     "Служба NEXUS Bridge читает экран и выполняет нажатия только по запросу через " +
@@ -418,7 +420,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                 )
                 PrivilegeRow(
                     name = "Служба NEXUS Bridge",
-                    status = if (serviceOn) "ВКЛЮЧЕНА" else "ВЫКЛЮЧЕНА",
+                    status = if (serviceOn) "Включена" else "Выключена",
                     statusColor = if (serviceOn) SignalGreen else SignalAmber,
                     detail = if (serviceOn)
                         "Чтение дерева интерфейса и нажатия доступны."
@@ -533,7 +535,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                             contentColor = if (uiArmed) SignalRed else Violet
                         )
                     ) {
-                        Text(if (uiArmed) "ПОДТВЕРДИТЬ НАЖАТИЕ" else "Нажать элемент", fontSize = 12.sp)
+                        Text(if (uiArmed) "Подтвердить нажатие" else "Нажать элемент", fontSize = 12.sp)
                     }
                 }
                 val screenResult = uiOutcome
@@ -544,7 +546,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         }
 
         item {
-            SectionCard(title = "СИСТЕМНЫЕ НАСТРОЙКИ", accent = Cyan) {
+            SectionCard(title = "Системные настройки", accent = Cyan) {
                 Text(
                     "NEXUS читает только публичные настройки и открывает системные экраны — " +
                         "изменения вносите вы сами. Ничего не меняется молча.",
@@ -600,7 +602,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         }
 
         item {
-            SectionCard(title = "СНИМОК ЭКРАНА", accent = Violet) {
+            SectionCard(title = "Снимок экрана", accent = Violet) {
                 Text(
                     "Один кадр по вашему запросу. Android каждый раз показывает своё окно согласия, " +
                         "разрешение сгорает после одного снимка, файл остаётся во внутренней памяти приложения.",
@@ -628,7 +630,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         }
 
         item {
-            SectionCard(title = "ПРИВИЛЕГИРОВАННЫЕ ИНСТРУМЕНТЫ (ROOT)", accent = Violet) {
+            SectionCard(title = "Привилегированные инструменты (Root)", accent = Violet) {
                 val rootConfirmed = rootResult?.available == true
                 val shizukuUsable = remember(measuredAtLabel) {
                     ShizukuTransport.status(shizukuInstalled).usable
@@ -731,7 +733,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                         Text(
                             when {
                                 privilegedRunning -> "Выполняется…"
-                                privilegedArmed -> "ПОДТВЕРДИТЬ ПРИВИЛЕГИРОВАННЫЙ ЗАПУСК"
+                                privilegedArmed -> "Подтвердить привилегированный запуск"
                                 else -> "Выполнить: " + privilegedCommand.title
                             },
                             fontSize = 12.sp
@@ -746,21 +748,21 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         }
 
         item {
-            SectionCard(title = "PERMISSION CENTER", accent = Cyan) {
+            SectionCard(title = "Центр разрешений", accent = Cyan) {
                 Text(
                     "Что приложение объявляет в манифесте и зачем. Список в коде сверяется с манифестом тестом.",
                     color = SecondaryText, fontSize = 11.sp
                 )
                 PermissionCatalog.declared.forEach { entry ->
                     val granted = when (entry.grant) {
-                        PermissionCatalog.Grant.INSTALL_TIME -> "ВЫДАНО ПРИ УСТАНОВКЕ" to SignalGreen
+                        PermissionCatalog.Grant.INSTALL_TIME -> "Выдано при установке" to SignalGreen
                         PermissionCatalog.Grant.USER_SETTING ->
-                            if (context.packageManager.canRequestPackageInstalls()) "РАЗРЕШЕНО" to SignalGreen
-                            else "ВЫКЛЮЧЕНО В СИСТЕМЕ" to SignalAmber
+                            if (context.packageManager.canRequestPackageInstalls()) "Разрешено" to SignalGreen
+                            else "Выключено в системе" to SignalAmber
                         PermissionCatalog.Grant.RUNTIME ->
                             if (androidx.core.content.ContextCompat.checkSelfPermission(context, entry.permission) ==
                                 android.content.pm.PackageManager.PERMISSION_GRANTED
-                            ) "ВЫДАНО" to SignalGreen else "НЕ ВЫДАНО (запрос по кнопке в функции)" to SignalAmber
+                            ) "Выдано" to SignalGreen else "Не выдано (запрос по кнопке в функции)" to SignalAmber
                     }
                     PrivilegeRow(
                         name = entry.title,
@@ -769,7 +771,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                         detail = entry.purpose
                     )
                 }
-                Text("НЕ ЗАПРАШИВАЕТСЯ", color = Violet, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                ai.hybrid.commandcenter.ui.Tag(ai.hybrid.commandcenter.ui.prettyTitle("Не запрашивается"), Violet)
                 PermissionCatalog.notRequested.forEach { (name, why) ->
                     Text("• $name — $why", color = SecondaryText, fontSize = 11.sp)
                 }
@@ -790,7 +792,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         }
 
         item {
-            SectionCard(title = "СБОРКА И СРЕДА", accent = Violet) {
+            SectionCard(title = "Сборка и среда", accent = Violet) {
                 DiagnosticRow("Версия NEXUS", BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")")
                 DiagnosticRow("Пакет", BuildConfig.APPLICATION_ID)
                 DiagnosticRow("Тип сборки", if (BuildConfig.DEBUG) "debug" else "release")
@@ -814,12 +816,11 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
 
 @Composable
 private fun SectionCard(title: String, accent: Color, content: @Composable () -> Unit) {
-    Surface(color = SurfaceDeep, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-            content()
-        }
-    }
+    ai.hybrid.commandcenter.ui.SectionCard(
+        title = title,
+        icon = ai.hybrid.commandcenter.ui.iconForTitle(title),
+        accent = accent
+    ) { content() }
 }
 
 @Composable
@@ -844,7 +845,7 @@ private fun PrivilegeRow(name: String, status: String, statusColor: Color, detai
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(name, color = PrimaryText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text(status, color = statusColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                ai.hybrid.commandcenter.ui.Tag(ai.hybrid.commandcenter.ui.prettyTitle(status), statusColor)
             }
             Text(detail, color = SecondaryText, fontSize = 12.sp)
         }
@@ -854,10 +855,10 @@ private fun PrivilegeRow(name: String, status: String, statusColor: Color, detai
 @Composable
 private fun CapabilityRow(state: CapabilityState) {
     val (label, color) = when (state.availability) {
-        CapabilityAvailability.AVAILABLE -> "ДОСТУПНО" to SignalGreen
-        CapabilityAvailability.PERMISSION_REQUIRED -> "НУЖНО РАЗРЕШЕНИЕ" to SignalAmber
-        CapabilityAvailability.DEGRADED -> "ЧАСТИЧНО" to SignalAmber
-        CapabilityAvailability.UNAVAILABLE -> "НЕДОСТУПНО" to SignalRed
+        CapabilityAvailability.AVAILABLE -> "Доступно" to SignalGreen
+        CapabilityAvailability.PERMISSION_REQUIRED -> "Нужно разрешение" to SignalAmber
+        CapabilityAvailability.DEGRADED -> "Частично" to SignalAmber
+        CapabilityAvailability.UNAVAILABLE -> "Недоступно" to SignalRed
     }
     Surface(color = SurfaceRaised, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -873,7 +874,7 @@ private fun CapabilityRow(state: CapabilityState) {
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
-                Text(label, color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                ai.hybrid.commandcenter.ui.Tag(ai.hybrid.commandcenter.ui.prettyTitle(label), color)
             }
             Text(state.reason, color = SecondaryText, fontSize = 11.sp)
         }

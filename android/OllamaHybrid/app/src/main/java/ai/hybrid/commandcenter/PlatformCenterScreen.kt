@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import ai.hybrid.commandcenter.ui.GlassSurface
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,20 +62,25 @@ import java.io.InputStream
 fun PlatformCenterScreen(modifier: Modifier = Modifier) {
     var selectedTab by remember { mutableIntStateOf(0) }
     Column(
-        modifier = modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("NEXUS CENTER", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(
-            "Расширения, коннекторы и обновления приложения",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        ai.hybrid.commandcenter.ui.ScreenHeader(
+            "Центр",
+            subtitle = "Расширения, коннекторы и обновления",
+            leading = {
+                ai.hybrid.commandcenter.ui.IconBadge(
+                    ai.hybrid.commandcenter.ui.NexIcons.Layers,
+                    ai.hybrid.commandcenter.ui.NexusColors.NeonCyan,
+                    size = 48.dp
+                )
+            }
         )
-        TabRow(selectedTabIndex = selectedTab) {
-            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Расширения") })
-            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Коннекторы") })
-            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Обновления") })
-        }
+        ai.hybrid.commandcenter.ui.SegmentedTabs(
+            options = listOf("Расширения", "Коннекторы", "Обновления"),
+            selected = selectedTab,
+            onSelect = { selectedTab = it }
+        )
         when (selectedTab) {
             0 -> ExtensionsPanel(Modifier.weight(1f))
             1 -> ConnectorsPanel(Modifier.weight(1f))
@@ -131,7 +136,7 @@ private fun ExtensionsPanel(modifier: Modifier = Modifier) {
 
     LazyColumn(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            GlassSurface(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Каталог сторонних расширений", fontWeight = FontWeight.SemiBold)
                     Text(
@@ -152,7 +157,7 @@ private fun ExtensionsPanel(modifier: Modifier = Modifier) {
             }
         }
         items(installed, key = { it.id }) { manifest ->
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            GlassSurface(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(manifest.name, fontWeight = FontWeight.SemiBold)
@@ -261,7 +266,7 @@ private fun ConnectorCard(
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
 
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+    GlassSurface(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(connector.title, fontWeight = FontWeight.SemiBold)
@@ -343,7 +348,7 @@ private fun UpdatesPanel(modifier: Modifier = Modifier) {
     var release by remember { mutableStateOf<NexusRelease?>(null) }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        GlassSurface(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("GitHub Release", fontWeight = FontWeight.SemiBold)
                 Text("Источник обновлений: gar725908-afk/AI-Council", style = MaterialTheme.typography.bodySmall)
@@ -376,7 +381,7 @@ private fun UpdatesPanel(modifier: Modifier = Modifier) {
             }
         }
         release?.let { latest ->
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            GlassSurface(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(latest.title, fontWeight = FontWeight.SemiBold)
                     Text("Версия " + latest.version, color = MaterialTheme.colorScheme.secondary)

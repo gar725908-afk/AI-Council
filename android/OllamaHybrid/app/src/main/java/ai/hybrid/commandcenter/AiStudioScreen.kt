@@ -48,7 +48,33 @@ import ai.hybrid.commandcenter.ui.LocalEffects
 import ai.hybrid.commandcenter.ui.NexAvatar
 import ai.hybrid.commandcenter.ui.NexState
 import ai.hybrid.commandcenter.ui.NexusColors
-import ai.hybrid.commandcenter.ui.TelemetryRuler
+import ai.hybrid.commandcenter.ui.CircleIconButton
+import ai.hybrid.commandcenter.ui.Dot
+import ai.hybrid.commandcenter.ui.GlassCard
+import ai.hybrid.commandcenter.ui.HairlineDivider
+import ai.hybrid.commandcenter.ui.IconBadge
+import ai.hybrid.commandcenter.ui.ListRow
+import ai.hybrid.commandcenter.ui.NexIcon
+import ai.hybrid.commandcenter.ui.NexIcons
+import ai.hybrid.commandcenter.ui.NexusShapes
+import ai.hybrid.commandcenter.ui.PrimaryButton
+import ai.hybrid.commandcenter.ui.ScreenHeader
+import ai.hybrid.commandcenter.ui.SectionCard
+import ai.hybrid.commandcenter.ui.SectionHeader
+import ai.hybrid.commandcenter.ui.SoftButton
+import ai.hybrid.commandcenter.ui.Tag
+import ai.hybrid.commandcenter.ui.glass
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import ai.hybrid.commandcenter.nexus.CouncilMissionRunner
 import ai.hybrid.commandcenter.nexus.CouncilOrchestrator
 import ai.hybrid.commandcenter.nexus.CouncilModelRoute
@@ -189,617 +215,636 @@ fun AiStudioScreen(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            // NEX mirrors this screen's real state: working only while a request runs.
-            NexAvatar(
-                state = when {
-                    isRunning -> NexState.THINKING
-                    lastRunFailed -> NexState.ERROR
-                    else -> NexState.STANDBY
-                }
-            )
-            Text(
-                if (councilMode) "NEXUS COUNCIL" else "NEXUS AI STUDIO",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        Text(
-            if (councilMode) {
-                "Коллективное выполнение: восемь ролей, не более трёх параллельных агентов по умолчанию."
-            } else {
-                "Потоковая генерация через выбранный API-протокол."
-            },
-            style = MaterialTheme.typography.bodyMedium
-        )
+    val listState = rememberScrollState()
+    var connectionExpanded by remember { mutableStateOf(false) }
+    var routesExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(settingsLoaded) {
+        if (settingsLoaded && model.isBlank() && !usesOnDeviceModel) connectionExpanded = true
+    }
+    // Keep the newest message in view while a reply streams in.
+    LaunchedEffect(conversationMessages.size, answer.length, isRunning) {
+        if (conversationMessages.isNotEmpty() || answer.isNotEmpty()) listState.scrollTo(listState.maxValue)
+    }
+    val nexState = when {
+        isRunning -> NexState.THINKING
+        lastRunFailed -> NexState.ERROR
+        else -> NexState.STANDBY
+    }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("ПОДКЛЮЧЕНИЕ МОДЕЛИ", fontWeight = FontWeight.SemiBold)
-                Box {
-                    Button(
-                        enabled = settingsLoaded && !isRunning,
-                        onClick = { providerMenuExpanded = true }
-                    ) {
-                        Text(providerKind.displayName)
+    fun runTask() {
+        val submittedPrompt = prompt
+        activeRun = scope.launch {
+            isRunning = true
+            lastRunFailed = false
+            answer = ""
+            status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
+            if (councilMode) {
+                liveAgentEvents = emptyMap()
+                agentEventLog = emptyList()
+                lastCouncilStatus = null
+            }
+            var missionId: String? = null
+            try {
+                require(submittedPrompt.isNotBlank() && submittedPrompt.length <= 32_000) {
+                    "Задача должна содержать от 1 до 32 000 символов."
+                }
+                // Resource Governor (handoff 11.2): measured device state gates heavy work.
+                val governorVerdict = withContext(Dispatchers.IO) {
+                    val diag = DeviceInspector(context.applicationContext).diagnostics()
+                    ResourceGovernor.evaluate(
+                        workload = if (usesOnDeviceModel) ResourceGovernor.Workload.LOCAL_INFERENCE
+                        else ResourceGovernor.Workload.REMOTE_REQUEST,
+                        batteryPercent = diag.batteryPercent,
+                        charging = diag.charging,
+                        thermalStatus = diag.thermalStatus,
+                        ramFreeBytes = diag.ramFreeBytes
+                    )
+                }
+                when (governorVerdict) {
+                    is ResourceGovernor.Verdict.Deny -> throw IllegalStateException(governorVerdict.reason)
+                    is ResourceGovernor.Verdict.Warn -> status = governorVerdict.reason + " " + status
+                    ResourceGovernor.Verdict.Allow -> Unit
+                }
+                val selectedModelId = if (usesOnDeviceModel) {
+                    withContext(Dispatchers.IO) { engineRegistry.activeModel().id }
+                } else {
+                    model.trim()
+                }
+                require(usesOnDeviceModel || (endpoint.isNotBlank() && selectedModelId.isNotBlank())) {
+                    "Сначала укажите endpoint и модель."
+                }
+                missionId = withContext(Dispatchers.IO) {
+                    journal.createMission(submittedPrompt, endpoint, selectedModelId).also { id ->
+                        journal.transition(id, MissionStatus.QUEUED, "Миссия поставлена в очередь")
+                        journal.transition(id, MissionStatus.RUNNING, "Запрос отправлен провайдеру")
                     }
-                    DropdownMenu(
-                        expanded = providerMenuExpanded,
-                        onDismissRequest = { providerMenuExpanded = false }
-                    ) {
-                        ProviderKind.values().forEach { kind ->
-                            DropdownMenuItem(
-                                text = { Text(kind.displayName) },
-                                onClick = {
-                                    providerMenuExpanded = false
-                                    scope.launch {
-                                        val saved = withContext(Dispatchers.IO) { settingsStore.load(kind.name) }
-                                        providerKind = kind
-                                        endpoint = saved.endpoint.ifBlank { defaultProviderEndpoint(kind) }
-                                        model = saved.model
-                                        apiKey = ""
-                                        discoveredModels = emptyList()
-                                        modelMenuExpanded = false
-                                        status = "Провайдер выбран: " + kind.displayName
-                                    }
-                                }
+                }
+                val chatState = withContext(Dispatchers.IO) {
+                    val chatId = activeConversationId
+                        ?: journal.getLatestConversationId()
+                        ?: journal.createConversation()
+                    journal.appendChatMessage(chatId, "user", submittedPrompt)
+                    chatId to journal.getChatMessages(chatId, 100)
+                }
+                activeConversationId = chatState.first
+                conversationMessages = chatState.second
+
+                val enteredKey = apiKey
+                val activeKey = withContext(Dispatchers.IO) {
+                    if (enteredKey.isNotBlank()) {
+                        credentialVault.put(providerKeyId, enteredKey)
+                    }
+                    credentialVault.get(providerKeyId)
+                }
+                if (enteredKey.isNotBlank()) {
+                    apiKey = ""
+                    hasSavedKey = true
+                }
+                if (councilMode) {
+                    val councilGoal = withContext(Dispatchers.IO) {
+                        buildCouncilConversationContext(
+                            chatState.second,
+                            listOf(
+                                evolutionExecutor.activeConfiguration(EvolutionChangeKind.PROMPT_PROFILE),
+                                evolutionExecutor.activeConfiguration(EvolutionChangeKind.SKILL_PACK)
+                            ).filter { it.isNotBlank() }.joinToString("\n\n")
+                        )
+                    }
+                    val runner = CouncilMissionRunner(
+                        journal = journal,
+                        engineRegistry = engineRegistry,
+                        settingsStore = settingsStore,
+                        routingStore = routingStore,
+                        credentialVault = credentialVault,
+                        evolutionExecutor = evolutionExecutor
+                    )
+                    val outcome = runner.run(
+                        CouncilMissionRunner.Request(
+                            missionId = missionId!!,
+                            goal = councilGoal,
+                            providerKind = providerKind,
+                            endpoint = endpoint,
+                            model = model,
+                            apiKey = activeKey.orEmpty(),
+                            agents = councilAgents,
+                            useOnDeviceModel = usesOnDeviceModel,
+                            onAgentEvent = { event ->
+                                liveAgentEvents = liveAgentEvents + (event.agentId to event)
+                                agentEventLog = (agentEventLog + event).takeLast(40)
+                            }
+                        )
+                    )
+                    answer = outcome.answer
+                    status = outcome.statusLine
+                    recentMissions = withContext(Dispatchers.IO) { journal.getRecentMissions(8) }
+                    if (answer.isNotBlank()) {
+                        conversationMessages = withContext(Dispatchers.IO) {
+                            journal.appendChatMessage(chatState.first, "assistant", answer)
+                            journal.getChatMessages(chatState.first, 100)
+                        }
+                    }
+                } else {
+                    val evolutionPrompt = withContext(Dispatchers.IO) {
+                        evolutionExecutor.activeConfiguration(EvolutionChangeKind.PROMPT_PROFILE)
+                    }
+                    val evolutionSkills = withContext(Dispatchers.IO) {
+                        evolutionExecutor.activeConfiguration(EvolutionChangeKind.SKILL_PACK)
+                    }
+                    val providerHistory = buildProviderConversationMessages(
+                        chatState.second,
+                        listOf(evolutionPrompt, evolutionSkills).filter { it.isNotBlank() }.joinToString("\n\n")
+                    )
+                    gateway.stream(
+                        CompletionRequest(
+                            endpoint = endpoint,
+                            model = model,
+                            apiKey = activeKey.orEmpty(),
+                            messages = providerHistory
+                        )
+                    ).collect { chunk -> answer += chunk }
+                    require(answer.isNotBlank()) { "Провайдер завершил запрос без текстового ответа." }
+                    conversationMessages = withContext(Dispatchers.IO) {
+                        journal.appendChatMessage(chatState.first, "assistant", answer)
+                        journal.transition(missionId!!, MissionStatus.VERIFYING, "Ответ потока получен")
+                        journal.transition(
+                            missionId!!,
+                            MissionStatus.COMPLETED,
+                            "Запрос завершён",
+                            result = answer
+                        )
+                        journal.getChatMessages(chatState.first, 100)
+                    }
+                    status = "Ответ получен"
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    missionId?.let { id ->
+                        runCatching {
+                            journal.transition(
+                                id,
+                                MissionStatus.INTERRUPTED,
+                                "Задача была отменена или экран закрыт"
                             )
                         }
                     }
+                    journal.getRecentMissions(8)
+                }.also { recentMissions = it }
+                throw cancelled
+            } catch (error: Exception) {
+                withContext(Dispatchers.IO) {
+                    missionId?.let { id ->
+                        runCatching {
+                            journal.transition(
+                                id,
+                                MissionStatus.FAILED,
+                                "Ошибка выполнения",
+                                error = error.message ?: error::class.java.simpleName
+                            )
+                        }
+                    }
+                    journal.getRecentMissions(8)
+                }.also { recentMissions = it }
+                lastRunFailed = true
+                status = error.message ?: "Ошибка выполнения запроса"
+            } finally {
+                if (councilMode) {
+                    lastCouncilStatus = recentMissions.firstOrNull { it.id == missionId }?.status
                 }
-                OutlinedTextField(
-                    value = endpoint,
-                    onValueChange = { endpoint = it.take(2_048).filter { ch -> ch.code >= 0x20 && ch.code != 0x7f } },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (usesOnDeviceModel) "Endpoint не используется для on-device модели" else "API endpoint") },
-                    placeholder = {
-                        Text(defaultProviderEndpoint(providerKind).ifBlank {
-                            "http://IP-АДРЕС-ПК:11434/v1"
-                        })
-                    },
-                    singleLine = true,
-                    enabled = settingsLoaded && !usesOnDeviceModel
-                )
-                OutlinedTextField(
-                    value = if (usesOnDeviceModel) activeOnDeviceModel?.id.orEmpty() else model,
-                    onValueChange = { if (!usesOnDeviceModel) model = it.take(200) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (usesOnDeviceModel) "Активная модель из Model Center" else "Имя модели") },
-                    placeholder = {
-                        Text(
-                            when (providerKind) {
-                                ProviderKind.OPENAI_COMPATIBLE -> "точное имя модели совместимого API"
-                                ProviderKind.OPENAI -> "точное имя модели из каталога OpenAI"
-                                ProviderKind.DEEPSEEK -> "точное имя модели из каталога DeepSeek"
-                                ProviderKind.OPENROUTER -> "provider/model из каталога OpenRouter"
-                                ProviderKind.GROQ -> "точное имя модели из каталога Groq"
-                                ProviderKind.MISTRAL -> "точное имя модели из каталога Mistral"
-                                ProviderKind.TOGETHER -> "provider/model из каталога Together"
-                                ProviderKind.FIREWORKS -> "accounts/fireworks/models/…"
-                                ProviderKind.XAI -> "grok-4.7 или другая доступная модель"
-                                ProviderKind.CEREBRAS -> "точное имя модели из каталога Cerebras"
-                                ProviderKind.NVIDIA -> "точное имя модели из NVIDIA API Catalog"
-                                ProviderKind.OLLAMA -> "имя установленной модели из Ollama"
-                                ProviderKind.ANTHROPIC -> "имя Claude модели из Anthropic Console"
-                                ProviderKind.GEMINI -> "имя Gemini модели из Google AI Studio"
-                                ProviderKind.ON_DEVICE_LITERT -> "активная модель LiteRT-LM из Model Center"
-                                ProviderKind.ON_DEVICE_LLAMA_CPP -> "активная GGUF-модель из Model Center"
+                isRunning = false
+                activeRun = null
+            }
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(listState)
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            ScreenHeader(
+                if (councilMode) "Запуск совета" else "Studio",
+                subtitle = if (councilMode) {
+                    "Восемь ролей, до трёх агентов параллельно"
+                } else {
+                    "Диалог с моделью, потоковый ответ"
+                },
+                leading = { NexAvatar(nexState, diameter = 48.dp, mode = LocalEffects.current.effective) },
+                trailing = {
+                    CircleIconButton(
+                        NexIcons.Plus,
+                        onClick = {
+                            if (!isRunning) {
+                                scope.launch {
+                                    val id = withContext(Dispatchers.IO) { journal.createConversation() }
+                                    activeConversationId = id
+                                    conversationMessages = emptyList()
+                                    answer = ""
+                                    prompt = ""
+                                    status = "Создан новый диалог"
+                                }
                             }
-                        )
-                    },
-                    singleLine = true,
-                    enabled = settingsLoaded && !usesOnDeviceModel
-                )
-                if (usesOnDeviceModel) {
-                    Text(
-                        activeOnDeviceModel?.let {
-                            "ACTIVE • ${it.displayName} • ${it.runtime} • ${it.sizeBytes / (1024L * 1024L)} MB"
-                        } ?: "No active model. Install or import a model and activate it in Model Center.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (activeOnDeviceModel == null) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.primary
+                        },
+                        size = 42.dp,
+                        contentDescription = "Новый диалог"
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = !isCheckingModels,
-                        onClick = {
-                            scope.launch {
-                                isCheckingModels = true
-                                status = "Проверяю endpoint и получаю список моделей…"
-                                try {
-                                    val enteredKey = apiKey
-                                    val candidateKey = if (enteredKey.isNotBlank()) {
-                                        enteredKey
-                                    } else {
-                                        withContext(Dispatchers.IO) {
-                                            credentialVault.get(providerKeyId).orEmpty()
+            )
+
+            // Connection: collapsed to one line once it is configured.
+            GlassCard(spacing = 10.dp) {
+                Row(
+                    Modifier.fillMaxWidth().clickable { connectionExpanded = !connectionExpanded },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    IconBadge(
+                        if (usesOnDeviceModel) NexIcons.Cpu else NexIcons.Cloud,
+                        if (usesOnDeviceModel) NexusColors.SignalGreen else NexusColors.NeonCyan,
+                        size = 38.dp
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(providerKind.displayName, style = MaterialTheme.typography.titleSmall, color = NexusColors.TextPrimary)
+                        Text(
+                            when {
+                                usesOnDeviceModel -> activeOnDeviceModel?.displayName ?: "Модель не выбрана"
+                                model.isBlank() -> "Модель не указана"
+                                else -> model
+                            } + if (hasSavedKey) " · ключ сохранён" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NexusColors.TextSecondary,
+                            maxLines = 1
+                        )
+                    }
+                    NexIcon(
+                        if (connectionExpanded) NexIcons.X else NexIcons.SlidersHorizontal,
+                        tint = NexusColors.TextSecondary,
+                        size = 18.dp
+                    )
+                }
+                if (connectionExpanded) {
+                    HairlineDivider()
+                Box {
+                        SoftButton(
+                            providerKind.displayName,
+                            { providerMenuExpanded = true },
+                            icon = NexIcons.Server,
+                            tint = NexusColors.NeonCyan,
+                            enabled = settingsLoaded && !isRunning
+                        )
+                        DropdownMenu(
+                            expanded = providerMenuExpanded,
+                            onDismissRequest = { providerMenuExpanded = false }
+                        ) {
+                            ProviderKind.values().forEach { kind ->
+                                DropdownMenuItem(
+                                    text = { Text(kind.displayName) },
+                                    onClick = {
+                                        providerMenuExpanded = false
+                                        scope.launch {
+                                            val saved = withContext(Dispatchers.IO) { settingsStore.load(kind.name) }
+                                            providerKind = kind
+                                            endpoint = saved.endpoint.ifBlank { defaultProviderEndpoint(kind) }
+                                            model = saved.model
+                                            apiKey = ""
+                                            discoveredModels = emptyList()
+                                            modelMenuExpanded = false
+                                            status = "Провайдер выбран: " + kind.displayName
                                         }
                                     }
-                                    discoveredModels = modelCatalog.listModels(
-                                        kind = providerKind,
-                                        endpoint = endpoint,
-                                        apiKey = candidateKey
-                                    )
-                                    if (model.isBlank()) model = discoveredModels.first()
-                                    modelMenuExpanded = true
-                                    status = "Подключение подтверждено. Найдено моделей: " + discoveredModels.size
-                                } catch (error: Exception) {
-                                    status = error.message ?: "Не удалось проверить провайдера"
-                                } finally {
-                                    isCheckingModels = false
-                                }
-                            }
-                        }
-                    ) {
-                        if (isCheckingModels) {
-                            CircularProgressIndicator(strokeWidth = 2.dp)
-                            Text("Проверка…")
-                        } else {
-                            Text("Проверить и загрузить модели")
-                        }
-                    }
-                    Box {
-                        TextButton(
-                            enabled = discoveredModels.isNotEmpty(),
-                            onClick = { modelMenuExpanded = true }
-                        ) {
-                            Text("Выбрать модель")
-                        }
-                        DropdownMenu(
-                            expanded = modelMenuExpanded,
-                            onDismissRequest = { modelMenuExpanded = false }
-                        ) {
-                            discoveredModels.take(60).forEach { modelId ->
-                                DropdownMenuItem(
-                                    text = { Text(modelId) },
-                                    onClick = {
-                                        model = modelId
-                                        modelMenuExpanded = false
-                                    }
                                 )
                             }
                         }
                     }
-                }
-                OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it.take(16_384) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = {
+                    OutlinedTextField(
+                        value = endpoint,
+                        onValueChange = { endpoint = it.take(2_048).filter { ch -> ch.code >= 0x20 && ch.code != 0x7f } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(if (usesOnDeviceModel) "Endpoint не используется для on-device модели" else "API endpoint") },
+                        placeholder = {
+                            Text(defaultProviderEndpoint(providerKind).ifBlank {
+                                "http://IP-АДРЕС-ПК:11434/v1"
+                            })
+                        },
+                        singleLine = true,
+                        enabled = settingsLoaded && !usesOnDeviceModel
+                    )
+                    OutlinedTextField(
+                        value = if (usesOnDeviceModel) activeOnDeviceModel?.id.orEmpty() else model,
+                        onValueChange = { if (!usesOnDeviceModel) model = it.take(200) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(if (usesOnDeviceModel) "Активная модель из Model Center" else "Имя модели") },
+                        placeholder = {
+                            Text(
+                                when (providerKind) {
+                                    ProviderKind.OPENAI_COMPATIBLE -> "точное имя модели совместимого API"
+                                    ProviderKind.OPENAI -> "точное имя модели из каталога OpenAI"
+                                    ProviderKind.DEEPSEEK -> "точное имя модели из каталога DeepSeek"
+                                    ProviderKind.OPENROUTER -> "provider/model из каталога OpenRouter"
+                                    ProviderKind.GROQ -> "точное имя модели из каталога Groq"
+                                    ProviderKind.MISTRAL -> "точное имя модели из каталога Mistral"
+                                    ProviderKind.TOGETHER -> "provider/model из каталога Together"
+                                    ProviderKind.FIREWORKS -> "accounts/fireworks/models/…"
+                                    ProviderKind.XAI -> "grok-4.7 или другая доступная модель"
+                                    ProviderKind.CEREBRAS -> "точное имя модели из каталога Cerebras"
+                                    ProviderKind.NVIDIA -> "точное имя модели из NVIDIA API Catalog"
+                                    ProviderKind.OLLAMA -> "имя установленной модели из Ollama"
+                                    ProviderKind.ANTHROPIC -> "имя Claude модели из Anthropic Console"
+                                    ProviderKind.GEMINI -> "имя Gemini модели из Google AI Studio"
+                                    ProviderKind.ON_DEVICE_LITERT -> "активная модель LiteRT-LM из Model Center"
+                                    ProviderKind.ON_DEVICE_LLAMA_CPP -> "активная GGUF-модель из Model Center"
+                                }
+                            )
+                        },
+                        singleLine = true,
+                        enabled = settingsLoaded && !usesOnDeviceModel
+                    )
+                    if (usesOnDeviceModel) {
                         Text(
-                            if (hasSavedKey) "Новый API-ключ (необязательно)" else
-                                if (providerKind.requiresApiKey()) "API-ключ провайдера"
-                                else "API-ключ (необязательно для локального сервера)"
+                            activeOnDeviceModel?.let {
+                                "Активна: ${it.displayName} · ${it.runtime} · ${it.sizeBytes / (1024L * 1024L)} МБ"
+                            } ?: "Нет активной модели. Установите или импортируйте модель и включите её в разделе «Модели».",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (activeOnDeviceModel == null) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.primary
                         )
-                    },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    enabled = settingsLoaded
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = settingsLoaded,
-                        onClick = {
-                            scope.launch {
-                                try {
-                                    require(usesOnDeviceModel || endpoint.isNotBlank()) { "Укажите API endpoint." }
-                                    require(usesOnDeviceModel || model.isNotBlank()) { "Укажите имя модели." }
-                                    val enteredKey = apiKey
-                                    withContext(Dispatchers.IO) {
-                                        settingsStore.save(ProviderSettings(endpoint, model, providerKind.name))
-                                        if (enteredKey.isNotBlank()) credentialVault.put(providerKeyId, enteredKey)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SoftButton(
+                            if (isCheckingModels) "Проверка…" else "Проверить",
+                            icon = NexIcons.Activity,
+                            tint = NexusColors.SignalGreen,
+                            enabled = !isCheckingModels,
+                            onClick = {
+                                scope.launch {
+                                    isCheckingModels = true
+                                    status = "Проверяю endpoint и получаю список моделей…"
+                                    try {
+                                        val enteredKey = apiKey
+                                        val candidateKey = if (enteredKey.isNotBlank()) {
+                                            enteredKey
+                                        } else {
+                                            withContext(Dispatchers.IO) {
+                                                credentialVault.get(providerKeyId).orEmpty()
+                                            }
+                                        }
+                                        discoveredModels = modelCatalog.listModels(
+                                            kind = providerKind,
+                                            endpoint = endpoint,
+                                            apiKey = candidateKey
+                                        )
+                                        if (model.isBlank()) model = discoveredModels.first()
+                                        modelMenuExpanded = true
+                                        status = "Подключение подтверждено. Найдено моделей: " + discoveredModels.size
+                                    } catch (error: Exception) {
+                                        status = error.message ?: "Не удалось проверить провайдера"
+                                    } finally {
+                                        isCheckingModels = false
                                     }
-                                    if (enteredKey.isNotBlank()) {
-                                        apiKey = ""
-                                        hasSavedKey = true
-                                    }
-                                    status = "Настройки сохранены для " + providerKind.displayName
-                                } catch (error: Exception) {
-                                    status = error.message ?: "Не удалось сохранить настройки"
+                                }
+                            }
+                        )
+                        Box {
+                            SoftButton(
+                                "Выбрать модель",
+                                { modelMenuExpanded = true },
+                                icon = NexIcons.Layers,
+                                enabled = discoveredModels.isNotEmpty()
+                            )
+                            DropdownMenu(
+                                expanded = modelMenuExpanded,
+                                onDismissRequest = { modelMenuExpanded = false }
+                            ) {
+                                discoveredModels.take(60).forEach { modelId ->
+                                    DropdownMenuItem(
+                                        text = { Text(modelId) },
+                                        onClick = {
+                                            model = modelId
+                                            modelMenuExpanded = false
+                                        }
+                                    )
                                 }
                             }
                         }
-                    ) {
-                        Text("Сохранить")
                     }
-                    TextButton(
-                        onClick = {
-                            scope.launch {
-                                withContext(Dispatchers.IO) { credentialVault.remove(providerKeyId) }
-                                hasSavedKey = false
-                                apiKey = ""
-                                status = "API-ключ этого провайдера удалён"
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = { apiKey = it.take(16_384) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = {
+                            Text(
+                                if (hasSavedKey) "Новый API-ключ (необязательно)" else
+                                    if (providerKind.requiresApiKey()) "API-ключ провайдера"
+                                    else "API-ключ (необязательно для локального сервера)"
+                            )
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        enabled = settingsLoaded
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PrimaryButton(
+                            "Сохранить",
+                            icon = NexIcons.CircleCheck,
+                            enabled = settingsLoaded,
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        require(usesOnDeviceModel || endpoint.isNotBlank()) { "Укажите API endpoint." }
+                                        require(usesOnDeviceModel || model.isNotBlank()) { "Укажите имя модели." }
+                                        val enteredKey = apiKey
+                                        withContext(Dispatchers.IO) {
+                                            settingsStore.save(ProviderSettings(endpoint, model, providerKind.name))
+                                            if (enteredKey.isNotBlank()) credentialVault.put(providerKeyId, enteredKey)
+                                        }
+                                        if (enteredKey.isNotBlank()) {
+                                            apiKey = ""
+                                            hasSavedKey = true
+                                        }
+                                        status = "Настройки сохранены для " + providerKind.displayName
+                                    } catch (error: Exception) {
+                                        status = error.message ?: "Не удалось сохранить настройки"
+                                    }
+                                }
                             }
-                        }
-                    ) {
-                        Text("Удалить ключ")
+                        )
+                        SoftButton(
+                            "Удалить ключ",
+                            icon = NexIcons.KeyRound,
+                            tint = NexusColors.SignalRed,
+                            onClick = {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) { credentialVault.remove(providerKeyId) }
+                                    hasSavedKey = false
+                                    apiKey = ""
+                                    status = "API-ключ этого провайдера удалён"
+                                }
+                            }
+                        )
                     }
-                }
-                Text(
-                    if (hasSavedKey) "Ключ сохранён в зашифрованном виде через Android Keystore."
-                    else if (providerKind.requiresApiKey())
-                        "Для выбранного провайдера требуется API-ключ."
-                    else if (providerKind == ProviderKind.OLLAMA)
-                        "Для физического телефона укажите LAN IP компьютера, на котором запущен Ollama."
-                    else "Ключ можно не указывать для локального OpenAI-compatible сервера без авторизации.",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    "Контекст запроса отправляется выбранному провайдеру. HTTP разрешён только для локальной сети и не шифрует трафик: не используйте с ним ключи облачных сервисов. Внешние endpoint должны использовать HTTPS.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        if (councilMode) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text("МАРШРУТИЗАЦИЯ АГЕНТОВ", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Назначайте разные AI-провайдеры отдельным ролям. Для каждого выбранного провайдера заранее сохраните endpoint, модель и ключ в AI Studio.",
+                        if (hasSavedKey) "Ключ сохранён в зашифрованном виде через Android Keystore."
+                        else if (providerKind.requiresApiKey())
+                            "Для выбранного провайдера требуется API-ключ."
+                        else if (providerKind == ProviderKind.OLLAMA)
+                            "Для физического телефона укажите LAN IP компьютера, на котором запущен Ollama."
+                        else "Ключ можно не указывать для локального OpenAI-compatible сервера без авторизации.",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    councilAgents.forEach { agent ->
-                        val selectedRoute = agentRoutes[agent.id] ?: providerKind
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box {
-                                TextButton(onClick = { expandedAgentRoute = agent.id }) {
-                                    Text(agent.name + "  ·  " + selectedRoute.displayName)
-                                }
-                                DropdownMenu(
-                                    expanded = expandedAgentRoute == agent.id,
-                                    onDismissRequest = { expandedAgentRoute = null }
-                                ) {
-                                    ProviderKind.values().forEach { kind ->
-                                        DropdownMenuItem(
-                                            text = { Text(kind.displayName) },
-                                            onClick = {
-                                                routingStore.save(agent.id, kind)
-                                                agentRoutes = agentRoutes + (agent.id to kind)
-                                                expandedAgentRoute = null
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                            OutlinedTextField(
-                                value = agentModelOverrides[agent.id].orEmpty(),
-                                onValueChange = { value ->
-                                    val bounded = value.take(200).filter { ch -> ch.code >= 0x20 && ch.code != 0x7f }
-                                    agentModelOverrides = agentModelOverrides + (agent.id to bounded)
-                                    routingStore.saveModelOverride(agent.id, bounded)
-                                },
-                                enabled = settingsLoaded,
-                                modifier = Modifier.fillMaxWidth(),
-                                label = { Text("Модель роли: " + agent.name) },
-                                placeholder = { Text("Пусто — использовать модель профиля") },
-                                singleLine = true
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("ДИАЛОГ", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-            TextButton(
-                enabled = !isRunning,
-                onClick = {
-                    scope.launch {
-                        val id = withContext(Dispatchers.IO) {
-                            journal.createConversation()
-                        }
-                        activeConversationId = id
-                        conversationMessages = emptyList()
-                        answer = ""
-                        prompt = ""
-                        status = "Создан новый диалог"
-                    }
-                }
-            ) {
-                Text("Новый диалог")
-            }
-        }
-        conversationMessages.takeLast(24).forEach { message ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (message.role == "assistant")
-                        MaterialTheme.colorScheme.surfaceVariant
-                    else MaterialTheme.colorScheme.surface
-                )
-            ) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        if (message.role == "assistant") "NEX" else "ВЫ",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
+                        "Контекст запроса отправляется выбранному провайдеру. HTTP разрешён только для локальной сети и не шифрует трафик: не используйте с ним ключи облачных сервисов. Внешние endpoint должны использовать HTTPS.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NexusColors.TextMuted
                     )
-                    Text(message.content, style = MaterialTheme.typography.bodyMedium)
                 }
             }
-        }
 
-        OutlinedTextField(
-            value = prompt,
-            onValueChange = { prompt = it.take(32_000) },
-            enabled = !isRunning,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Задача") },
-            placeholder = { Text("Опишите, что должна сделать система…") },
-            minLines = 3
-        )
-
-        Button(
-            onClick = {
-                val submittedPrompt = prompt
-                activeRun = scope.launch {
-                    isRunning = true
-                    lastRunFailed = false
-                    answer = ""
-                    status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
-                    if (councilMode) {
-                        liveAgentEvents = emptyMap()
-                        agentEventLog = emptyList()
-                        lastCouncilStatus = null
-                    }
-                    var missionId: String? = null
-                    try {
-                        require(submittedPrompt.isNotBlank() && submittedPrompt.length <= 32_000) {
-                            "Задача должна содержать от 1 до 32 000 символов."
-                        }
-                        // Resource Governor (handoff 11.2): measured device state gates heavy work.
-                        val governorVerdict = withContext(Dispatchers.IO) {
-                            val diag = DeviceInspector(context.applicationContext).diagnostics()
-                            ResourceGovernor.evaluate(
-                                workload = if (usesOnDeviceModel) ResourceGovernor.Workload.LOCAL_INFERENCE
-                                else ResourceGovernor.Workload.REMOTE_REQUEST,
-                                batteryPercent = diag.batteryPercent,
-                                charging = diag.charging,
-                                thermalStatus = diag.thermalStatus,
-                                ramFreeBytes = diag.ramFreeBytes
+            if (councilMode) {
+                GlassCard(spacing = 10.dp) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { routesExpanded = !routesExpanded },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        IconBadge(NexIcons.Route, NexusColors.NeonMagenta, size = 38.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text("Маршруты агентов", style = MaterialTheme.typography.titleSmall, color = NexusColors.TextPrimary)
+                            Text(
+                                "Свой провайдер и модель для каждой роли",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NexusColors.TextSecondary
                             )
                         }
-                        when (governorVerdict) {
-                            is ResourceGovernor.Verdict.Deny -> throw IllegalStateException(governorVerdict.reason)
-                            is ResourceGovernor.Verdict.Warn -> status = governorVerdict.reason + " " + status
-                            ResourceGovernor.Verdict.Allow -> Unit
-                        }
-                        val selectedModelId = if (usesOnDeviceModel) {
-                            withContext(Dispatchers.IO) { engineRegistry.activeModel().id }
-                        } else {
-                            model.trim()
-                        }
-                        require(usesOnDeviceModel || (endpoint.isNotBlank() && selectedModelId.isNotBlank())) {
-                            "Сначала укажите endpoint и модель."
-                        }
-                        missionId = withContext(Dispatchers.IO) {
-                            journal.createMission(submittedPrompt, endpoint, selectedModelId).also { id ->
-                                journal.transition(id, MissionStatus.QUEUED, "Миссия поставлена в очередь")
-                                journal.transition(id, MissionStatus.RUNNING, "Запрос отправлен провайдеру")
-                            }
-                        }
-                        val chatState = withContext(Dispatchers.IO) {
-                            val chatId = activeConversationId
-                                ?: journal.getLatestConversationId()
-                                ?: journal.createConversation()
-                            journal.appendChatMessage(chatId, "user", submittedPrompt)
-                            chatId to journal.getChatMessages(chatId, 100)
-                        }
-                        activeConversationId = chatState.first
-                        conversationMessages = chatState.second
-
-                        val enteredKey = apiKey
-                        val activeKey = withContext(Dispatchers.IO) {
-                            if (enteredKey.isNotBlank()) {
-                                credentialVault.put(providerKeyId, enteredKey)
-                            }
-                            credentialVault.get(providerKeyId)
-                        }
-                        if (enteredKey.isNotBlank()) {
-                            apiKey = ""
-                            hasSavedKey = true
-                        }
-                        if (councilMode) {
-                            val councilGoal = withContext(Dispatchers.IO) {
-                                buildCouncilConversationContext(
-                                    chatState.second,
-                                    listOf(
-                                        evolutionExecutor.activeConfiguration(EvolutionChangeKind.PROMPT_PROFILE),
-                                        evolutionExecutor.activeConfiguration(EvolutionChangeKind.SKILL_PACK)
-                                    ).filter { it.isNotBlank() }.joinToString("\n\n")
-                                )
-                            }
-                            val runner = CouncilMissionRunner(
-                                journal = journal,
-                                engineRegistry = engineRegistry,
-                                settingsStore = settingsStore,
-                                routingStore = routingStore,
-                                credentialVault = credentialVault,
-                                evolutionExecutor = evolutionExecutor
-                            )
-                            val outcome = runner.run(
-                                CouncilMissionRunner.Request(
-                                    missionId = missionId!!,
-                                    goal = councilGoal,
-                                    providerKind = providerKind,
-                                    endpoint = endpoint,
-                                    model = model,
-                                    apiKey = activeKey.orEmpty(),
-                                    agents = councilAgents,
-                                    useOnDeviceModel = usesOnDeviceModel,
-                                    onAgentEvent = { event ->
-                                        liveAgentEvents = liveAgentEvents + (event.agentId to event)
-                                        agentEventLog = (agentEventLog + event).takeLast(40)
-                                    }
-                                )
-                            )
-                            answer = outcome.answer
-                            status = outcome.statusLine
-                            recentMissions = withContext(Dispatchers.IO) { journal.getRecentMissions(8) }
-                            if (answer.isNotBlank()) {
-                                conversationMessages = withContext(Dispatchers.IO) {
-                                    journal.appendChatMessage(chatState.first, "assistant", answer)
-                                    journal.getChatMessages(chatState.first, 100)
-                                }
-                            }
-                        } else {
-                            val evolutionPrompt = withContext(Dispatchers.IO) {
-                                evolutionExecutor.activeConfiguration(EvolutionChangeKind.PROMPT_PROFILE)
-                            }
-                            val evolutionSkills = withContext(Dispatchers.IO) {
-                                evolutionExecutor.activeConfiguration(EvolutionChangeKind.SKILL_PACK)
-                            }
-                            val providerHistory = buildProviderConversationMessages(
-                                chatState.second,
-                                listOf(evolutionPrompt, evolutionSkills).filter { it.isNotBlank() }.joinToString("\n\n")
-                            )
-                            gateway.stream(
-                                CompletionRequest(
-                                    endpoint = endpoint,
-                                    model = model,
-                                    apiKey = activeKey.orEmpty(),
-                                    messages = providerHistory
-                                )
-                            ).collect { chunk -> answer += chunk }
-                            require(answer.isNotBlank()) { "Провайдер завершил запрос без текстового ответа." }
-                            conversationMessages = withContext(Dispatchers.IO) {
-                                journal.appendChatMessage(chatState.first, "assistant", answer)
-                                journal.transition(missionId!!, MissionStatus.VERIFYING, "Ответ потока получен")
-                                journal.transition(
-                                    missionId!!,
-                                    MissionStatus.COMPLETED,
-                                    "Запрос завершён",
-                                    result = answer
-                                )
-                                journal.getChatMessages(chatState.first, 100)
-                            }
-                            status = "Ответ получен"
-                        }
-                    } catch (cancelled: CancellationException) {
-                        withContext(NonCancellable + Dispatchers.IO) {
-                            missionId?.let { id ->
-                                runCatching {
-                                    journal.transition(
-                                        id,
-                                        MissionStatus.INTERRUPTED,
-                                        "Задача была отменена или экран закрыт"
-                                    )
-                                }
-                            }
-                            journal.getRecentMissions(8)
-                        }.also { recentMissions = it }
-                        throw cancelled
-                    } catch (error: Exception) {
-                        withContext(Dispatchers.IO) {
-                            missionId?.let { id ->
-                                runCatching {
-                                    journal.transition(
-                                        id,
-                                        MissionStatus.FAILED,
-                                        "Ошибка выполнения",
-                                        error = error.message ?: error::class.java.simpleName
-                                    )
-                                }
-                            }
-                            journal.getRecentMissions(8)
-                        }.also { recentMissions = it }
-                        lastRunFailed = true
-                        status = error.message ?: "Ошибка выполнения запроса"
-                    } finally {
-                        if (councilMode) {
-                            lastCouncilStatus = recentMissions.firstOrNull { it.id == missionId }?.status
-                        }
-                        isRunning = false
-                        activeRun = null
-                    }
-                }
-            },
-            enabled = settingsLoaded && !isRunning && activeConversationId != null && prompt.isNotBlank() &&
-                (!usesOnDeviceModel || activeOnDeviceModel != null),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (isRunning) {
-                CircularProgressIndicator(strokeWidth = 2.dp)
-                Spacer(Modifier.height(4.dp))
-                Text("Выполняется…")
-            } else {
-                Text(if (councilMode) "Запустить Council" else "Отправить запрос")
-            }
-        }
-
-        if (isRunning) {
-            TextButton(onClick = { activeRun?.cancel() }, modifier = Modifier.fillMaxWidth()) {
-                Text("Остановить текущую задачу")
-            }
-        }
-        if (councilMode) {
-            val nodes = ConstellationModel.fromLive(councilAgents, liveAgentEvents)
-            TelemetryRuler("NEURAL CONSTELLATION", accent = NexusColors.NeonViolet)
-            CouncilConstellation(
-                nodes = nodes,
-                manager = ConstellationModel.managerPhase(nodes, isRunning, lastCouncilStatus),
-                mode = LocalEffects.current.effective,
-                events = agentEventLog
-            )
-        }
-        if (answer.isNotBlank() && !isRunning) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { speakStatus = voiceOutput.speak(answer) ?: "Озвучивание…" }) { Text("Озвучить ответ") }
-                TextButton(onClick = { voiceOutput.stop(); speakStatus = null }) { Text("Тихо") }
-            }
-            val speakLine = speakStatus
-            if (speakLine != null) Text(speakLine, style = MaterialTheme.typography.labelSmall)
-        }
-        Text(status, style = MaterialTheme.typography.labelMedium)
-        if (recentMissions.isNotEmpty()) {
-            Text("ИСТОРИЯ МИССИЙ", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-            recentMissions.forEach { mission ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(mission.goal, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
-                        Text(
-                            "${mission.status} • ${mission.updatedAt}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        NexIcon(
+                            if (routesExpanded) NexIcons.X else NexIcons.ChevronRight,
+                            tint = NexusColors.TextSecondary,
+                            size = 18.dp
                         )
-                        mission.error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    }
+                    if (routesExpanded) {
+                        HairlineDivider()
+                        Text(
+                            "Для каждого выбранного провайдера заранее сохраните endpoint, модель и ключ в Studio.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NexusColors.TextSecondary
+                        )
+                    councilAgents.forEach { agent ->
+                            val selectedRoute = agentRoutes[agent.id] ?: providerKind
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box {
+                                    SoftButton(
+                                        agent.name + " · " + selectedRoute.displayName,
+                                        { expandedAgentRoute = agent.id },
+                                        icon = ConstellationModel.roleIcon(agent.role),
+                                        tint = NexusColors.TextPrimary
+                                    )
+                                    DropdownMenu(
+                                        expanded = expandedAgentRoute == agent.id,
+                                        onDismissRequest = { expandedAgentRoute = null }
+                                    ) {
+                                        ProviderKind.values().forEach { kind ->
+                                            DropdownMenuItem(
+                                                text = { Text(kind.displayName) },
+                                                onClick = {
+                                                    routingStore.save(agent.id, kind)
+                                                    agentRoutes = agentRoutes + (agent.id to kind)
+                                                    expandedAgentRoute = null
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = agentModelOverrides[agent.id].orEmpty(),
+                                    onValueChange = { value ->
+                                        val bounded = value.take(200).filter { ch -> ch.code >= 0x20 && ch.code != 0x7f }
+                                        agentModelOverrides = agentModelOverrides + (agent.id to bounded)
+                                        routingStore.saveModelOverride(agent.id, bounded)
+                                    },
+                                    enabled = settingsLoaded,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Модель роли: " + agent.name) },
+                                    placeholder = { Text("Пусто — использовать модель профиля") },
+                                    singleLine = true
+                                )
+                            }
+                        }
+                    }
+                }
+
+                SectionCard(title = "Созвездие совета", icon = NexIcons.Orbit, accent = NexusColors.NeonViolet) {
+                    val nodes = ConstellationModel.fromLive(councilAgents, liveAgentEvents)
+                    CouncilConstellation(
+                        nodes = nodes,
+                        manager = ConstellationModel.managerPhase(nodes, isRunning, lastCouncilStatus),
+                        mode = LocalEffects.current.effective,
+                        events = agentEventLog
+                    )
+                }
+            }
+
+            if (conversationMessages.isEmpty() && !isRunning) {
+                Column(
+                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    NexAvatar(NexState.STANDBY, diameter = 72.dp, mode = LocalEffects.current.effective)
+                    Text(
+                        if (councilMode) "Опишите задачу — совет разберёт её по ролям" else "С чего начнём?",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = NexusColors.TextPrimary
+                    )
+                    Text(
+                        "История диалога хранится на устройстве.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NexusColors.TextMuted
+                    )
+                }
+            }
+
+            conversationMessages.takeLast(24).forEach { message ->
+                ChatBubble(fromUser = message.role != "assistant", text = message.content)
+            }
+            if (isRunning) {
+                ChatBubble(
+                    fromUser = false,
+                    text = answer.ifBlank { if (councilMode) "Совет работает…" else "Думаю…" },
+                    pending = answer.isBlank()
+                )
+            }
+
+            if (answer.isNotBlank() && !isRunning) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SoftButton("Озвучить", { speakStatus = voiceOutput.speak(answer) ?: "Озвучиваю…" }, icon = NexIcons.AudioLines)
+                    SoftButton("Тихо", { voiceOutput.stop(); speakStatus = null }, icon = NexIcons.Square)
+                }
+                val speakLine = speakStatus
+                if (speakLine != null) {
+                    Text(speakLine, style = MaterialTheme.typography.labelSmall, color = NexusColors.TextSecondary)
+                }
+            }
+
+            if (recentMissions.isNotEmpty()) {
+                SectionHeader("История миссий")
+                GlassCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp), spacing = 0.dp) {
+                    recentMissions.forEachIndexed { index, mission ->
+                        val (label, color) = studioMissionStatus(mission.status)
+                        ListRow(
+                            icon = if (councilMode) NexIcons.Orbit else NexIcons.MessageSquare,
+                            accent = color,
+                            title = mission.goal,
+                            meta = studioTime(mission.updatedAt) + (mission.error?.let { " · " + it.take(60) } ?: ""),
+                            trailing = { Tag(label, color) }
+                        )
                         if (mission.status == MissionStatus.AWAITING_INPUT) {
-                            TextButton(
+                            SoftButton(
+                                "Ответить на уточнение",
+                                icon = NexIcons.MessageSquare,
+                                tint = NexusColors.SignalAmber,
                                 enabled = !isRunning,
                                 onClick = {
                                     prompt = buildString {
@@ -814,32 +859,142 @@ fun AiStudioScreen(
                                         appendLine()
                                         append("User clarification:")
                                     }
-                                    status = "Add your clarification, then send it as a new mission with the prior context."
+                                    status = "Допишите уточнение и отправьте — задача уйдёт новой миссией с прежним контекстом."
                                 }
-                            ) {
-                                Text("Continue with clarification")
-                            }
+                            )
                         }
+                        if (index < recentMissions.lastIndex) HairlineDivider()
                     }
                 }
             }
         }
-        if (answer.isNotBlank()) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+
+        // Composer pinned to the bottom, like any modern chat.
+        Column(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Dot(
+                    when {
+                        isRunning -> NexusColors.NeonViolet
+                        lastRunFailed -> NexusColors.SignalRed
+                        else -> NexusColors.TextMuted
+                    },
+                    size = 6.dp
+                )
                 Text(
-                    answer,
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium
+                    status,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (lastRunFailed) NexusColors.SignalRed else NexusColors.TextSecondary,
+                    maxLines = 2
                 )
             }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .glass(NexusShapes.Panel)
+                    .padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(Modifier.weight(1f).heightIn(min = 44.dp), contentAlignment = Alignment.CenterStart) {
+                    if (prompt.isEmpty()) {
+                        Text(
+                            if (councilMode) "Задача для совета…" else "Сообщение для NEX…",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = NexusColors.TextMuted
+                        )
+                    }
+                    BasicTextField(
+                        value = prompt,
+                        onValueChange = { prompt = it.take(32_000) },
+                        enabled = !isRunning,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = NexusColors.TextPrimary),
+                        cursorBrush = SolidColor(NexusColors.NeonCyan),
+                        maxLines = 6,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (isRunning) {
+                    CircleIconButton(
+                        NexIcons.Square,
+                        onClick = { activeRun?.cancel() },
+                        size = 44.dp,
+                        tint = NexusColors.SignalRed,
+                        contentDescription = "Остановить"
+                    )
+                } else {
+                    val canSend = settingsLoaded && activeConversationId != null && prompt.isNotBlank() &&
+                        (!usesOnDeviceModel || activeOnDeviceModel != null)
+                    CircleIconButton(
+                        NexIcons.ArrowUp,
+                        onClick = { if (canSend) runTask() },
+                        size = 44.dp,
+                        filled = canSend,
+                        tint = NexusColors.TextMuted,
+                        contentDescription = if (councilMode) "Запустить совет" else "Отправить"
+                    )
+                }
+            }
         }
-        Spacer(Modifier.height(18.dp))
     }
 }
+
+/** One message: user on the right in a gradient bubble, NEX on the left in glass. */
+@Composable
+private fun ChatBubble(fromUser: Boolean, text: String, pending: Boolean = false) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = if (fromUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top
+    ) {
+        if (!fromUser) {
+            NexAvatar(if (pending) NexState.THINKING else NexState.STANDBY, diameter = 30.dp)
+            Spacer(Modifier.width(8.dp))
+        }
+        val shape = if (fromUser) {
+            RoundedCornerShape(topStart = 20.dp, topEnd = 6.dp, bottomStart = 20.dp, bottomEnd = 20.dp)
+        } else {
+            RoundedCornerShape(topStart = 6.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp)
+        }
+        Box(
+            Modifier
+                .widthIn(max = 300.dp)
+                .then(
+                    if (fromUser) {
+                        Modifier.clip(shape).background(
+                            Brush.linearGradient(listOf(Color(0xFF5B4BD6), Color(0xFF8A4FD8)))
+                        )
+                    } else {
+                        Modifier.glass(shape)
+                    }
+                )
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (pending) NexusColors.TextSecondary else NexusColors.TextPrimary
+            )
+        }
+    }
+}
+
+private fun studioMissionStatus(status: MissionStatus): Pair<String, Color> = when (status) {
+    MissionStatus.DRAFT -> "Черновик" to NexusColors.TextSecondary
+    MissionStatus.QUEUED -> "В очереди" to NexusColors.SignalAmber
+    MissionStatus.RUNNING -> "Работает" to NexusColors.NeonViolet
+    MissionStatus.VERIFYING -> "Проверка" to NexusColors.NeonViolet
+    MissionStatus.AWAITING_INPUT -> "Ждёт ответа" to NexusColors.SignalAmber
+    MissionStatus.COMPLETED -> "Готово" to NexusColors.SignalGreen
+    MissionStatus.FAILED -> "Ошибка" to NexusColors.SignalRed
+    MissionStatus.CANCELLED -> "Отменена" to NexusColors.TextSecondary
+    MissionStatus.INTERRUPTED -> "Прервана" to NexusColors.SignalRed
+}
+
+private fun studioTime(epochMillis: Long): String =
+    java.text.SimpleDateFormat("HH:mm, d MMM", java.util.Locale.forLanguageTag("ru")).format(java.util.Date(epochMillis))
 
 
 

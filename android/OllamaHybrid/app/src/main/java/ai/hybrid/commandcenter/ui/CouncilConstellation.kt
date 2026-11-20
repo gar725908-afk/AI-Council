@@ -6,6 +6,14 @@ import ai.hybrid.commandcenter.nexus.CouncilAgentEvent
 import ai.hybrid.commandcenter.nexus.CouncilAgentPhase
 import ai.hybrid.commandcenter.nexus.CouncilAgentRole
 import ai.hybrid.commandcenter.nexus.MissionStatus
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -44,7 +52,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
@@ -81,7 +88,8 @@ data class ConstellationNode(
     val role: String,
     val phase: NodePhase,
     val detail: String?,
-    val atMillis: Long?
+    val atMillis: Long?,
+    @DrawableRes val icon: Int = NexIcons.Bot
 )
 
 /**
@@ -89,6 +97,18 @@ data class ConstellationNode(
  * orchestrator events; history reads stored agent results. Nothing else.
  */
 object ConstellationModel {
+
+    @DrawableRes
+    fun roleIcon(role: CouncilAgentRole): Int = when (role) {
+        CouncilAgentRole.PLANNER -> NexIcons.ListChecks
+        CouncilAgentRole.RESEARCHER -> NexIcons.Search
+        CouncilAgentRole.ANALYST -> NexIcons.ChartColumn
+        CouncilAgentRole.CRITIC -> NexIcons.MessageSquareWarning
+        CouncilAgentRole.CREATIVE -> NexIcons.Lightbulb
+        CouncilAgentRole.TECHNICAL -> NexIcons.CodeXml
+        CouncilAgentRole.RISK_REVIEWER -> NexIcons.ShieldAlert
+        CouncilAgentRole.VERIFIER -> NexIcons.BadgeCheck
+    }
 
     fun roleShort(role: CouncilAgentRole): String = when (role) {
         CouncilAgentRole.PLANNER -> "План"
@@ -116,7 +136,8 @@ object ConstellationModel {
                     CouncilAgentPhase.FAILED -> NodePhase.FAILED
                 },
                 detail = event?.detail,
-                atMillis = event?.atEpochMillis
+                atMillis = event?.atEpochMillis,
+                icon = roleIcon(agent.role)
             )
         }
 
@@ -134,7 +155,8 @@ object ConstellationModel {
                     else -> NodePhase.FAILED
                 },
                 detail = record?.error?.takeIf { it.isNotBlank() } ?: record?.output,
-                atMillis = record?.createdAt
+                atMillis = record?.createdAt,
+                icon = roleIcon(agent.role)
             )
         }
     }
@@ -203,84 +225,99 @@ fun CouncilConstellation(
         }
     }
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Canvas(
-            Modifier
-                .fillMaxWidth()
-                .height(height)
-                .semantics {
-                    contentDescription = "Созвездие совета: менеджер — " + manager.label + ". " +
-                        nodes.joinToString("; ") { it.name + " — " + it.phase.label }
-                }
-                .pointerInput(nodes.size) {
-                    detectTapGestures { tap ->
-                        val c = Offset(size.width / 2f, size.height / 2f)
-                        val orbit = min(size.width, size.height) / 2f - 40.dp.toPx()
-                        if (hypot(tap.x - c.x, tap.y - c.y) < 34.dp.toPx()) {
-                            selected = MANAGER_ID
-                            return@detectTapGestures
-                        }
-                        val hit = nodes.indices.minByOrNull { i ->
-                            val p = ConstellationModel.orbitPosition(i, nodes.size, c, orbit)
-                            hypot(tap.x - p.x, tap.y - p.y)
-                        }
-                        if (hit != null) {
-                            val p = ConstellationModel.orbitPosition(hit, nodes.size, c, orbit)
-                            if (hypot(tap.x - p.x, tap.y - p.y) < 36.dp.toPx()) selected = nodes[hit].id
+    val painters = nodes.map { painterResource(it.icon) }
+    val managerNex = when (manager) {
+        ManagerPhase.IDLE -> NexState.STANDBY
+        ManagerPhase.DISPATCHING, ManagerPhase.SYNTHESIS -> NexState.THINKING
+        ManagerPhase.DONE -> NexState.SUCCESS
+        ManagerPhase.FAILED -> NexState.ERROR
+    }
+
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.fillMaxWidth().height(height), contentAlignment = Alignment.Center) {
+            Canvas(
+                Modifier
+                    .fillMaxSize()
+                    .semantics {
+                        contentDescription = "Созвездие совета: менеджер — " + manager.label + ". " +
+                            nodes.joinToString("; ") { it.name + " — " + it.phase.label }
+                    }
+                    .pointerInput(nodes.size) {
+                        detectTapGestures { tap ->
+                            val c = Offset(size.width / 2f, size.height / 2f)
+                            val orbit = min(size.width, size.height) / 2f - 34.dp.toPx()
+                            if (hypot(tap.x - c.x, tap.y - c.y) < 36.dp.toPx()) {
+                                selected = MANAGER_ID
+                                return@detectTapGestures
+                            }
+                            val hit = nodes.indices.minByOrNull { i ->
+                                val p = ConstellationModel.orbitPosition(i, nodes.size, c, orbit)
+                                hypot(tap.x - p.x, tap.y - p.y)
+                            }
+                            if (hit != null) {
+                                val p = ConstellationModel.orbitPosition(hit, nodes.size, c, orbit)
+                                if (hypot(tap.x - p.x, tap.y - p.y) < 34.dp.toPx()) selected = nodes[hit].id
+                            }
                         }
                     }
+            ) {
+                val c = center
+                val orbit = min(size.width, size.height) / 2f - 34.dp.toPx()
+                val nodeRadius = 21.dp.toPx()
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(manager.color.copy(alpha = 0.18f), Color.Transparent),
+                        center = c, radius = orbit
+                    ),
+                    radius = orbit, center = c
+                )
+                drawCircle(Color.White.copy(alpha = 0.06f), radius = orbit, center = c, style = Stroke(width = 1.dp.toPx()))
+
+                nodes.forEachIndexed { index, node ->
+                    val p = ConstellationModel.orbitPosition(index, nodes.size, c, orbit)
+                    drawEdge(c, p, node.phase, nodeRadius, 34.dp.toPx())
+                    val progress = pulses[node.id]?.value ?: 1f
+                    if (progress < 1f) {
+                        // assignment travels out; a result travels back to the manager
+                        val from = if (node.phase == NodePhase.COMPLETED) p else c
+                        val to = if (node.phase == NodePhase.COMPLETED) c else p
+                        val dot = Offset(from.x + (to.x - from.x) * progress, from.y + (to.y - from.y) * progress)
+                        drawCircle(node.phase.color.copy(alpha = 0.35f), radius = 10.dp.toPx(), center = dot)
+                        drawCircle(Color.White, radius = 3.5.dp.toPx(), center = dot)
+                    }
                 }
-        ) {
-            val c = center
-            val orbit = min(size.width, size.height) / 2f - 40.dp.toPx()
-            val nodeRadius = 15.dp.toPx()
 
-            // faint orbit ring and haze
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(manager.color.copy(alpha = 0.16f), Color.Transparent),
-                    center = c, radius = orbit * 0.9f
-                ),
-                radius = orbit * 0.9f, center = c
-            )
-            drawCircle(
-                NexusColors.Divider, radius = orbit, center = c,
-                style = Stroke(width = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 10f)))
-            )
-
-            nodes.forEachIndexed { index, node ->
-                val p = ConstellationModel.orbitPosition(index, nodes.size, c, orbit)
-                drawEdge(c, p, node.phase, nodeRadius)
-                val progress = pulses[node.id]?.value ?: 1f
-                if (progress < 1f) {
-                    // assignment travels out; a result travels back to the manager
-                    val from = if (node.phase == NodePhase.COMPLETED) p else c
-                    val to = if (node.phase == NodePhase.COMPLETED) c else p
-                    val dot = Offset(from.x + (to.x - from.x) * progress, from.y + (to.y - from.y) * progress)
-                    drawCircle(node.phase.color.copy(alpha = 0.35f), radius = 9.dp.toPx(), center = dot)
-                    drawCircle(node.phase.color, radius = 4.dp.toPx(), center = dot)
-                }
-            }
-
-            drawManager(c, 24.dp.toPx(), manager, selected == MANAGER_ID)
-
-            nodes.forEachIndexed { index, node ->
-                val p = ConstellationModel.orbitPosition(index, nodes.size, c, orbit)
-                drawNode(p, nodeRadius, node.phase, selected == node.id)
-                val label = measurer.measure(
-                    node.role.uppercase(Locale.ROOT),
-                    style = TextStyle(
-                        color = if (node.phase == NodePhase.IDLE) NexusColors.TextMuted else NexusColors.TextPrimary,
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold
+                nodes.forEachIndexed { index, node ->
+                    val p = ConstellationModel.orbitPosition(index, nodes.size, c, orbit)
+                    drawNode(p, nodeRadius, node.phase, selected == node.id)
+                    val iconSize = nodeRadius * 0.95f
+                    translate(p.x - iconSize / 2f, p.y - iconSize / 2f) {
+                        with(painters[index]) {
+                            draw(
+                                Size(iconSize, iconSize),
+                                colorFilter = ColorFilter.tint(
+                                    if (node.phase == NodePhase.IDLE) NexusColors.TextMuted else node.phase.color
+                                )
+                            )
+                        }
+                    }
+                    val label = measurer.measure(
+                        node.role,
+                        style = TextStyle(
+                            color = if (node.phase == NodePhase.IDLE) NexusColors.TextMuted else NexusColors.TextSecondary,
+                            fontSize = 10.sp,
+                            fontFamily = InterFamily,
+                            fontWeight = FontWeight.Medium
+                        )
                     )
-                )
-                drawText(
-                    label,
-                    topLeft = Offset(p.x - label.size.width / 2f, p.y + nodeRadius * 1.7f + 2.dp.toPx())
-                )
+                    drawText(label, topLeft = Offset(p.x - label.size.width / 2f, p.y + nodeRadius + 4.dp.toPx()))
+                }
+                if (selected == MANAGER_ID) {
+                    drawCircle(Color.White.copy(alpha = 0.8f), radius = 33.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
+                }
             }
+            NexOrb(state = managerNex, mode = EffectsMode.STATIC, diameter = 60.dp)
         }
 
         Legend()
@@ -289,7 +326,7 @@ fun CouncilConstellation(
             val node = nodes.firstOrNull { it.id == selected }
             when {
                 selected == MANAGER_ID -> Inspector(
-                    title = "Менеджер совета",
+                    title = "NEX — менеджер совета",
                     subtitle = "Оркестратор",
                     status = manager.label,
                     color = manager.color,
@@ -305,15 +342,15 @@ fun CouncilConstellation(
                     atMillis = node.atMillis
                 )
                 else -> Text(
-                    "Нажмите на узел, чтобы посмотреть агента.",
-                    color = NexusColors.TextMuted,
-                    fontSize = 10.sp
+                    "Нажмите на агента или на NEX, чтобы посмотреть подробности.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NexusColors.TextMuted
                 )
             }
         }
 
         if (events.isNotEmpty()) {
-            TelemetryRuler("EVENT STREAM", accent = NexusColors.NeonViolet)
+            Text("Лента событий", style = MaterialTheme.typography.titleSmall, color = NexusColors.TextPrimary)
             events.takeLast(6).asReversed().forEach { event ->
                 val phase = when (event.phase) {
                     CouncilAgentPhase.ASSIGNED -> NodePhase.ASSIGNED
@@ -321,10 +358,18 @@ fun CouncilConstellation(
                     CouncilAgentPhase.COMPLETED -> NodePhase.COMPLETED
                     CouncilAgentPhase.FAILED -> NodePhase.FAILED
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(clock(event.atEpochMillis), color = NexusColors.TextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                    Box(Modifier.size(6.dp).background(phase.color, CircleShape))
-                    Text(event.agentName + " · " + phase.label, color = NexusColors.TextSecondary, fontSize = 11.sp)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        clock(event.atEpochMillis),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                        color = NexusColors.TextMuted
+                    )
+                    Dot(phase.color, size = 7.dp)
+                    Text(
+                        event.agentName + " · " + phase.label,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NexusColors.TextSecondary
+                    )
                 }
             }
         }
@@ -333,11 +378,11 @@ fun CouncilConstellation(
 
 @Composable
 private fun Legend() {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         listOf(NodePhase.ASSIGNED, NodePhase.RUNNING, NodePhase.COMPLETED, NodePhase.FAILED).forEach { phase ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Box(Modifier.size(7.dp).background(phase.color, CircleShape))
-                Text(phase.label, color = NexusColors.TextSecondary, fontSize = 10.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Dot(phase.color, size = 7.dp)
+                Text(phase.label, style = MaterialTheme.typography.labelMedium, color = NexusColors.TextSecondary)
             }
         }
     }
@@ -345,76 +390,75 @@ private fun Legend() {
 
 @Composable
 private fun Inspector(title: String, subtitle: String, status: String, color: Color, detail: String?, atMillis: Long?) {
-    Surface(color = NexusColors.RaisedSurface, shape = NexusShapes.Card, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(title, color = NexusColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Text(subtitle.uppercase(Locale.ROOT), color = NexusColors.TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-                }
-                Text(status.uppercase(Locale.ROOT), color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+    Column(
+        Modifier.fillMaxWidth().glass(NexusShapes.Card, accent = color).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, color = NexusColors.TextPrimary)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = NexusColors.TextSecondary)
             }
-            if (!detail.isNullOrBlank()) Text(detail.take(320), color = NexusColors.TextSecondary, fontSize = 11.sp)
-            if (atMillis != null) Text(clock(atMillis), color = NexusColors.TextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Tag(status.replaceFirstChar { it.titlecase(Locale.ROOT) }, color)
+        }
+        if (!detail.isNullOrBlank()) {
+            Text(detail.take(400), style = MaterialTheme.typography.bodySmall, color = NexusColors.TextSecondary)
+        }
+        if (atMillis != null) {
+            Text(clock(atMillis), style = MaterialTheme.typography.labelSmall, color = NexusColors.TextMuted)
         }
     }
 }
 
-private fun DrawScope.drawEdge(from: Offset, to: Offset, phase: NodePhase, nodeRadius: Float) {
+private fun DrawScope.drawEdge(from: Offset, to: Offset, phase: NodePhase, nodeRadius: Float, hubRadius: Float) {
     val dx = to.x - from.x
     val dy = to.y - from.y
     val length = hypot(dx, dy).coerceAtLeast(1f)
+    val start = Offset(from.x + dx / length * hubRadius, from.y + dy / length * hubRadius)
     val end = Offset(to.x - dx / length * nodeRadius, to.y - dy / length * nodeRadius)
     when (phase) {
-        NodePhase.IDLE -> drawLine(NexusColors.Divider, from, end, strokeWidth = 1.5f)
+        NodePhase.IDLE -> drawLine(Color.White.copy(alpha = 0.08f), start, end, strokeWidth = 1.dp.toPx())
         NodePhase.FAILED -> drawLine(
-            NexusColors.SignalRed.copy(alpha = 0.8f), from, end, strokeWidth = 2.5f,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))
+            NexusColors.SignalRed.copy(alpha = 0.85f), start, end, strokeWidth = 2.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)), cap = StrokeCap.Round
         )
         else -> {
-            drawLine(phase.color.copy(alpha = 0.18f), from, end, strokeWidth = 9f)
-            drawLine(phase.color.copy(alpha = 0.85f), from, end, strokeWidth = 2.5f)
+            val brush = Brush.linearGradient(listOf(NexusColors.NeonViolet, phase.color), start = start, end = end)
+            drawLine(brush, start, end, strokeWidth = 8.dp.toPx(), alpha = 0.18f, cap = StrokeCap.Round)
+            drawLine(brush, start, end, strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
         }
     }
 }
 
 private fun DrawScope.drawNode(p: Offset, r: Float, phase: NodePhase, selected: Boolean) {
     if (phase != NodePhase.IDLE) {
-        drawCircle(phase.color.copy(alpha = 0.20f), radius = r * 1.7f, center = p)
+        drawCircle(
+            brush = Brush.radialGradient(listOf(phase.color.copy(alpha = 0.35f), Color.Transparent), center = p, radius = r * 1.9f),
+            radius = r * 1.9f,
+            center = p
+        )
     }
-    drawCircle(NexusColors.DeepSurface, radius = r, center = p)
+    drawCircle(Color(0xF00E1019), radius = r, center = p)
     drawCircle(
-        phase.color.copy(alpha = if (phase == NodePhase.IDLE) 0.6f else 1f),
-        radius = r, center = p,
+        brush = Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.02f)),
+            startY = p.y - r, endY = p.y + r
+        ),
+        radius = r,
+        center = p
+    )
+    drawCircle(
+        color = if (phase == NodePhase.IDLE) Color.White.copy(alpha = 0.14f) else phase.color,
+        radius = r,
+        center = p,
         style = Stroke(
-            width = if (phase == NodePhase.IDLE) 2f else 3.5f,
-            pathEffect = if (phase == NodePhase.FAILED) PathEffect.dashPathEffect(floatArrayOf(6f, 5f)) else null
+            width = if (phase == NodePhase.IDLE) 1.dp.toPx() else 2.dp.toPx(),
+            pathEffect = if (phase == NodePhase.FAILED) PathEffect.dashPathEffect(floatArrayOf(7f, 5f)) else null
         )
     )
-    drawCircle(phase.color, radius = r * 0.32f, center = p)
     if (selected) {
-        drawCircle(NexusColors.TextPrimary, radius = r * 1.35f, center = p, style = Stroke(width = 2f))
+        drawCircle(Color.White.copy(alpha = 0.85f), radius = r * 1.32f, center = p, style = Stroke(width = 1.5.dp.toPx()))
     }
-}
-
-private fun DrawScope.drawManager(c: Offset, r: Float, phase: ManagerPhase, selected: Boolean) {
-    drawCircle(
-        brush = Brush.radialGradient(listOf(phase.color.copy(alpha = 0.45f), Color.Transparent), center = c, radius = r * 2.2f),
-        radius = r * 2.2f, center = c
-    )
-    val hex = Path().apply {
-        for (i in 0 until 6) {
-            val a = Math.toRadians(-90.0 + i * 60.0)
-            val point = Offset(c.x + r * cos(a).toFloat(), c.y + r * sin(a).toFloat())
-            if (i == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
-        }
-        close()
-    }
-    drawPath(hex, brush = Brush.verticalGradient(listOf(NexusColors.NeonViolet, Color(0xFF3B2A8F)), startY = c.y - r, endY = c.y + r))
-    drawPath(hex, color = phase.color, style = Stroke(width = 3f))
-    drawCircle(NexusColors.Void, radius = r * 0.34f, center = c)
-    drawCircle(phase.color, radius = r * 0.20f, center = c)
-    if (selected) drawCircle(NexusColors.TextPrimary, radius = r * 1.4f, center = c, style = Stroke(width = 2f))
 }
 
 private fun clock(epochMillis: Long): String =

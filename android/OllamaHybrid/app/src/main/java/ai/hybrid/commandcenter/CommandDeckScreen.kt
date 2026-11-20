@@ -2,9 +2,11 @@ package ai.hybrid.commandcenter
 
 import ai.hybrid.commandcenter.androidbridge.DeviceDiagnostics
 import ai.hybrid.commandcenter.androidbridge.DeviceInspector
+import ai.hybrid.commandcenter.nexus.AgentJournalRecord
 import ai.hybrid.commandcenter.nexus.BrowserHistoryEntry
 import ai.hybrid.commandcenter.nexus.BrowserHistoryStore
 import ai.hybrid.commandcenter.nexus.ChatConversationRecord
+import ai.hybrid.commandcenter.nexus.CouncilOrchestrator
 import ai.hybrid.commandcenter.nexus.EndpointReachability
 import ai.hybrid.commandcenter.nexus.ErrorEntry
 import ai.hybrid.commandcenter.nexus.HealthCheckResult
@@ -16,72 +18,100 @@ import ai.hybrid.commandcenter.nexus.ProviderKind
 import ai.hybrid.commandcenter.nexus.ProviderSettings
 import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
 import ai.hybrid.commandcenter.nexus.VoiceInput
-import ai.hybrid.commandcenter.ui.ConstellationBackdrop
+import ai.hybrid.commandcenter.ui.CircleIconButton
+import ai.hybrid.commandcenter.ui.ConstellationModel
 import ai.hybrid.commandcenter.ui.CoreOrbital
+import ai.hybrid.commandcenter.ui.Dot
+import ai.hybrid.commandcenter.ui.EffectsMode
+import ai.hybrid.commandcenter.ui.GlassCard
+import ai.hybrid.commandcenter.ui.HairlineDivider
+import ai.hybrid.commandcenter.ui.IconBadge
+import ai.hybrid.commandcenter.ui.InfoLine
+import ai.hybrid.commandcenter.ui.ListRow
 import ai.hybrid.commandcenter.ui.LocalEffects
+import ai.hybrid.commandcenter.ui.NexIcon
+import ai.hybrid.commandcenter.ui.NexIcons
 import ai.hybrid.commandcenter.ui.NexMind
 import ai.hybrid.commandcenter.ui.NexState
 import ai.hybrid.commandcenter.ui.NexusColors
 import ai.hybrid.commandcenter.ui.NexusShapes
+import ai.hybrid.commandcenter.ui.NexusText
+import ai.hybrid.commandcenter.ui.NodePhase
 import ai.hybrid.commandcenter.ui.OrbitalSegment
+import ai.hybrid.commandcenter.ui.SectionHeader
 import ai.hybrid.commandcenter.ui.SegmentStatus
-import ai.hybrid.commandcenter.ui.TelemetryRuler
-import ai.hybrid.commandcenter.ui.holoCorners
+import ai.hybrid.commandcenter.ui.SegmentedTabs
+import ai.hybrid.commandcenter.ui.SoftButton
+import ai.hybrid.commandcenter.ui.StatusPill
+import ai.hybrid.commandcenter.ui.Tag
+import ai.hybrid.commandcenter.ui.glass
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private val RU = Locale.forLanguageTag("ru")
 
 /** Everything the deck shows, read from real stores in one background pass. */
 private data class DeckState(
@@ -90,6 +120,7 @@ private data class DeckState(
     val cloudLabel: String?,
     val installedModelCount: Int,
     val missions: List<MissionRecord>,
+    val latestAgentResults: List<AgentJournalRecord>,
     val lastConversation: ChatConversationRecord?,
     val diagnostics: DeviceDiagnostics,
     val lastBrowserPage: BrowserHistoryEntry?,
@@ -112,12 +143,14 @@ private fun loadDeckState(appContext: android.content.Context): DeckState {
         null
     }
     val history = BrowserHistoryStore(appContext)
+    val missions = journal.getRecentMissions(5)
     return DeckState(
         providerSettings = settings,
         localModelName = storage.activeModel()?.displayName,
         cloudLabel = cloudLabel,
         installedModelCount = storage.listInstalled().size,
-        missions = journal.getRecentMissions(5),
+        missions = missions,
+        latestAgentResults = missions.firstOrNull()?.let { journal.getAgentResults(it.id) }.orEmpty(),
         lastConversation = journal.getRecentConversations(1).firstOrNull(),
         diagnostics = DeviceInspector(appContext).diagnostics(),
         lastBrowserPage = history.recent(1).firstOrNull(),
@@ -130,10 +163,10 @@ private fun loadDeckState(appContext: android.content.Context): DeckState {
 }
 
 /**
- * Command Deck per handoff 5.1: Header, Core Orbital with NEX, Command
- * Portal, Active Route, Live Systems, quick actions and Recent Operations.
- * Every colour and every word comes from a real store or measurement;
- * states that were never checked say so.
+ * Command Deck (handoff 5.1): NEX and the Core Orbital, the prompt, live
+ * systems, the active route, quick actions and recent operations. Every
+ * colour and word comes from a real store or a measurement; whatever was
+ * never checked says so.
  */
 @Composable
 fun CommandDeckScreen(
@@ -161,19 +194,20 @@ fun CommandDeckScreen(
         }
     }
 
+    val deck = state
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(NexusColors.Void),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        val deck = state
+        item { TopBar(onNavigate) }
+
         if (deck == null) {
             item {
-                DeckHeader(null)
                 Text(
-                    "Чтение состояния…",
-                    color = NexusColors.TextSecondary,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 18.dp)
+                    "Читаю состояние системы…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NexusColors.TextSecondary
                 )
             }
             return@LazyColumn
@@ -192,235 +226,205 @@ fun CommandDeckScreen(
         val nexLine = NexMind.line(nexState, facts)
         val segments = DeckModel.segments(deck.localModelName, deck.cloudLabel, deck.diagnostics, health, deck.missions)
 
-        item { DeckHeader(nexState) }
+        item { Greeting(deck.readAtMillis) }
 
         item {
-            Box(Modifier.fillMaxWidth().height(232.dp)) {
-                ConstellationBackdrop(Modifier.fillMaxSize())
-                CoreOrbital(
-                    segments = segments,
-                    state = nexState,
-                    mode = effects.effective,
-                    diameter = 184.dp,
-                    description = nexLine,
-                    modifier = Modifier.align(Alignment.Center),
-                    onTap = { overviewOpen = !overviewOpen }
-                )
-            }
-        }
-
-        item { NexSpeech(nexState, nexLine, Modifier.padding(horizontal = 18.dp)) }
-
-        item { SegmentLegend(segments, Modifier.padding(horizontal = 18.dp)) }
-
-        item {
-            AnimatedVisibility(visible = overviewOpen) {
-                SystemOverview(deck, segments, onNavigate, Modifier.padding(horizontal = 18.dp))
-            }
-        }
-
-        item {
-            CommandPortal(
-                onCompose = onCompose,
-                onListeningChange = { listening = it },
-                modifier = Modifier.padding(horizontal = 18.dp)
-            )
-        }
-
-        item {
-            ActiveRoute(
+            Hero(
+                nexState = nexState,
+                nexLine = nexLine,
+                segments = segments,
+                mode = effects.effective,
+                overviewOpen = overviewOpen,
+                onToggleOverview = { overviewOpen = !overviewOpen },
                 deck = deck,
-                health = health,
-                onHealth = { health = it },
-                onNavigate = onNavigate,
-                modifier = Modifier.padding(horizontal = 18.dp)
+                onNavigate = onNavigate
             )
         }
 
-        item {
-            TelemetryRuler("LIVE SYSTEMS", Modifier.padding(horizontal = 18.dp))
-            Spacer(Modifier.height(8.dp))
-            LiveSystems(deck, segments, onNavigate, Modifier.padding(horizontal = 18.dp))
-        }
+        item { StatusStrip(segments, deck, onNavigate) }
+
+        item { Composer(onCompose = onCompose, onListeningChange = { listening = it }) }
+
+        item { SectionHeader("Системы") }
+        item { SystemsBento(deck, segments, onNavigate) }
+        item { RouteCard(deck = deck, health = health, onHealth = { health = it }, onNavigate = onNavigate) }
 
         item { QuickActions(deck, onNavigate) }
 
         item {
-            TelemetryRuler("RECENT OPERATIONS", Modifier.padding(horizontal = 18.dp), accent = NexusColors.NeonViolet)
+            SectionHeader(
+                "Недавнее",
+                action = if (deck.missions.isNotEmpty()) "Все миссии" else null,
+                onAction = { onNavigate(DeckTarget.COUNCIL) }
+            )
         }
-        if (deck.missions.isEmpty() && deck.lastConversation == null) {
-            item {
-                Text(
-                    "Операций ещё не было. Первая задача появится здесь сразу после запуска.",
-                    color = NexusColors.TextSecondary,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 18.dp)
-                )
-            }
-        } else {
-            deck.missions.take(3).forEach { mission ->
-                item(key = "m-" + mission.id) {
-                    MissionRow(mission, Modifier.padding(horizontal = 18.dp).clickable { onNavigate(DeckTarget.COUNCIL) })
-                }
-            }
-            deck.lastConversation?.let { chat ->
-                item(key = "c-" + chat.id) {
-                    OperationRow(
-                        glyph = "✧",
-                        title = chat.title.ifBlank { "Диалог" },
-                        meta = "AI Studio · " + timeLabel(chat.updatedAt),
-                        status = "ДИАЛОГ",
-                        statusColor = NexusColors.NeonCyan,
-                        modifier = Modifier.padding(horizontal = 18.dp).clickable { onNavigate(DeckTarget.STUDIO) }
-                    )
-                }
-            }
-        }
+        item { RecentOperations(deck, onNavigate) }
 
         item {
             Text(
-                "Каждое значение здесь прочитано из хранилища или измерено в " + timeLabel(deck.readAtMillis) +
-                    ". Непроверенное помечено как непроверенное. Режим эффектов: " +
-                    effects.effective.title.lowercase(Locale.ROOT) + ".",
+                "Данные прочитаны из журналов и датчиков в " + timeLabel(deck.readAtMillis) +
+                    ". Непроверенное помечено как непроверенное.",
+                style = MaterialTheme.typography.bodySmall,
                 color = NexusColors.TextMuted,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(horizontal = 18.dp)
-            )
-            Spacer(Modifier.height(22.dp))
-        }
-    }
-}
-
-@Composable
-private fun DeckHeader(nexState: NexState?) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 18.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("NEXUS", color = NexusColors.TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-            Text(
-                "SIRIUS TECHNOLOGY SYSTEM",
-                color = NexusColors.NeonCyan,
-                fontSize = 10.sp,
-                letterSpacing = 2.sp,
-                fontFamily = FontFamily.Monospace
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
         }
-        if (nexState != null) {
-            Row(
-                Modifier
-                    .border(1.dp, nexState.color.copy(alpha = 0.6f), NexusShapes.Control)
-                    .background(nexState.color.copy(alpha = 0.10f), NexusShapes.Control)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(Modifier.size(8.dp).background(nexState.color, CircleShape))
-                Text(
-                    "NEX · " + nexState.title.uppercase(Locale.ROOT),
-                    color = nexState.color,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
-    }
-}
-
-/** NEX speaks: the line is derived from facts by NexMind, never invented. */
-@Composable
-private fun NexSpeech(state: NexState, line: String, modifier: Modifier = Modifier) {
-    Surface(color = NexusColors.DeepSurface, shape = NexusShapes.Card, modifier = modifier.fillMaxWidth()) {
-        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.width(3.dp).height(38.dp).background(state.color, NexusShapes.Control))
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("NEX", color = state.color, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                Text(line, color = NexusColors.TextPrimary, fontSize = 13.sp)
-            }
-        }
     }
 }
 
 @Composable
-private fun SegmentLegend(segments: List<OrbitalSegment>, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        segments.chunked(2).forEach { pair ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                pair.forEach { segment ->
-                    SegmentChip(segment, Modifier.weight(1f))
-                }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
-            }
-        }
-        Text(
-            "Нажмите на ядро — откроется обзор системы.",
-            color = NexusColors.TextMuted,
-            fontSize = 10.sp
+private fun TopBar(onNavigate: (DeckTarget) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("NEXUS", style = NexusText.Wordmark, modifier = Modifier.weight(1f))
+        CircleIconButton(
+            NexIcons.Settings2,
+            onClick = { onNavigate(DeckTarget.SETTINGS) },
+            size = 42.dp,
+            contentDescription = "Настройки"
         )
     }
 }
 
 @Composable
-private fun SegmentChip(segment: OrbitalSegment, modifier: Modifier = Modifier) {
+private fun Greeting(nowMillis: Long) {
+    val calendar = Calendar.getInstance().apply { timeInMillis = nowMillis }
+    val greeting = when (calendar.get(Calendar.HOUR_OF_DAY)) {
+        in 5..11 -> "Доброе утро"
+        in 12..16 -> "Добрый день"
+        in 17..22 -> "Добрый вечер"
+        else -> "Доброй ночи"
+    }
+    val date = SimpleDateFormat("EEEE, d MMMM", RU).format(Date(nowMillis)).replaceFirstChar { it.titlecase(RU) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(greeting, style = MaterialTheme.typography.displaySmall, color = NexusColors.TextPrimary)
+        Text(date, style = MaterialTheme.typography.bodyMedium, color = NexusColors.TextSecondary)
+    }
+}
+
+@Composable
+private fun Hero(
+    nexState: NexState,
+    nexLine: String,
+    segments: List<OrbitalSegment>,
+    mode: EffectsMode,
+    overviewOpen: Boolean,
+    onToggleOverview: () -> Unit,
+    deck: DeckState,
+    onNavigate: (DeckTarget) -> Unit
+) {
+    GlassCard(
+        shape = NexusShapes.Sheet,
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp),
+        spacing = 6.dp
+    ) {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            CoreOrbital(
+                segments = segments,
+                state = nexState,
+                mode = mode,
+                diameter = 232.dp,
+                description = nexLine,
+                onTap = onToggleOverview
+            )
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            Tag("NEX · " + nexState.title, nexState.color)
+        }
+        Text(
+            nexLine,
+            style = MaterialTheme.typography.titleMedium,
+            color = NexusColors.TextPrimary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+        )
+        Text(
+            if (overviewOpen) "Нажмите на NEX, чтобы свернуть обзор" else "Нажмите на NEX — откроется обзор системы",
+            style = MaterialTheme.typography.bodySmall,
+            color = NexusColors.TextMuted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        AnimatedVisibility(visible = overviewOpen) {
+            SystemOverview(deck, segments, onNavigate)
+        }
+    }
+}
+
+@Composable
+private fun SystemOverview(deck: DeckState, segments: List<OrbitalSegment>, onNavigate: (DeckTarget) -> Unit) {
+    val diag = deck.diagnostics
+    Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        HairlineDivider()
+        segments.forEach { segment ->
+            InfoLine(segment.title, segment.value + " · " + segment.status.label, valueColor = segment.status.color)
+        }
+        InfoLine("Свободная память", diag.ramFreeBytes?.let { formatGb(it) } ?: "нет данных")
+        InfoLine("Хранилище", formatGb(diag.storageFreeBytes) + " из " + formatGb(diag.storageTotalBytes))
+        InfoLine("Установлено моделей", if (deck.installedModelCount == 0) "нет" else deck.installedModelCount.toString())
+        InfoLine(
+            "Ошибок в журнале",
+            deck.errorCount.toString(),
+            valueColor = if (deck.errorCount > 0) NexusColors.SignalAmber else NexusColors.TextPrimary
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+            SoftButton("Устройство", { onNavigate(DeckTarget.DEVICE) }, icon = NexIcons.Smartphone)
+            if (deck.errorCount > 0) {
+                SoftButton("Исправления", { onNavigate(DeckTarget.REPAIRS) }, icon = NexIcons.Wrench, tint = NexusColors.SignalAmber)
+            } else {
+                SoftButton("Модели", { onNavigate(DeckTarget.MODELS) }, icon = NexIcons.Boxes)
+            }
+        }
+    }
+}
+
+@DrawableRes
+private fun segmentIcon(segment: OrbitalSegment, diagnostics: DeviceDiagnostics): Int = when (segment.title) {
+    "Модель" -> NexIcons.Cpu
+    "Сеть" -> if (segment.status == SegmentStatus.OK) NexIcons.Wifi else NexIcons.WifiOff
+    "Устройство" -> when {
+        diagnostics.charging == true -> NexIcons.BatteryCharging
+        (diagnostics.batteryPercent ?: 100) < 20 -> NexIcons.BatteryLow
+        (diagnostics.batteryPercent ?: 100) < 70 -> NexIcons.BatteryMedium
+        else -> NexIcons.BatteryFull
+    }
+    else -> NexIcons.Orbit
+}
+
+@Composable
+private fun StatusStrip(segments: List<OrbitalSegment>, deck: DeckState, onNavigate: (DeckTarget) -> Unit) {
     Row(
-        modifier
-            .background(NexusColors.DeepSurface, NexusShapes.Control)
-            .border(1.dp, segment.status.color.copy(alpha = 0.35f), NexusShapes.Control)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(Modifier.size(8.dp).background(segment.status.color, CircleShape))
-        Column {
-            Text(segment.title.uppercase(Locale.ROOT), color = NexusColors.TextSecondary, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-            Text(
-                segment.value,
-                color = NexusColors.TextPrimary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        segments.forEach { segment ->
+            StatusPill(
+                text = segment.value,
+                label = segment.title,
+                color = segment.status.color,
+                icon = segmentIcon(segment, deck.diagnostics),
+                onClick = {
+                    onNavigate(
+                        when (segment.title) {
+                            "Модель" -> DeckTarget.MODELS
+                            "Council" -> DeckTarget.COUNCIL
+                            else -> DeckTarget.DEVICE
+                        }
+                    )
+                }
             )
         }
     }
 }
 
-/** System Overview opened from the Core Orbital (handoff 5.1). */
 @Composable
-private fun SystemOverview(
-    deck: DeckState,
-    segments: List<OrbitalSegment>,
-    onNavigate: (DeckTarget) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val diag = deck.diagnostics
-    DeckPanel("ОБЗОР СИСТЕМЫ", NexusColors.NeonCyan, modifier) {
-        segments.forEach { segment ->
-            ValueRow(segment.title, segment.value + " · " + segment.status.label, segment.status.color)
-        }
-        ValueRow("Память", diag.ramFreeBytes?.let { formatGb(it) + " свободно" } ?: "нет данных")
-        ValueRow("Хранилище", formatGb(diag.storageFreeBytes) + " из " + formatGb(diag.storageTotalBytes))
-        ValueRow("Установлено моделей", if (deck.installedModelCount == 0) "нет" else deck.installedModelCount.toString())
-        ValueRow("Ошибок в журнале", deck.errorCount.toString(), if (deck.errorCount > 0) NexusColors.SignalAmber else NexusColors.TextPrimary)
-        Text("Измерено в " + timeLabel(diag.measuredAtEpochMillis), color = NexusColors.TextMuted, fontSize = 10.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DeckButton("Устройство", NexusColors.NeonCyan) { onNavigate(DeckTarget.DEVICE) }
-            DeckButton("Модели", NexusColors.NeonCyan) { onNavigate(DeckTarget.MODELS) }
-            if (deck.errorCount > 0) DeckButton("Исправления", NexusColors.SignalAmber) { onNavigate(DeckTarget.REPAIRS) }
-        }
-    }
-}
-
-@Composable
-private fun CommandPortal(
+private fun Composer(
     onCompose: (String, DeckTarget) -> Unit,
-    onListeningChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    onListeningChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     var task by remember { mutableStateOf("") }
+    var target by remember { mutableIntStateOf(0) }
     var voiceStatus by remember { mutableStateOf<String?>(null) }
     var listening by remember { mutableStateOf(false) }
     val voice = remember { VoiceInput(context.applicationContext) }
@@ -441,7 +445,7 @@ private fun CommandPortal(
             when (event) {
                 VoiceInput.Event.Listening -> { setListening(true); voiceStatus = "Слушаю…" }
                 is VoiceInput.Event.Partial -> task = event.text
-                is VoiceInput.Event.Final -> { task = event.text; setListening(false); voiceStatus = "Распознано." }
+                is VoiceInput.Event.Final -> { task = event.text; setListening(false); voiceStatus = null }
                 is VoiceInput.Event.Error -> { setListening(false); voiceStatus = event.reason }
                 VoiceInput.Event.Ended -> setListening(false)
             }
@@ -452,96 +456,144 @@ private fun CommandPortal(
         if (granted) startVoice() else voiceStatus = "Без разрешения на микрофон голосовой ввод невозможен."
     }
 
-    DeckPanel("COMMAND PORTAL", NexusColors.NeonViolet, modifier.holoCorners(NexusColors.NeonViolet)) {
-        OutlinedTextField(
-            value = task,
-            onValueChange = { task = it.take(32_000) },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Опишите задачу — текстом или голосом…", color = NexusColors.TextMuted) },
-            minLines = 2,
-            shape = NexusShapes.Card,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = NexusColors.NeonViolet,
-                unfocusedBorderColor = NexusColors.Divider,
-                cursorColor = NexusColors.NeonCyan,
-                focusedTextColor = NexusColors.TextPrimary,
-                unfocusedTextColor = NexusColors.TextPrimary
+    fun send() {
+        if (task.isBlank()) return
+        onCompose(task.trim(), if (target == 0) DeckTarget.STUDIO else DeckTarget.COUNCIL)
+        task = ""
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .glass(NexusShapes.Panel, accent = if (listening) NexusColors.NeonCyan else null)
+                .padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(Modifier.weight(1f).heightIn(min = 44.dp), contentAlignment = Alignment.CenterStart) {
+                if (task.isEmpty()) {
+                    Text(
+                        if (listening) "Говорите…" else "Спросите NEX…",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = NexusColors.TextMuted
+                    )
+                }
+                BasicTextField(
+                    value = task,
+                    onValueChange = { task = it.take(32_000) },
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = NexusColors.TextPrimary),
+                    cursorBrush = SolidColor(NexusColors.NeonCyan),
+                    maxLines = 6,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            CircleIconButton(
+                if (listening) NexIcons.Square else NexIcons.Mic,
+                onClick = {
+                    if (listening) {
+                        voice.stop(); setListening(false); voiceStatus = null
+                    } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                        PackageManager.PERMISSION_GRANTED
+                    ) {
+                        startVoice()
+                    } else {
+                        micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                size = 44.dp,
+                tint = if (listening) NexusColors.NeonCyan else NexusColors.TextSecondary,
+                contentDescription = if (listening) "Остановить диктовку" else "Голосовой ввод"
             )
+            CircleIconButton(
+                NexIcons.ArrowUp,
+                onClick = { send() },
+                size = 44.dp,
+                filled = task.isNotBlank(),
+                tint = NexusColors.TextMuted,
+                contentDescription = "Отправить"
+            )
+        }
+        SegmentedTabs(listOf("AI Studio", "Council"), target, { target = it })
+        Text(
+            voiceStatus ?: if (target == 0) {
+                "Один ответ выбранной модели, с потоковым выводом."
+            } else {
+                "Совет из восьми ролей разбирает задачу и сводит итог."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (voiceStatus != null && !listening) NexusColors.SignalAmber else NexusColors.TextSecondary,
+            modifier = Modifier.padding(horizontal = 6.dp)
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            DeckButton(if (listening) "■ Стоп" else "◉ Голос", if (listening) NexusColors.SignalAmber else NexusColors.NeonCyan) {
-                if (listening) {
-                    voice.stop(); setListening(false); voiceStatus = "Остановлено."
-                } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                    PackageManager.PERMISSION_GRANTED
-                ) {
-                    startVoice()
-                } else {
-                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                }
-            }
-            if (task.isNotBlank()) {
-                DeckButton("AI Studio", NexusColors.NeonCyan) {
-                    onCompose(task, DeckTarget.STUDIO)
-                    task = ""
-                }
-                DeckButton("Council", NexusColors.NeonViolet) {
-                    onCompose(task, DeckTarget.COUNCIL)
-                    task = ""
-                }
-            }
-        }
-        val voiceLine = voiceStatus
-        if (voiceLine != null) {
-            Text(voiceLine, color = if (listening) NexusColors.SignalAmber else NexusColors.TextSecondary, fontSize = 10.sp)
-        } else if (task.isBlank()) {
-            Text(
-                "Одна модель — AI Studio. Сложная задача на несколько агентов — Council.",
-                color = NexusColors.TextSecondary,
-                fontSize = 11.sp
-            )
-        }
     }
 }
 
 @Composable
-private fun ActiveRoute(
-    deck: DeckState,
-    health: HealthCheckResult?,
-    onHealth: (HealthCheckResult) -> Unit,
-    onNavigate: (DeckTarget) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val scope = rememberCoroutineScope()
-    var checking by remember { mutableStateOf(false) }
-    val network = DeckModel.networkAvailable(deck.diagnostics)
-    val settings = deck.providerSettings
-    DeckPanel("ACTIVE ROUTE", NexusColors.NeonCyan, modifier) {
-        Text(
-            DeckModel.routeLine(deck.localModelName, deck.cloudLabel, settings.model, network),
-            color = NexusColors.TextPrimary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-        if (deck.cloudLabel != null) {
-            when {
-                checking -> StatusLine("Проверка облачного провайдера…", NexusColors.SignalAmber)
-                health == null -> StatusLine("Облачный провайдер в этой сессии не проверялся", NexusColors.SignalAmber)
-                health.reachability == EndpointReachability.REACHABLE -> StatusLine(
-                    "Облако отвечает · ${health.latencyMillis} мс · " + timeLabel(health.checkedAtEpochMillis),
-                    NexusColors.SignalGreen
-                )
-                else -> StatusLine(health.detail + " · " + timeLabel(health.checkedAtEpochMillis), NexusColors.SignalRed)
+private fun SystemsBento(deck: DeckState, segments: List<OrbitalSegment>, onNavigate: (DeckTarget) -> Unit) {
+    val council = segments.first { it.title == "Council" }
+    val device = segments.first { it.title == "Устройство" }
+    Row(Modifier.fillMaxWidth().height(204.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Council: the latest mission as a small constellation.
+        GlassCard(
+            modifier = Modifier.weight(1.1f).fillMaxHeight(),
+            onClick = { onNavigate(DeckTarget.COUNCIL) },
+            contentPadding = PaddingValues(16.dp),
+            spacing = 6.dp
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(NexIcons.Orbit, NexusColors.NeonViolet, size = 34.dp)
+                Spacer(Modifier.weight(1f))
+                Tag(council.status.label.replaceFirstChar { it.titlecase(RU) }, council.status.color)
             }
+            Text("Council", style = MaterialTheme.typography.titleMedium, color = NexusColors.TextPrimary)
+            Text(
+                council.value.replaceFirstChar { it.titlecase(RU) },
+                style = MaterialTheme.typography.bodySmall,
+                color = NexusColors.TextSecondary,
+                maxLines = 1
+            )
+            MiniConstellation(deck.latestAgentResults, Modifier.fillMaxWidth().weight(1f))
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            DeckButton("Модели", NexusColors.NeonCyan) { onNavigate(DeckTarget.MODELS) }
-            if (settings.endpoint.isNotBlank() && !checking) {
-                DeckButton("Проверить облако", NexusColors.SignalGreen) {
-                    checking = true
-                    scope.launch {
-                        onHealth(ProviderHealthCheck.check(settings.endpoint))
-                        checking = false
+        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Device: battery as a gauge.
+            GlassCard(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                onClick = { onNavigate(DeckTarget.DEVICE) },
+                contentPadding = PaddingValues(14.dp),
+                spacing = 2.dp
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BatteryGauge(deck.diagnostics.batteryPercent, device.status.color, Modifier.size(44.dp))
+                    Column {
+                        Text("Устройство", style = MaterialTheme.typography.titleSmall, color = NexusColors.TextPrimary)
+                        Text(
+                            deck.diagnostics.thermalLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = device.status.color,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+            // Browser: the last real page.
+            val page = deck.lastBrowserPage
+            GlassCard(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                onClick = { onNavigate(DeckTarget.BROWSER) },
+                contentPadding = PaddingValues(14.dp),
+                spacing = 2.dp
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    IconBadge(NexIcons.Globe, NexusColors.NeonCyan, size = 40.dp)
+                    Column {
+                        Text("Браузер", style = MaterialTheme.typography.titleSmall, color = NexusColors.TextPrimary)
+                        Text(
+                            page?.title?.ifBlank { page.url } ?: "Истории пока нет",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NexusColors.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -549,212 +601,209 @@ private fun ActiveRoute(
     }
 }
 
+/** Latest mission's agents as dots on an orbit, coloured by stored results. */
 @Composable
-private fun LiveSystems(
-    deck: DeckState,
-    segments: List<OrbitalSegment>,
-    onNavigate: (DeckTarget) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val council = segments.first { it.title == "Council" }
-    val device = segments.first { it.title == "Устройство" }
-    Row(modifier.fillMaxWidth().height(116.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SystemTile(
-            glyph = "◎",
-            title = "Council",
-            value = council.value,
-            meta = "миссий: " + deck.missions.size.let { if (it >= 5) "5+" else it.toString() },
-            status = council.status,
-            modifier = Modifier.weight(1f).clickable { onNavigate(DeckTarget.COUNCIL) }
-        )
-        val page = deck.lastBrowserPage
-        SystemTile(
-            glyph = "◍",
-            title = "Browser",
-            value = page?.title?.ifBlank { page.url } ?: "истории нет",
-            meta = "визитов: " + deck.browserVisits,
-            status = if (page == null) SegmentStatus.UNKNOWN else SegmentStatus.OK,
-            modifier = Modifier.weight(1f).clickable { onNavigate(DeckTarget.BROWSER) }
-        )
-        SystemTile(
-            glyph = "▣",
-            title = "Device Bridge",
-            value = device.value,
-            meta = "операций: " + deck.bridgeOperations,
-            status = device.status,
-            modifier = Modifier.weight(1f).clickable { onNavigate(DeckTarget.DEVICE) }
+private fun MiniConstellation(results: List<AgentJournalRecord>, modifier: Modifier = Modifier) {
+    val agents = remember { CouncilOrchestrator.defaultAgents() }
+    val nodes = remember(results) { ConstellationModel.fromJournal(agents, results) }
+    Canvas(modifier) {
+        val c = center
+        val orbit = min(size.width, size.height) / 2f - 8.dp.toPx()
+        drawCircle(Color.White.copy(alpha = 0.07f), radius = orbit, center = c, style = Stroke(width = 1.dp.toPx()))
+        nodes.forEachIndexed { index, node ->
+            val a = Math.toRadians(-90.0 + index * 360.0 / nodes.size)
+            val p = Offset(c.x + orbit * cos(a).toFloat(), c.y + orbit * sin(a).toFloat())
+            val idle = node.phase == NodePhase.IDLE
+            val color = if (idle) NexusColors.TextMuted else node.phase.color
+            drawLine(color.copy(alpha = if (idle) 0.15f else 0.5f), c, p, strokeWidth = 1.2.dp.toPx())
+            drawCircle(color.copy(alpha = 0.25f), radius = 6.dp.toPx(), center = p)
+            drawCircle(color, radius = 3.dp.toPx(), center = p)
+        }
+        drawCircle(
+            brush = Brush.radialGradient(listOf(Color(0xFFD8CCFF), NexusColors.NeonViolet, Color(0xFF3A1F9E)), center = c, radius = 10.dp.toPx()),
+            radius = 9.dp.toPx(),
+            center = c
         )
     }
 }
 
 @Composable
-private fun SystemTile(
-    glyph: String,
-    title: String,
-    value: String,
-    meta: String,
-    status: SegmentStatus,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier
-            .fillMaxHeight()
-            .background(NexusColors.DeepSurface, NexusShapes.Card)
-            .border(1.dp, status.color.copy(alpha = 0.30f), NexusShapes.Card)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(glyph, color = status.color, fontSize = 18.sp, modifier = Modifier.weight(1f))
-            Box(Modifier.size(7.dp).background(status.color, CircleShape))
+private fun BatteryGauge(percent: Int?, color: Color, modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 4.dp.toPx()
+            val inset = stroke / 2
+            val arcSize = Size(size.width - stroke, size.height - stroke)
+            drawArc(
+                color = Color.White.copy(alpha = 0.08f),
+                startAngle = 135f, sweepAngle = 270f, useCenter = false,
+                topLeft = Offset(inset, inset), size = arcSize,
+                style = Stroke(width = stroke, cap = StrokeCap.Round)
+            )
+            if (percent != null) {
+                drawArc(
+                    color = color,
+                    startAngle = 135f, sweepAngle = 270f * percent.coerceIn(0, 100) / 100f, useCenter = false,
+                    topLeft = Offset(inset, inset), size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round)
+                )
+            }
         }
-        Text(title, color = NexusColors.TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        Text(value, color = NexusColors.TextSecondary, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.weight(1f))
-        Text(meta, color = NexusColors.TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+        Text(percent?.toString() ?: "—", style = MaterialTheme.typography.labelMedium, color = NexusColors.TextPrimary)
+    }
+}
+
+@Composable
+private fun RouteCard(
+    deck: DeckState,
+    health: HealthCheckResult?,
+    onHealth: (HealthCheckResult) -> Unit,
+    onNavigate: (DeckTarget) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    val network = DeckModel.networkAvailable(deck.diagnostics)
+    val settings = deck.providerSettings
+    val local = deck.localModelName != null
+    GlassCard(onClick = { onNavigate(DeckTarget.MODELS) }) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            IconBadge(
+                if (local) NexIcons.Cpu else NexIcons.Route,
+                if (local) NexusColors.SignalGreen else NexusColors.NeonCyan
+            )
+            Column(Modifier.weight(1f)) {
+                Text("Активный маршрут", style = MaterialTheme.typography.labelMedium, color = NexusColors.TextSecondary)
+                Text(
+                    DeckModel.routeLine(deck.localModelName, deck.cloudLabel, settings.model, network),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = NexusColors.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            NexIcon(NexIcons.ChevronRight, tint = NexusColors.TextMuted, size = 18.dp)
+        }
+        if (deck.cloudLabel != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val (text, color) = when {
+                    checking -> "Проверяю облачного провайдера…" to NexusColors.SignalAmber
+                    health == null -> "Облако в этой сессии не проверялось" to NexusColors.SignalAmber
+                    health.reachability == EndpointReachability.REACHABLE ->
+                        "Облако отвечает · ${health.latencyMillis} мс" to NexusColors.SignalGreen
+                    else -> health.detail to NexusColors.SignalRed
+                }
+                Dot(color)
+                Text(text, style = MaterialTheme.typography.bodySmall, color = color, modifier = Modifier.weight(1f), maxLines = 2)
+                if (settings.endpoint.isNotBlank() && !checking) {
+                    SoftButton("Проверить", {
+                        checking = true
+                        scope.launch {
+                            onHealth(ProviderHealthCheck.check(settings.endpoint))
+                            checking = false
+                        }
+                    }, icon = NexIcons.Activity)
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun QuickActions(deck: DeckState, onNavigate: (DeckTarget) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        QuickChip("✧ AI Studio", NexusColors.NeonCyan) { onNavigate(DeckTarget.STUDIO) }
-        QuickChip("❒ Архив", NexusColors.NeonCyan) { onNavigate(DeckTarget.ARCHIVE) }
-        QuickChip("⬡ Модели", NexusColors.NeonViolet) { onNavigate(DeckTarget.MODELS) }
-        QuickChip(
-            "⚙ Исправления" + if (deck.errorCount > 0) " · " + deck.errorCount else "",
-            if (deck.errorCount > 0) NexusColors.SignalAmber else NexusColors.TextSecondary
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        QuickAction(NexIcons.Sparkles, "Studio", NexusColors.NeonViolet) { onNavigate(DeckTarget.STUDIO) }
+        QuickAction(NexIcons.Archive, "Архив", NexusColors.NeonCyan) { onNavigate(DeckTarget.ARCHIVE) }
+        QuickAction(NexIcons.Boxes, "Модели", NexusColors.NeonMagenta) { onNavigate(DeckTarget.MODELS) }
+        QuickAction(
+            NexIcons.Wrench,
+            "Исправления",
+            if (deck.errorCount > 0) NexusColors.SignalAmber else NexusColors.SignalGreen,
+            badge = deck.errorCount.takeIf { it > 0 }
         ) { onNavigate(DeckTarget.REPAIRS) }
-        QuickChip("☰ Настройки", NexusColors.TextSecondary) { onNavigate(DeckTarget.SETTINGS) }
     }
 }
 
 @Composable
-private fun QuickChip(label: String, accent: Color, onClick: () -> Unit) {
-    Text(
-        label,
-        color = accent,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .border(1.dp, accent.copy(alpha = 0.45f), NexusShapes.Panel)
-            .background(accent.copy(alpha = 0.06f), NexusShapes.Panel)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp)
-    )
-}
-
-@Composable
-private fun MissionRow(mission: MissionRecord, modifier: Modifier = Modifier) {
-    val (label, color) = missionStatusLabel(mission.status)
-    OperationRow(
-        glyph = "◎",
-        title = mission.goal,
-        meta = "Council · " + timeLabel(mission.updatedAt) +
-            (mission.error?.takeIf { it.isNotBlank() }?.let { " · " + it.take(60) } ?: ""),
-        status = label,
-        statusColor = color,
-        modifier = modifier
-    )
-}
-
-@Composable
-private fun OperationRow(
-    glyph: String,
-    title: String,
-    meta: String,
-    status: String,
-    statusColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .background(NexusColors.DeepSurface, NexusShapes.Card)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+private fun RowScope.QuickAction(@DrawableRes icon: Int, label: String, accent: Color, badge: Int? = null, onClick: () -> Unit) {
+    Column(
+        Modifier.weight(1f).clip(NexusShapes.Card).clickable(onClick = onClick).padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(
-            Modifier.size(30.dp).border(1.dp, statusColor.copy(alpha = 0.6f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) { Text(glyph, color = statusColor, fontSize = 13.sp) }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                title,
-                color = NexusColors.TextPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(meta, color = NexusColors.TextSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Box {
+            Box(
+                Modifier.size(60.dp).glass(NexusShapes.Card, accent = accent),
+                contentAlignment = Alignment.Center
+            ) { NexIcon(icon, tint = accent, size = 24.dp) }
+            if (badge != null) {
+                Text(
+                    if (badge > 99) "99+" else badge.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF1A1205),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .clip(NexusShapes.Pill)
+                        .background(NexusColors.SignalAmber)
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                )
+            }
         }
-        Text(status, color = statusColor, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = NexusColors.TextSecondary, maxLines = 1)
     }
 }
 
 @Composable
-private fun DeckPanel(
-    title: String,
-    accent: Color,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    Surface(color = NexusColors.DeepSurface, shape = NexusShapes.Panel, modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                title,
-                color = accent,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.5.sp,
-                fontFamily = FontFamily.Monospace
+private fun RecentOperations(deck: DeckState, onNavigate: (DeckTarget) -> Unit) {
+    if (deck.missions.isEmpty() && deck.lastConversation == null) {
+        GlassCard {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                IconBadge(NexIcons.History, NexusColors.TextSecondary)
+                Text(
+                    "Операций ещё не было. Первая задача появится здесь сразу после запуска.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NexusColors.TextSecondary
+                )
+            }
+        }
+        return
+    }
+    GlassCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp), spacing = 0.dp) {
+        val rows = deck.missions.take(3)
+        rows.forEachIndexed { index, mission ->
+            val (label, color) = missionStatusLabel(mission.status)
+            ListRow(
+                icon = NexIcons.Orbit,
+                accent = color,
+                title = mission.goal,
+                meta = "Council · " + timeLabel(mission.updatedAt),
+                trailing = { Tag(label, color) },
+                onClick = { onNavigate(DeckTarget.COUNCIL) }
             )
-            content()
+            if (index < rows.lastIndex || deck.lastConversation != null) HairlineDivider()
+        }
+        deck.lastConversation?.let { chat ->
+            ListRow(
+                icon = NexIcons.MessageSquare,
+                accent = NexusColors.NeonCyan,
+                title = chat.title.ifBlank { "Диалог" },
+                meta = "AI Studio · " + timeLabel(chat.updatedAt),
+                trailing = { Tag("Диалог", NexusColors.NeonCyan) },
+                onClick = { onNavigate(DeckTarget.STUDIO) }
+            )
         }
     }
-}
-
-@Composable
-private fun ValueRow(name: String, value: String, valueColor: Color = NexusColors.TextPrimary) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(name, color = NexusColors.TextSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        Text(value, color = valueColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun StatusLine(text: String, color: Color) {
-    Text(text, color = color, fontSize = 10.sp)
-}
-
-@Composable
-private fun DeckButton(label: String, accent: Color, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
-        shape = NexusShapes.Control,
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = accent)
-    ) { Text(label, fontSize = 12.sp) }
 }
 
 private fun missionStatusLabel(status: MissionStatus): Pair<String, Color> = when (status) {
-    MissionStatus.DRAFT -> "ЧЕРНОВИК" to NexusColors.TextSecondary
-    MissionStatus.QUEUED -> "В ОЧЕРЕДИ" to NexusColors.SignalAmber
-    MissionStatus.RUNNING -> "РАБОТАЕТ" to NexusColors.NeonViolet
-    MissionStatus.VERIFYING -> "ПРОВЕРКА" to NexusColors.NeonViolet
-    MissionStatus.AWAITING_INPUT -> "ЖДЁТ" to NexusColors.SignalAmber
-    MissionStatus.COMPLETED -> "ГОТОВО" to NexusColors.SignalGreen
-    MissionStatus.FAILED -> "ОШИБКА" to NexusColors.SignalRed
-    MissionStatus.CANCELLED -> "ОТМЕНА" to NexusColors.TextSecondary
-    MissionStatus.INTERRUPTED -> "ПРЕРВАНА" to NexusColors.SignalRed
+    MissionStatus.DRAFT -> "Черновик" to NexusColors.TextSecondary
+    MissionStatus.QUEUED -> "В очереди" to NexusColors.SignalAmber
+    MissionStatus.RUNNING -> "Работает" to NexusColors.NeonViolet
+    MissionStatus.VERIFYING -> "Проверка" to NexusColors.NeonViolet
+    MissionStatus.AWAITING_INPUT -> "Ждёт ответа" to NexusColors.SignalAmber
+    MissionStatus.COMPLETED -> "Готово" to NexusColors.SignalGreen
+    MissionStatus.FAILED -> "Ошибка" to NexusColors.SignalRed
+    MissionStatus.CANCELLED -> "Отменена" to NexusColors.TextSecondary
+    MissionStatus.INTERRUPTED -> "Прервана" to NexusColors.SignalRed
 }
 
 private fun formatGb(bytes: Long): String {
@@ -763,4 +812,4 @@ private fun formatGb(bytes: Long): String {
 }
 
 private fun timeLabel(epochMillis: Long): String =
-    SimpleDateFormat("HH:mm dd.MM", Locale.getDefault()).format(Date(epochMillis))
+    SimpleDateFormat("HH:mm, d MMM", RU).format(Date(epochMillis))

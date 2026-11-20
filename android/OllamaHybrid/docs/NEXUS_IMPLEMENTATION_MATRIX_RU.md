@@ -7,7 +7,7 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 - Ветка: `nexus/genesis-foundation`
 - Базовый HEAD передачи: `ff35fbca9a331e832b81378e25b4c45499d0a92c`
 - Обновлено: 2026-11-20
-- Юнит-тестов: 335 (включая JVM-рендер экранов, галерею скриншотов и живой MCP-сервер), локальный прогон и CI зелёные
+- Юнит-тестов: 345 (включая JVM-рендер экранов, галерею скриншотов и живой MCP-сервер), локальный прогон и CI зелёные
 - CI: `nexus-android-debug.yml` (тесты + debug APK), `android-build.yml` (валидация)
 
 Шкала статусов (по разделу 14 ТЗ), показывается только реально достигнутый:
@@ -46,17 +46,26 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 
 ## Визуальный слой и NEX (разделы 2, 5)
 
+Вторая редакция по отзыву владельца («выглядит как приложение 1998 года»):
+убраны Unicode-значки, моноширинные заголовки капсом, звёздный фон-заставка,
+HUD-линейки и уголки; вместо них — современный стиль.
+
 | Требование | Код | Статус | Тесты |
 |---|---|---|---|
-| Дизайн-система: палитра, радиусы, отступы, тайминги (5) | `ui/NexusTheme.kt` | CI Build | — |
-| Режимы эффектов Static / Subtle / Experimental, системное «без анимаций» и энергосбережение побеждают (5) | `MotionPolicy`, `EffectsSettings`, карточка в Настройках | Unit Tested | `MotionPolicyTest` (6) |
+| Дизайн-система: палитра, стекло, градиенты, радиусы, тайминги (5) | `ui/NexusTheme.kt`, `ui/NexusType.kt` | CI Build | — |
+| Шрифты Inter / Inter Display / Unbounded в APK, с кириллицей (OFL) | `res/font`, `third_party_licenses/` | CI Build | галерея |
+| Линейные иконки Lucide (ISC) как векторные ресурсы | `res/drawable/lu_*.xml`, `ui/NexusIcons.kt` | CI Build | галерея |
+| Общие компоненты: стеклянные карточки, кнопки, вкладки, строки списков | `ui/NexusComponents.kt` | Unit Tested | `PrettyTitleTest` (3) |
+| Фон-аврора, edge-to-edge, плавающая нижняя панель с иконками | `MainActivity.kt` | CI Build | галерея |
+| Режимы эффектов Static / Subtle / Experimental; системное «без анимаций» и энергосбережение побеждают (5) | `MotionPolicy`, Настройки | Unit Tested | `MotionPolicyTest` (6) |
 | NEX — персона: 8 состояний, реплики только из фактов (2) | `ui/NexMind.kt` | Unit Tested | `NexMindTest` (12) |
-| NEX — облик: кристалл с глазом, мимика по состоянию, моргание по нажатию (2, 5) | `ui/NexVisuals.kt` | CI Build | галерея `03_nex_states` |
+| NEX — облик: светящаяся сфера-«питомец» с визором и глазами, мимика по состоянию (2, 5) | `ui/NexVisuals.kt` | CI Build | галерея `03_nex_states` |
 | Core Orbital: 4 измеренных сегмента, тап → обзор системы (5.1) | `ui/NexVisuals.kt`, `DeckModel.kt` | Unit Tested | `DeckModelTest` |
-| Анимации только на реальные события; в покое кадры не запрашиваются (5) | `CoreOrbital`, `CouncilConstellation` | CI Build | — |
-| Мотивы: Neural Constellation, Telemetry Rulers, Holo Markers (5) | `ui/NexDecor.kt` | CI Build | галерея |
-| Active Route, Live Systems, Recent Operations, быстрые действия (5.1) | `CommandDeckScreen.kt` | CI Build | галерея `02_deck_working` |
-| Галерея скриншотов экранов (JVM, Roborazzi) | `gallery/ScreenGalleryTest.kt` | CI Build | 6 сцен, запись по `-Pnexus.screenshots=true` |
+| Главная: приветствие, NEX, статус-чипы, поле ввода, bento-плитки, маршрут, недавнее (5.1) | `CommandDeckScreen.kt` | CI Build | галерея `00`–`02` |
+| Neural Constellation: иконки ролей, NEX-менеджер, вспышки только по событиям (5.3) | `ui/CouncilConstellation.kt` | Unit Tested | `ConstellationModelTest` (5), галерея |
+| Studio как чат: пузыри, закреплённое поле ввода, сворачиваемое подключение | `AiStudioScreen.kt` | CI Build | галерея `07_studio_chat` |
+| Браузер, Архив, Устройство, Модели, Настройки, Исправления в общем стиле | соответствующие экраны | CI Build | галерея `05`, `08`–`12` |
+| Анимации только на реальные события; в покое кадры не запрашиваются (кроме редкого моргания NEX) | `NexOrb`, `CouncilConstellation` | CI Build | — |
 
 Сравнение со старыми скриншотами/видео владельца не выполнялось: их нет в
 репозитории.
@@ -158,6 +167,7 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 38. Исправления: Council читает исходники с GitHub и предлагает PR
 39. Стабильный порядок строк журналов, изоляция тестов БД
 40. Визуальный слой: дизайн-система, NEX, Core Orbital, новый Command Deck, Neural Constellation, режимы эффектов, галерея скриншотов
+41. Редизайн по отзыву владельца: шрифты, иконки, стекло, аврора, NEX-питомец, плавающая навигация, все экраны в одном стиле
 
 ## Расхождения документации
 
