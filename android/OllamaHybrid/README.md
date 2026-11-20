@@ -5,6 +5,7 @@
 ## Документы
 - [Матрица реализации](docs/NEXUS_IMPLEMENTATION_MATRIX_RU.md) — **источник правды**: требование → код → статус → тесты, журнал срезов и честный список того, что не сделано.
 - [NEXUS Mesh](docs/NEXUS_MESH_README_RU.md) — закрытая сеть своих телефонов: сопряжение, защищённый канал, задачи; [протокол](docs/NEXUS_MESH_PROTOCOL_RU.md), [безопасность](docs/NEXUS_MESH_SECURITY_MODEL_RU.md), [архитектура](docs/NEXUS_MESH_ARCHITECTURE_RU.md), [тесты](docs/NEXUS_MESH_TEST_PLAN_RU.md).
+- [Исследование Android AI](docs/research/README_RU.md) — 24 проекта, 66 моделей, движки, агенты, интеграция, дорожная карта, лицензии.
 - [NEXUS CODEX](docs/NEXUS_CODEX_RU.md) — история, канон, имена и визуальный язык.
 - [Техническая дорожная карта](docs/NEXUS_TECHNICAL_ROADMAP_RU.md).
 - [Инженерный аудит](docs/NEXUS_ENGINEERING_AUDIT_RU.md) — исторический документ, часть выводов устарела (см. матрицу).

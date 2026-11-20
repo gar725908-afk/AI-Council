@@ -257,7 +257,15 @@ fun PhoneModelHub(chat: ChatController?, onActivated: (InstalledNexusModel) -> U
             foundFiles.isEmpty() -> HudLabel(
                 if (hasAccess) "Готовых моделей не нашёл" else "Пока проверена только папка NEXUS", color = Cyber.TextFaint
             )
-            else -> foundFiles.take(12).forEach { file ->
+            else -> foundFiles.take(12).also { shown ->
+                if (shown.any { it.catalogMatch == null }) {
+                    // Honest about provenance: only catalog copies are proven by SHA-256.
+                    HudLabel(
+                        "Файлы не из каталога NEXUS не сверены с эталонным SHA-256 — запускай только скачанное из надёжного источника.",
+                        color = Cyber.Amber, maxLines = 3
+                    )
+                }
+            }.forEach { file ->
                 FoundModelRow(
                     file = file,
                     ramTotal = ramTotal,
