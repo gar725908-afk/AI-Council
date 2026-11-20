@@ -14,7 +14,10 @@ import ai.hybrid.commandcenter.androidbridge.DeviceInspector
 import ai.hybrid.commandcenter.androidbridge.GatewayOutcome
 import ai.hybrid.commandcenter.androidbridge.ApprovalGrant
 import ai.hybrid.commandcenter.androidbridge.PermissionCatalog
+import ai.hybrid.commandcenter.androidbridge.NexusAccessibilityService
 import ai.hybrid.commandcenter.androidbridge.PrivilegedDiagnosticsTool
+import ai.hybrid.commandcenter.androidbridge.ReadScreenTool
+import ai.hybrid.commandcenter.androidbridge.TapElementTool
 import ai.hybrid.commandcenter.androidbridge.RootShellExecutor
 import android.content.Intent
 import android.net.Uri
@@ -35,6 +38,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -96,8 +100,15 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         BridgeToolRegistry().apply {
             register(DeviceDiagnosticsTool(inspector))
             register(PrivilegedDiagnosticsTool())
+            register(ReadScreenTool())
+            register(TapElementTool())
         }
     }
+    var uiTapTarget by remember { mutableStateOf("") }
+    var uiArmed by remember { mutableStateOf(false) }
+    var uiRequestId by remember { mutableStateOf("") }
+    var uiOutcome by remember { mutableStateOf<String?>(null) }
+    var uiRunning by remember { mutableStateOf(false) }
     var privilegedCommand by remember { mutableStateOf(RootShellExecutor.PrivilegedCommand.PROCESS_LIST) }
     var privilegedArmed by remember { mutableStateOf(false) }
     var privilegedRequestId by remember { mutableStateOf("") }
@@ -311,6 +322,141 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                             color = SecondaryText, fontSize = 10.sp
                         )
                     }
+                }
+            }
+        }
+
+        item {
+            SectionCard(title = "ЭКРАН И ЖЕСТЫ (ACCESSIBILITY)", accent = Cyan) {
+                val serviceOn = NexusAccessibilityService.isRunning()
+                Text(
+                    "Служба NEXUS Bridge читает экран и выполняет нажатия только по запросу через " +
+                        "Gateway. Она не реагирует на события сама и ничего не записывает.",
+                    color = SecondaryText, fontSize = 11.sp
+                )
+                PrivilegeRow(
+                    name = "Служба NEXUS Bridge",
+                    status = if (serviceOn) "ВКЛЮЧЕНА" else "ВЫКЛЮЧЕНА",
+                    statusColor = if (serviceOn) SignalGreen else SignalAmber,
+                    detail = if (serviceOn)
+                        "Чтение дерева интерфейса и нажатия доступны."
+                    else
+                        "Включите NEXUS Bridge в системных настройках специальных возможностей."
+                )
+                if (!serviceOn) {
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                    ) { Text("Открыть настройки спец. возможностей", fontSize = 12.sp) }
+                } else {
+                    OutlinedButton(
+                        onClick = {
+                            if (uiRunning) return@OutlinedButton
+                            uiRunning = true
+                            val requestId = UUID.randomUUID().toString()
+                            scope.launch {
+                                val journal = (context.applicationContext as NexusApplication).missionJournal
+                                val outcome = withContext(Dispatchers.IO) {
+                                    val inputs = inspector.capabilityInputs(
+                                        rootProbeAttempted = rootProbeAttempted,
+                                        rootConfirmed = rootResult?.available == true
+                                    )
+                                    BridgeGateway(
+                                        registry = toolRegistry,
+                                        auditSink = { entry -> journal.recordToolAudit(entry) }
+                                    ).execute(
+                                        request = BridgeRequest(requestId, "ui.read_screen"),
+                                        snapshot = CapabilityMatrix.snapshot(inputs, System.currentTimeMillis()),
+                                        availableTransports = setOf(BridgeTransport.ACCESSIBILITY),
+                                        initiator = "user"
+                                    )
+                                }
+                                uiOutcome = when (outcome) {
+                                    is GatewayOutcome.Success -> outcome.result.message.take(2_000)
+                                    is GatewayOutcome.Denied -> "Отклонено (" + outcome.stage + "): " + outcome.reason
+                                    is GatewayOutcome.Failed -> "Ошибка (" + outcome.stage + "): " + outcome.reason
+                                }
+                                auditTrail = withContext(Dispatchers.IO) { journal.getRecentToolAudit(5) }
+                                uiRunning = false
+                            }
+                        },
+                        enabled = !uiRunning,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                    ) { Text(if (uiRunning) "Чтение…" else "Прочитать экран", fontSize = 12.sp) }
+
+                    OutlinedTextField(
+                        value = uiTapTarget,
+                        onValueChange = {
+                            uiTapTarget = it.take(200)
+                            uiArmed = false
+                        },
+                        label = { Text("Текст элемента для нажатия") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            if (uiRunning || uiTapTarget.isBlank()) return@OutlinedButton
+                            if (!uiArmed) {
+                                uiArmed = true
+                                uiRequestId = UUID.randomUUID().toString()
+                                uiOutcome = "Подтвердите нажатие «" + uiTapTarget.take(40) +
+                                    "». Одобрение одноразовое."
+                                return@OutlinedButton
+                            }
+                            uiArmed = false
+                            uiRunning = true
+                            val requestId = uiRequestId
+                            val target = uiTapTarget
+                            scope.launch {
+                                val journal = (context.applicationContext as NexusApplication).missionJournal
+                                val outcome = withContext(Dispatchers.IO) {
+                                    val inputs = inspector.capabilityInputs(
+                                        rootProbeAttempted = rootProbeAttempted,
+                                        rootConfirmed = rootResult?.available == true
+                                    )
+                                    BridgeGateway(
+                                        registry = toolRegistry,
+                                        auditSink = { entry -> journal.recordToolAudit(entry) }
+                                    ).execute(
+                                        request = BridgeRequest(
+                                            requestId = requestId,
+                                            toolId = "ui.tap",
+                                            arguments = mapOf("target" to target),
+                                            approval = ApprovalGrant(requestId, "ui.tap", System.currentTimeMillis())
+                                        ),
+                                        snapshot = CapabilityMatrix.snapshot(inputs, System.currentTimeMillis()),
+                                        availableTransports = setOf(BridgeTransport.ACCESSIBILITY),
+                                        initiator = "user"
+                                    )
+                                }
+                                uiOutcome = when (outcome) {
+                                    is GatewayOutcome.Success -> "✓ " + outcome.result.message
+                                    is GatewayOutcome.Denied -> "Отклонено (" + outcome.stage + "): " + outcome.reason
+                                    is GatewayOutcome.Failed -> "Ошибка (" + outcome.stage + "): " + outcome.reason
+                                }
+                                auditTrail = withContext(Dispatchers.IO) { journal.getRecentToolAudit(5) }
+                                uiRunning = false
+                            }
+                        },
+                        enabled = !uiRunning && uiTapTarget.isNotBlank(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (uiArmed) SignalRed else Violet
+                        )
+                    ) {
+                        Text(if (uiArmed) "ПОДТВЕРДИТЬ НАЖАТИЕ" else "Нажать элемент", fontSize = 12.sp)
+                    }
+                }
+                val screenResult = uiOutcome
+                if (screenResult != null) {
+                    Text(screenResult, color = PrimaryText, fontSize = 10.sp)
                 }
             }
         }

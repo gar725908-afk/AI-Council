@@ -33,6 +33,6 @@ class PermissionCatalogTest {
     @Test
     fun `not requested list still names storage and accessibility`() {
         assertTrue(PermissionCatalog.notRequested.any { it.first.contains("Хранилище") })
-        assertTrue(PermissionCatalog.notRequested.any { it.first.contains("Accessibility") })
+        assertTrue(PermissionCatalog.notRequested.any { it.first.contains("Захват экрана") })
     }
 }

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">Позволяет NEXUS читать содержимое экрана и выполнять нажатия только по вашему подтверждённому запросу через NEXUS Bridge. Служба не реагирует на события сама, не записывает экран и ничего не отправляет наружу.</string>
+</resources>

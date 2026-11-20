@@ -1,6 +1,7 @@
 package ai.hybrid.commandcenter.androidbridge
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -92,11 +93,23 @@ class CapabilityMatrixTest {
         )
         for (capability in listOf(
             BridgeCapability.SYSTEM_SETTINGS,
-            BridgeCapability.ACCESSIBLE_UI_TREE,
-            BridgeCapability.UI_GESTURES,
             BridgeCapability.SCREEN_CAPTURE
         )) {
             assertEquals(CapabilityAvailability.UNAVAILABLE, state(states, capability).availability)
+        }
+    }
+
+    @Test
+    fun `accessibility capabilities follow the real service state`() {
+        val off = CapabilityMatrix.derive(inputs(accessibilityServiceEnabled = false))
+        for (capability in listOf(BridgeCapability.ACCESSIBLE_UI_TREE, BridgeCapability.UI_GESTURES)) {
+            assertEquals(CapabilityAvailability.PERMISSION_REQUIRED, state(off, capability).availability)
+            assertNull(state(off, capability).transport)
+        }
+        val on = CapabilityMatrix.derive(inputs(accessibilityServiceEnabled = true))
+        for (capability in listOf(BridgeCapability.ACCESSIBLE_UI_TREE, BridgeCapability.UI_GESTURES)) {
+            assertEquals(CapabilityAvailability.AVAILABLE, state(on, capability).availability)
+            assertEquals(BridgeTransport.ACCESSIBILITY, state(on, capability).transport)
         }
     }
 

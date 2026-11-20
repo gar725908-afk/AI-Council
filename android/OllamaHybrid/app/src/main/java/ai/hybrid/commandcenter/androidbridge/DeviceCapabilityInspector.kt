@@ -99,20 +99,27 @@ object CapabilityMatrix {
         privilegedState(BridgeCapability.PRIVILEGED_PACKAGE_OPERATIONS, inputs),
         privilegedState(BridgeCapability.PRIVILEGED_FILESYSTEM, inputs),
         privilegedState(BridgeCapability.PROCESS_INSPECTION, inputs),
-        CapabilityState(
+        if (inputs.accessibilityServiceEnabled) CapabilityState(
             BridgeCapability.ACCESSIBLE_UI_TREE,
-            CapabilityAvailability.UNAVAILABLE,
+            CapabilityAvailability.AVAILABLE,
+            BridgeTransport.ACCESSIBILITY,
+            "Служба NEXUS Bridge включена — чтение дерева интерфейса доступно"
+        ) else CapabilityState(
+            BridgeCapability.ACCESSIBLE_UI_TREE,
+            CapabilityAvailability.PERMISSION_REQUIRED,
             null,
-            if (inputs.accessibilityServiceEnabled)
-                "Служба включена в системе, но Accessibility-инструменты NEXUS ещё не реализованы"
-            else
-                "Служба Accessibility для NEXUS не реализована"
+            "Включите службу NEXUS Bridge в настройках специальных возможностей"
         ),
-        CapabilityState(
+        if (inputs.accessibilityServiceEnabled) CapabilityState(
             BridgeCapability.UI_GESTURES,
-            CapabilityAvailability.UNAVAILABLE,
+            CapabilityAvailability.AVAILABLE,
+            BridgeTransport.ACCESSIBILITY,
+            "Нажатия выполняются только по подтверждённому запросу через Gateway"
+        ) else CapabilityState(
+            BridgeCapability.UI_GESTURES,
+            CapabilityAvailability.PERMISSION_REQUIRED,
             null,
-            "Жесты требуют Accessibility-службы, которая ещё не реализована"
+            "Жесты требуют включённой службы NEXUS Bridge"
         ),
         CapabilityState(
             BridgeCapability.SCREEN_CAPTURE,
