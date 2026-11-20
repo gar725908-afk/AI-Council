@@ -12,7 +12,10 @@ import ai.hybrid.commandcenter.androidbridge.DeviceDiagnostics
 import ai.hybrid.commandcenter.androidbridge.DeviceDiagnosticsTool
 import ai.hybrid.commandcenter.androidbridge.DeviceInspector
 import ai.hybrid.commandcenter.androidbridge.GatewayOutcome
+import ai.hybrid.commandcenter.androidbridge.ApprovalGrant
 import ai.hybrid.commandcenter.androidbridge.PermissionCatalog
+import ai.hybrid.commandcenter.androidbridge.PrivilegedDiagnosticsTool
+import ai.hybrid.commandcenter.androidbridge.RootShellExecutor
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -90,8 +93,16 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
     var gatewayRunning by remember { mutableStateOf(false) }
     var auditTrail by remember { mutableStateOf<List<BridgeAuditEntry>>(emptyList()) }
     val toolRegistry = remember {
-        BridgeToolRegistry().apply { register(DeviceDiagnosticsTool(inspector)) }
+        BridgeToolRegistry().apply {
+            register(DeviceDiagnosticsTool(inspector))
+            register(PrivilegedDiagnosticsTool())
+        }
     }
+    var privilegedCommand by remember { mutableStateOf(RootShellExecutor.PrivilegedCommand.PROCESS_LIST) }
+    var privilegedArmed by remember { mutableStateOf(false) }
+    var privilegedRequestId by remember { mutableStateOf("") }
+    var privilegedOutcome by remember { mutableStateOf<String?>(null) }
+    var privilegedRunning by remember { mutableStateOf(false) }
 
     fun refresh() {
         scope.launch {
@@ -300,6 +311,111 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                             color = SecondaryText, fontSize = 10.sp
                         )
                     }
+                }
+            }
+        }
+
+        item {
+            SectionCard(title = "ПРИВИЛЕГИРОВАННЫЕ ИНСТРУМЕНТЫ (ROOT)", accent = Violet) {
+                val rootConfirmed = rootResult?.available == true
+                Text(
+                    "Модель не может выполнить произвольную команду: доступен только фиксированный " +
+                        "набор диагностических команд. Каждый запуск требует отдельного подтверждения " +
+                        "и попадает в аудит.",
+                    color = SecondaryText, fontSize = 11.sp
+                )
+                if (!rootConfirmed) {
+                    Text(
+                        "Root не подтверждён. Нажмите «Проверить Root» выше — без uid=0 инструменты недоступны.",
+                        color = SignalAmber, fontSize = 11.sp
+                    )
+                } else {
+                    Text("Команда:", color = SecondaryText, fontSize = 11.sp)
+                    RootShellExecutor.PrivilegedCommand.entries.forEach { command ->
+                        val selected = privilegedCommand == command
+                        OutlinedButton(
+                            onClick = {
+                                privilegedCommand = command
+                                privilegedArmed = false
+                                privilegedOutcome = null
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = if (selected) Cyan else SecondaryText
+                            )
+                        ) { Text((if (selected) "● " else "") + command.title, fontSize = 11.sp) }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            if (privilegedRunning) return@OutlinedButton
+                            if (!privilegedArmed) {
+                                privilegedArmed = true
+                                privilegedRequestId = UUID.randomUUID().toString()
+                                privilegedOutcome =
+                                    "Подтвердите выполнение «" + privilegedCommand.title +
+                                        "» с правами root. Одобрение одноразовое."
+                                return@OutlinedButton
+                            }
+                            privilegedArmed = false
+                            privilegedRunning = true
+                            val requestId = privilegedRequestId
+                            val command = privilegedCommand
+                            scope.launch {
+                                val journal = (context.applicationContext as NexusApplication).missionJournal
+                                val outcome = withContext(Dispatchers.IO) {
+                                    val inputs = inspector.capabilityInputs(
+                                        rootProbeAttempted = true,
+                                        rootConfirmed = true
+                                    )
+                                    BridgeGateway(
+                                        registry = toolRegistry,
+                                        auditSink = { entry -> journal.recordToolAudit(entry) }
+                                    ).execute(
+                                        request = BridgeRequest(
+                                            requestId = requestId,
+                                            toolId = "root.diagnostics",
+                                            arguments = mapOf("command" to command.id),
+                                            approval = ApprovalGrant(
+                                                requestId, "root.diagnostics", System.currentTimeMillis()
+                                            )
+                                        ),
+                                        snapshot = CapabilityMatrix.snapshot(inputs, System.currentTimeMillis()),
+                                        availableTransports = setOf(BridgeTransport.ROOT),
+                                        initiator = "user"
+                                    )
+                                }
+                                privilegedOutcome = when (outcome) {
+                                    is GatewayOutcome.Success -> {
+                                        val structured = outcome.result.data
+                                            .filterKeys { it !in setOf("command", "command_title", "exit_code") }
+                                            .entries.joinToString("\n") { it.key + ": " + it.value }
+                                        (if (structured.isBlank()) "" else structured + "\n\n") +
+                                            outcome.result.message.take(2_000)
+                                    }
+                                    is GatewayOutcome.Denied -> "Отклонено (" + outcome.stage + "): " + outcome.reason
+                                    is GatewayOutcome.Failed -> "Ошибка (" + outcome.stage + "): " + outcome.reason
+                                }
+                                auditTrail = withContext(Dispatchers.IO) { journal.getRecentToolAudit(5) }
+                                privilegedRunning = false
+                            }
+                        },
+                        enabled = !privilegedRunning,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (privilegedArmed) SignalRed else Violet
+                        )
+                    ) {
+                        Text(
+                            when {
+                                privilegedRunning -> "Выполняется…"
+                                privilegedArmed -> "ПОДТВЕРДИТЬ ЗАПУСК С ROOT"
+                                else -> "Выполнить: " + privilegedCommand.title
+                            },
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+                val result = privilegedOutcome
+                if (result != null) {
+                    Text(result, color = PrimaryText, fontSize = 10.sp)
                 }
             }
         }
