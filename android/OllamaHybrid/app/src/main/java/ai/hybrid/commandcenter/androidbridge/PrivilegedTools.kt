@@ -1,5 +1,6 @@
 package ai.hybrid.commandcenter.androidbridge
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -9,15 +10,19 @@ import kotlinx.coroutines.withContext
  * transport must actually be ROOT, and the command is chosen from a fixed
  * enum — never supplied as text by a model.
  */
-class PrivilegedDiagnosticsTool : VerifiableBridgeTool {
+class PrivilegedDiagnosticsTool(private val context: Context) : VerifiableBridgeTool {
     override val id: String = "root.diagnostics"
     override val capability: BridgeCapability = BridgeCapability.PROCESS_INSPECTION
     override val risk: ActionRisk = ActionRisk.SENSITIVE
-    override val supportedTransports: Set<BridgeTransport> = setOf(BridgeTransport.ROOT)
+    override val supportedTransports: Set<BridgeTransport> = setOf(BridgeTransport.SHIZUKU_ADB, BridgeTransport.ROOT)
 
     override suspend fun execute(request: BridgeRequest, transport: BridgeTransport): BridgeResult {
-        if (transport != BridgeTransport.ROOT) {
-            return BridgeResult(false, transport, "Инструмент работает только через Root-транспорт.", errorCode = "E_TRANSPORT")
+        if (transport != BridgeTransport.ROOT && transport != BridgeTransport.SHIZUKU_ADB) {
+            return BridgeResult(
+                false, transport,
+                "Инструмент работает только через привилегированный транспорт (Shizuku или Root).",
+                errorCode = "E_TRANSPORT"
+            )
         }
         val commandId = request.arguments["command"].orEmpty()
         val command = RootShellExecutor.PrivilegedCommand.byId(commandId)
@@ -28,9 +33,12 @@ class PrivilegedDiagnosticsTool : VerifiableBridgeTool {
                 errorCode = "E_UNKNOWN_COMMAND"
             )
 
-        val outcome = withContext(Dispatchers.IO) { RootShellExecutor.run(command) }
+        val outcome = withContext(Dispatchers.IO) {
+            if (transport == BridgeTransport.SHIZUKU_ADB) ShizukuTransport.run(context, command)
+            else RootShellExecutor.run(command)
+        }
         if (!outcome.success) {
-            return BridgeResult(false, transport, outcome.detail, errorCode = "E_ROOT_FAILED")
+            return BridgeResult(false, transport, outcome.detail, errorCode = "E_PRIVILEGED_FAILED")
         }
 
         val structured = when (command) {
@@ -63,7 +71,8 @@ class PrivilegedDiagnosticsTool : VerifiableBridgeTool {
             data = structured + mapOf(
                 "command" to command.id,
                 "command_title" to command.title,
-                "exit_code" to (outcome.exitCode?.toString() ?: "нет")
+                "exit_code" to (outcome.exitCode?.toString() ?: "нет"),
+                "transport" to transport.name
             )
         )
     }

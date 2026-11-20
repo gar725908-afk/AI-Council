@@ -1,5 +1,6 @@
 package ai.hybrid.commandcenter.androidbridge
 
+import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -85,14 +86,16 @@ class RootOutputParserTest {
     }
 }
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk = [35])
 class PrivilegedDiagnosticsToolTest {
 
-    private val tool = PrivilegedDiagnosticsTool()
+    private val tool = PrivilegedDiagnosticsTool(ApplicationProvider.getApplicationContext())
 
     @Test
     fun `tool is sensitive and root-only`() {
         assertEquals(ActionRisk.SENSITIVE, tool.risk)
-        assertEquals(setOf(BridgeTransport.ROOT), tool.supportedTransports)
+        assertEquals(setOf(BridgeTransport.SHIZUKU_ADB, BridgeTransport.ROOT), tool.supportedTransports)
         assertEquals(BridgeCapability.PROCESS_INSPECTION, tool.capability)
     }
 

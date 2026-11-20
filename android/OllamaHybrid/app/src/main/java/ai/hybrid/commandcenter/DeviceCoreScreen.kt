@@ -19,6 +19,7 @@ import ai.hybrid.commandcenter.androidbridge.PrivilegedDiagnosticsTool
 import ai.hybrid.commandcenter.androidbridge.ReadScreenTool
 import ai.hybrid.commandcenter.androidbridge.ScreenCaptureGrant
 import ai.hybrid.commandcenter.androidbridge.ScreenCaptureTool
+import ai.hybrid.commandcenter.androidbridge.ShizukuTransport
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.app.Activity
@@ -104,7 +105,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
     val toolRegistry = remember {
         BridgeToolRegistry().apply {
             register(DeviceDiagnosticsTool(inspector))
-            register(PrivilegedDiagnosticsTool())
+            register(PrivilegedDiagnosticsTool(context.applicationContext))
             register(ReadScreenTool())
             register(TapElementTool())
             register(ScreenCaptureTool(context.applicationContext))
@@ -234,15 +235,30 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                     statusColor = SignalGreen,
                     detail = "Публичные Android API, SAF и Intent. Root не требуется."
                 )
+                val shizukuStatus = remember(shizukuInstalled, measuredAtLabel) {
+                    ShizukuTransport.status(shizukuInstalled)
+                }
                 PrivilegeRow(
                     name = "Shizuku",
-                    status = if (shizukuInstalled) "НЕ ПОДКЛЮЧЁН" else "НЕ НАЙДЕН",
-                    statusColor = SignalAmber,
-                    detail = if (shizukuInstalled)
-                        "Приложение Shizuku установлено; привязка Binder ещё не реализована."
-                    else
-                        "Приложение Shizuku не установлено на устройстве."
+                    status = when (shizukuStatus.state) {
+                        ShizukuTransport.State.READY -> "ПОДКЛЮЧЁН (ADB)"
+                        ShizukuTransport.State.PERMISSION_REQUIRED -> "НУЖНО РАЗРЕШЕНИЕ"
+                        ShizukuTransport.State.SERVICE_NOT_RUNNING -> "СЛУЖБА НЕ ЗАПУЩЕНА"
+                        ShizukuTransport.State.VERSION_TOO_OLD -> "УСТАРЕВШАЯ ВЕРСИЯ"
+                        ShizukuTransport.State.NOT_INSTALLED -> "НЕ НАЙДЕН"
+                    },
+                    statusColor = if (shizukuStatus.usable) SignalGreen else SignalAmber,
+                    detail = shizukuStatus.detail
                 )
+                if (shizukuStatus.state == ShizukuTransport.State.PERMISSION_REQUIRED) {
+                    OutlinedButton(
+                        onClick = {
+                            ShizukuTransport.requestPermission()
+                            refresh()
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                    ) { Text("Запросить разрешение Shizuku", fontSize = 12.sp) }
+                }
                 val root = rootResult
                 PrivilegeRow(
                     name = "Root",
@@ -547,18 +563,31 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         item {
             SectionCard(title = "ПРИВИЛЕГИРОВАННЫЕ ИНСТРУМЕНТЫ (ROOT)", accent = Violet) {
                 val rootConfirmed = rootResult?.available == true
+                val shizukuUsable = remember(measuredAtLabel) {
+                    ShizukuTransport.status(shizukuInstalled).usable
+                }
+                val privilegedTransport = when {
+                    shizukuUsable -> BridgeTransport.SHIZUKU_ADB
+                    rootConfirmed -> BridgeTransport.ROOT
+                    else -> null
+                }
                 Text(
                     "Модель не может выполнить произвольную команду: доступен только фиксированный " +
                         "набор диагностических команд. Каждый запуск требует отдельного подтверждения " +
                         "и попадает в аудит.",
                     color = SecondaryText, fontSize = 11.sp
                 )
-                if (!rootConfirmed) {
+                if (privilegedTransport == null) {
                     Text(
-                        "Root не подтверждён. Нажмите «Проверить Root» выше — без uid=0 инструменты недоступны.",
+                        "Нет привилегированного доступа. Подключите Shizuku выше или нажмите «Проверить Root».",
                         color = SignalAmber, fontSize = 11.sp
                     )
                 } else {
+                    Text(
+                        "Транспорт: " + if (privilegedTransport == BridgeTransport.SHIZUKU_ADB)
+                            "Shizuku (права ADB)" else "Root (uid=0)",
+                        color = SignalGreen, fontSize = 11.sp
+                    )
                     Text("Команда:", color = SecondaryText, fontSize = 11.sp)
                     RootShellExecutor.PrivilegedCommand.entries.forEach { command ->
                         val selected = privilegedCommand == command
@@ -581,7 +610,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                                 privilegedRequestId = UUID.randomUUID().toString()
                                 privilegedOutcome =
                                     "Подтвердите выполнение «" + privilegedCommand.title +
-                                        "» с правами root. Одобрение одноразовое."
+                                        "». Одобрение одноразовое."
                                 return@OutlinedButton
                             }
                             privilegedArmed = false
@@ -592,8 +621,8 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                                 val journal = (context.applicationContext as NexusApplication).missionJournal
                                 val outcome = withContext(Dispatchers.IO) {
                                     val inputs = inspector.capabilityInputs(
-                                        rootProbeAttempted = true,
-                                        rootConfirmed = true
+                                        rootProbeAttempted = rootProbeAttempted,
+                                        rootConfirmed = rootConfirmed
                                     )
                                     BridgeGateway(
                                         registry = toolRegistry,
@@ -608,7 +637,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                                             )
                                         ),
                                         snapshot = CapabilityMatrix.snapshot(inputs, System.currentTimeMillis()),
-                                        availableTransports = setOf(BridgeTransport.ROOT),
+                                        availableTransports = setOf(privilegedTransport),
                                         initiator = "user"
                                     )
                                 }
@@ -635,7 +664,7 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                         Text(
                             when {
                                 privilegedRunning -> "Выполняется…"
-                                privilegedArmed -> "ПОДТВЕРДИТЬ ЗАПУСК С ROOT"
+                                privilegedArmed -> "ПОДТВЕРДИТЬ ПРИВИЛЕГИРОВАННЫЙ ЗАПУСК"
                                 else -> "Выполнить: " + privilegedCommand.title
                             },
                             fontSize = 12.sp

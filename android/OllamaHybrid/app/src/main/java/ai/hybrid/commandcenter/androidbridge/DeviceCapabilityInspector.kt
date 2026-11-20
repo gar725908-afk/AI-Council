@@ -34,7 +34,9 @@ data class CapabilityInputs(
     val accessibilityServiceEnabled: Boolean,
     val rootProbeAttempted: Boolean,
     val rootConfirmed: Boolean,
-    val networkAvailable: Boolean = true
+    val networkAvailable: Boolean = true,
+    /** True only when Shizuku's binder is alive AND permission is granted. */
+    val shizukuReady: Boolean = false
 )
 
 /**
@@ -46,8 +48,9 @@ object CapabilityMatrix {
     fun privileges(inputs: CapabilityInputs): Set<BridgePrivilege> = buildSet {
         add(BridgePrivilege.STANDARD)
         if (inputs.rootConfirmed) add(BridgePrivilege.DIRECT_ROOT)
-        // Shizuku privileges require a live Binder binding, which is not implemented yet.
-        // The mere presence of the Shizuku app never grants SHIZUKU_ADB / SHIZUKU_ROOT.
+        // Installing Shizuku grants nothing: only a live binder plus a granted
+        // permission (shizukuReady) counts as a privilege.
+        if (inputs.shizukuReady) add(BridgePrivilege.SHIZUKU_ADB)
     }
 
     fun derive(inputs: CapabilityInputs): List<CapabilityState> = listOf(
@@ -142,6 +145,12 @@ object CapabilityMatrix {
 
     private fun privilegedState(capability: BridgeCapability, inputs: CapabilityInputs): CapabilityState =
         when {
+            inputs.shizukuReady -> CapabilityState(
+                capability,
+                CapabilityAvailability.DEGRADED,
+                BridgeTransport.SHIZUKU_ADB,
+                "Shizuku подключён (права ADB); типизированные инструменты в разработке"
+            )
             inputs.rootConfirmed -> CapabilityState(
                 capability,
                 CapabilityAvailability.DEGRADED,
@@ -156,9 +165,9 @@ object CapabilityMatrix {
             )
             inputs.shizukuInstalled -> CapabilityState(
                 capability,
-                CapabilityAvailability.UNAVAILABLE,
+                CapabilityAvailability.PERMISSION_REQUIRED,
                 null,
-                "Shizuku установлен, но привязка Binder не реализована; Root не проверялся"
+                "Shizuku установлен: запустите службу и выдайте разрешение NEXUS"
             )
             else -> CapabilityState(
                 capability,
@@ -230,16 +239,19 @@ class DeviceInspector(private val context: Context) {
         )
     }
 
-    fun capabilityInputs(rootProbeAttempted: Boolean, rootConfirmed: Boolean): CapabilityInputs =
-        CapabilityInputs(
+    fun capabilityInputs(rootProbeAttempted: Boolean, rootConfirmed: Boolean): CapabilityInputs {
+        val shizukuInstalled = isPackageInstalled(SHIZUKU_PACKAGE)
+        return CapabilityInputs(
             sdkInt = Build.VERSION.SDK_INT,
             notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled(),
-            shizukuInstalled = isPackageInstalled(SHIZUKU_PACKAGE),
+            shizukuInstalled = shizukuInstalled,
             accessibilityServiceEnabled = isOwnAccessibilityServiceEnabled(),
             rootProbeAttempted = rootProbeAttempted,
             rootConfirmed = rootConfirmed,
-            networkAvailable = networkLabel() != "Нет соединения"
+            networkAvailable = networkLabel() != "Нет соединения",
+            shizukuReady = ShizukuTransport.status(shizukuInstalled).usable
         )
+    }
 
     private fun thermalStatus(): Int? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
