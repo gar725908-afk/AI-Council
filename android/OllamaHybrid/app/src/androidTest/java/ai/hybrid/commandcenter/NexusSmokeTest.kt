@@ -2,6 +2,7 @@ package ai.hybrid.commandcenter
 
 import android.graphics.Bitmap
 import android.util.Log
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -14,7 +15,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import org.junit.FixMethodOrder
 import org.junit.Test
+import org.junit.runners.MethodSorters
 import org.junit.runner.RunWith
 import java.io.File
 
@@ -27,6 +30,7 @@ import java.io.File
  * Arguments: ollamaUrl (default http://10.0.2.2:11434), ollamaModel.
  */
 @RunWith(AndroidJUnit4::class)
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 class NexusSmokeTest {
 
     @get:Rule
@@ -58,7 +62,7 @@ class NexusSmokeTest {
     private fun count(tag: String) = compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().size
 
     @Test
-    fun ownerJourney() {
+    fun a_ownerJourney() {
         // 1. First launch: the core setup opens by itself.
         awaitTag("core-setup")
         shot("01_first_launch_setup")
@@ -131,5 +135,45 @@ class NexusSmokeTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitTag("composer")
         shot("13_back_to_chat")
+    }
+
+    /**
+     * The path most owners will pick: a model on the phone itself. Downloads
+     * Qwen3 0.6B (≈409 MB) through the wizard, checks SHA-256, activates it and
+     * gets an answer from llama.cpp with no server at all.
+     */
+    @Test
+    fun b_onDeviceModelJourney() {
+        awaitTag("tab-settings")
+        compose.onNodeWithTag("tab-settings").performClick()
+        awaitTag("settings-change-core")
+        compose.onNodeWithTag("settings-change-core").performClick()
+        awaitTag("path-phone")
+        compose.onNodeWithTag("path-phone").performClick()
+        awaitTag("download-qwen3-0.6b")
+        compose.onNodeWithTag("download-qwen3-0.6b").performScrollTo().performClick()
+        Thread.sleep(6_000)
+        shot("14_phone_downloading", idle = false)
+        compose.waitUntil(1_200_000) {
+            compose.onAllNodesWithTag("setup-done", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithTag("setup-error", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        shot("15_phone_model_ready")
+        assertTrue("the on-device model must download and activate", count("setup-error") == 0)
+        compose.onNodeWithTag("setup-finish").performClick()
+        awaitTag("composer")
+        compose.onNode(hasContentDescription("Новый чат")).performClick()
+        Thread.sleep(1_000)
+        compose.onNodeWithTag("composer").performTextInput("Привет! Ответь одним предложением: что такое NEXUS?")
+        awaitTag("send")
+        compose.onNodeWithTag("send").performClick()
+        Thread.sleep(5_000)
+        shot("16_phone_thinking", idle = false)
+        compose.waitUntil(600_000) {
+            compose.onAllNodes(hasTestTag("nex-message")).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodes(hasTestTag("error-panel")).fetchSemanticsNodes().isNotEmpty()
+        }
+        shot("17_phone_answer")
+        assertTrue("NEX must answer from the on-device model", count("error-panel") == 0)
     }
 }

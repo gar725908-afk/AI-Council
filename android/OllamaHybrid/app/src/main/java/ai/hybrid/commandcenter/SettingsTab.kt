@@ -78,7 +78,7 @@ fun SettingsTab(
                     if (!chat.usesOnDeviceModel) InfoRow("Сервис", chat.providerKind.displayName)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HudButton(if (chat.needsSetup) "Подключить" else "Сменить", onOpenSetup, Modifier.weight(1f),
+                    HudButton(if (chat.needsSetup) "Подключить" else "Сменить", onOpenSetup, Modifier.weight(1f).testTag("settings-change-core"),
                         icon = NexIcons.Zap, accent = if (chat.needsSetup) Cyber.Yellow else Cyber.Cyan)
                     HudButton(
                         if (checking) "Проверяю…" else "Проверить", {

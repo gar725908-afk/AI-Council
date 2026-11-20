@@ -2,8 +2,10 @@ name: NEXUS Android emulator E2E
 
 # Runs the real app on an Android emulator: first launch, core setup against a
 # real Ollama server on the runner (reached from the emulator as 10.0.2.2), a
-# streamed answer, the council, every tab and the voice overlay. Screenshots,
-# a short screen recording and logcat are uploaded as an artifact.
+# streamed answer, the council, every tab and the voice overlay; then the
+# on-device path — Qwen3 0.6B downloaded through the wizard and answering via
+# llama.cpp (x86_64 copy of the engine, CI only). Screenshots, a short screen
+# recording and logcat are uploaded as an artifact.
 
 on:
   push:
@@ -45,7 +47,7 @@ jobs:
 
       - name: Build app and test APKs
         working-directory: android/OllamaHybrid
-        run: gradle --no-daemon --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
+        run: gradle --no-daemon --stacktrace -Pnexus.emulatorAbi=true :app:assembleDebug :app:assembleDebugAndroidTest
 
       - name: Start Ollama with a small model on the runner
         run: |
@@ -68,6 +70,8 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
+          ram-size: 4096M
+          disk-size: 6000M
           disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
           working-directory: android/OllamaHybrid

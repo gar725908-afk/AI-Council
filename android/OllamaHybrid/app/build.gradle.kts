@@ -25,7 +25,12 @@ android {
         versionCode = nexusVersionCode
         versionName = nexusVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters += "arm64-v8a" }
+        ndk {
+            abiFilters += "arm64-v8a"
+            // CI emulator only: an x86_64 copy of the native engine so the on-device
+            // model path runs natively on the x86_64 emulator. Phone APKs stay arm64.
+            if (providers.gradleProperty("nexus.emulatorAbi").orNull == "true") abiFilters += "x86_64"
+        }
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
