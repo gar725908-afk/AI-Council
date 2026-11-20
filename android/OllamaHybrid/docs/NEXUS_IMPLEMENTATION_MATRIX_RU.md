@@ -7,7 +7,7 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 - Ветка: `nexus/genesis-foundation`
 - Базовый HEAD передачи: `ff35fbca9a331e832b81378e25b4c45499d0a92c`
 - Обновлено: 2026-11-20, после серии срезов (см. журнал ниже)
-- Юнит-тестов: 123 (включая JVM-рендер экранов), локальный прогон и CI зелёные
+- Юнит-тестов: 166 (включая JVM-рендер экранов), lint: 0 ошибок; локальный прогон и CI зелёные
 - CI: `nexus-android-debug.yml` (тесты + debug APK), `android-build.yml` (валидация)
 
 Шкала статусов (по разделу 14 ТЗ), показывается только реально достигнутый:
@@ -43,23 +43,41 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 | Локальный Manager/Council, журнал миссий (10.1) | до передачи: `LocalFirstCouncil`, `MissionJournal` | CI Build | `LocalFirstCouncilTest`, `MissionStateMachineTest` |
 | Tool Gateway: конвейер, одобрения, аудит (6.5) | `androidbridge/BridgeGateway.kt`, journal v3 `tool_audit` | Unit Tested | `BridgeGatewayTest` (13) |
 | Первый типизированный инструмент device.diagnostics (6.5, 7) | `DeviceDiagnosticsTool.kt` + карточка на Device Core | CI Build | через `BridgeGatewayTest` |
-| JVM-рендер каждого основного экрана (14.2 UI regression) | `ScreenRenderSmokeTest.kt` (Robolectric offline) | Unit Tested | 3 рендер-теста |
+| JVM-рендер каждого основного экрана (14.2 UI regression) | `ScreenRenderSmokeTest.kt` (Robolectric offline) | Unit Tested | 8 рендер-тестов |
+| Информационная архитектура по разделу 4 (Deck/Studio/Council/Browser/Archive/System) | `MainActivity.kt`, `SystemScreen.kt` | CI Build | рендер-тесты |
+| Archive: импорт через SAF, честные парсеры, SHA-256 (4.7) | `MaterialLibrary.kt`, `MaterialTextExtractor.kt`, `ArchiveScreen.kt` | Unit Tested | `MaterialLibraryTest` (Robolectric), extractor (4) |
+| Archive: поиск с точными цитатами и позицией (4.7) | `LibrarySearch.kt` | Unit Tested | `LibrarySearchTest` (6) |
+| Материал/страница как источник в Studio и Council (4.7) | `MaterialContext.kt` | Unit Tested | `MaterialContextTest` (4) |
+| Cyber Browser: WebView-песочница, политика адресов, Agent Dock (4.4) | `BrowserScreen.kt`, `BrowserUrlPolicy.kt` | Unit Tested | `BrowserUrlPolicyTest` (7) + рендер |
+| Settings: данные/приватность/экспорт/диагностика/About (4.9) | `SystemScreen.kt` (`SettingsPanel`) | CI Build | рендер-тест |
+| Экспорт миссий в JSON без секретов (4.7, 6.1) | `MissionExport.kt` | Unit Tested | `MissionExportTest` (3) |
+| Resource Governor: нагрев/заряд/память (11.2) | `ResourceGovernor.kt` + Studio/Model Center | Unit Tested | `ResourceGovernorTest` (6) |
+| Permission Center, каталог = манифест (7) | `PermissionCatalog.kt` + Device Core | Unit Tested | `PermissionCatalogTest` (4) |
+| Evolution Observatory: предложения, approve/reject, rollback, аудит (11.1) | до передачи: `NexusEvolutionExecutor` + Model Center | CI Build | `NexusEvolutionExecutorTest` |
+| Иконка приложения в визуальном языке NEXUS (5) | `res/mipmap-anydpi-v26`, `drawable/ic_launcher_foreground.xml` | CI Build | lint |
 
 ## Не реализовано (честный список, по 13.3 с поправками)
 
-- Cyber Browser целиком: сессии, вкладки, история, загрузки, Agent Dock (4.4).
+- Cyber Browser: вкладки, постоянная история, загрузки, полный Agent Dock
+  (4.4) — сделан первый срез: песочница WebView, политика адресов, текст
+  страницы в Studio/Council/Архив.
 - MCP-адаптеры поверх Gateway и верификатор постусловий сверх типизированного
   результата (6.5): сам конвейер Gateway с одобрениями и аудитом уже реализован.
 - Интегрированный Android Bridge: каталог типизированных инструментов,
   Shizuku Binder, Direct Root executor, Permission Center (7). Сейчас есть
   контракты, политика, Root-проба и честная матрица возможностей.
 - Accessibility / MediaProjection / Vision (7).
-- Material Library / Archive: импорт, парсеры, поиск, цитаты (4.7).
+- Archive: парсеры PDF/DOCX, семантический поиск (4.7) — импорт текстовых
+  форматов, лексический поиск с цитатами и подача в Studio/Council сделаны.
 - NEXUS Voice (4.8).
-- Полный Evolution Observatory и Resource Governor (11).
+- Resource Governor: только гейт перед запуском (11.2); фоновый мониторинг
+  во время длительных задач не реализован. Evolution Observatory — есть в
+  Model Center.
 - NEXUS LINK, NEXUS FORGE (10.4, 12).
 - OAuth-коллбеки коннекторов и их downstream-операции (8.2).
-- Экран Settings по группам 4.9 (сделан только блок About на Device Core).
+- Settings: группы «Внешний вид» (режимы эффектов) и «Модели по умолчанию»
+  (4.9) — появятся вместе с реальными эффектами и выбором; остальные группы
+  сделаны.
 - Пауза загрузки как отдельная кнопка UI (докачка работает через
   отмену + повторный запуск; выделенная кнопка «Пауза» — следующий шаг).
 - **Физическая проверка на телефоне: загрузка/генерация локальной модели,
@@ -80,6 +98,15 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 11. `5aed120` Матрица реализации (этот документ)
 12. `ad9078f` Tool Gateway: конвейер исполнения, аудит в журнале v3, device.diagnostics (+13)
 13. `2b030c2` Robolectric: JVM-рендер smoke-тесты всех основных экранов (+3)
+14. `4212adb` Матрица обновлена
+15. `73ad8ae` Archive / Material Library: импорт SAF, парсеры, поиск с цитатами (+16)
+16. `19d1d1a` Материал Архива → AI Studio как недоверенный источник (+4)
+17. `d423eea` Навигация по разделу 4 + Settings (+2)
+18. `23ab75b` Cyber Browser: первый срез (+8)
+19. `3549e51` Resource Governor (+6)
+20. `12ac901` Permission Center (+4)
+21. `2a277ba` Материалы/страницы → Council; экспорт миссий в JSON (+3)
+22. `5dbb229` Иконка NEXUS, lint-гигиена
 
 ## Расхождения документации
 
