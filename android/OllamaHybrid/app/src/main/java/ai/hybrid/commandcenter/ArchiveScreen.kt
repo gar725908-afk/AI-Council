@@ -6,7 +6,9 @@ import ai.hybrid.commandcenter.nexus.LibrarySearch
 import ai.hybrid.commandcenter.nexus.MaterialContext
 import ai.hybrid.commandcenter.nexus.MaterialLibrary
 import ai.hybrid.commandcenter.nexus.MaterialTextExtractor
+import ai.hybrid.commandcenter.nexus.PdfOperations
 import ai.hybrid.commandcenter.nexus.PdfPageRenderer
+import java.io.File
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
@@ -143,6 +145,7 @@ fun ArchiveScreen(
             item = viewing,
             library = library,
             onBack = { viewingItem = null },
+            onChanged = { refresh() },
             modifier = modifier
         )
         return
@@ -349,18 +352,47 @@ private fun MaterialViewer(
     item: LibraryItem,
     library: MaterialLibrary,
     onBack: () -> Unit,
+    onChanged: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scope = rememberCoroutineScope()
     val widthPx = (LocalConfiguration.current.screenWidthDp * 2.5f).toInt().coerceIn(600, 2000)
     var pageCount by remember(item.id) { mutableStateOf(-1) }
     var text by remember(item.id) { mutableStateOf<String?>(null) }
     val isPdf = item.format == "pdf" && item.originalPath != null
+    var rangeFrom by remember(item.id) { mutableStateOf("1") }
+    var rangeTo by remember(item.id) { mutableStateOf("1") }
+    var otherPdfs by remember(item.id) { mutableStateOf<List<LibraryItem>>(emptyList()) }
+    var opStatus by remember(item.id) { mutableStateOf<String?>(null) }
+    var opError by remember(item.id) { mutableStateOf(false) }
+
+    fun importDerived(name: String, bytes: ByteArray, pages: Int) {
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { library.import(name, bytes) }
+            when (result) {
+                is LibraryImportResult.Imported -> {
+                    opStatus = "Создан материал «${result.item.displayName}» ($pages стр.)"
+                    opError = false
+                    onChanged()
+                }
+                is LibraryImportResult.Rejected -> {
+                    opStatus = "Результат не сохранён: " + result.reason
+                    opError = true
+                }
+            }
+        }
+    }
 
     LaunchedEffect(item.id) {
         withContext(Dispatchers.IO) {
-            if (isPdf) pageCount = PdfPageRenderer.pageCount(item.originalPath!!)
-            else text = library.getText(item.id)
+            if (isPdf) {
+                pageCount = PdfPageRenderer.pageCount(item.originalPath!!)
+                otherPdfs = library.listItems().filter { it.id != item.id && it.format == "pdf" && it.originalPath != null }
+            } else {
+                text = library.getText(item.id)
+            }
         }
+        if (isPdf && pageCount > 0) rangeTo = pageCount.toString()
     }
 
     LazyColumn(
@@ -389,6 +421,78 @@ private fun MaterialViewer(
                 else item.format.uppercase() + " · извлечённый текст · ${item.textChars} симв.",
                 color = SecondaryText, fontSize = 10.sp
             )
+        }
+        if (isPdf) {
+            item {
+                Surface(color = SurfaceDeep, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("ОПЕРАЦИИ С PDF", color = Violet, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = rangeFrom, onValueChange = { rangeFrom = it.filter(Char::isDigit).take(5) },
+                                label = { Text("с") }, singleLine = true, modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = rangeTo, onValueChange = { rangeTo = it.filter(Char::isDigit).take(5) },
+                                label = { Text("по") }, singleLine = true, modifier = Modifier.weight(1f)
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    val from = rangeFrom.toIntOrNull() ?: 0
+                                    val to = rangeTo.toIntOrNull() ?: 0
+                                    scope.launch {
+                                        val result = withContext(Dispatchers.IO) {
+                                            PdfOperations.extractPages(File(item.originalPath!!).readBytes(), from, to)
+                                        }
+                                        when (result) {
+                                            is PdfOperations.Result.Document -> importDerived(
+                                                item.displayName.removeSuffix(".pdf") + " (стр. $from–$to).pdf",
+                                                result.bytes, result.pages
+                                            )
+                                            is PdfOperations.Result.Failed -> { opStatus = result.reason; opError = true }
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
+                            ) { Text("Извлечь", fontSize = 11.sp) }
+                        }
+                        if (otherPdfs.isEmpty()) {
+                            Text("Объединение: добавьте в Архив второй PDF.", color = SecondaryText, fontSize = 11.sp)
+                        } else {
+                            Text("Объединить с (добавится после текущего):", color = SecondaryText, fontSize = 11.sp)
+                            otherPdfs.take(8).forEach { other ->
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            val result = withContext(Dispatchers.IO) {
+                                                PdfOperations.merge(
+                                                    listOf(
+                                                        File(item.originalPath!!).readBytes(),
+                                                        File(other.originalPath!!).readBytes()
+                                                    )
+                                                )
+                                            }
+                                            when (result) {
+                                                is PdfOperations.Result.Document -> importDerived(
+                                                    item.displayName.removeSuffix(".pdf") + " + " +
+                                                        other.displayName.removeSuffix(".pdf") + ".pdf",
+                                                    result.bytes, result.pages
+                                                )
+                                                is PdfOperations.Result.Failed -> { opStatus = result.reason; opError = true }
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                                ) { Text("+ " + other.displayName.take(32), fontSize = 11.sp) }
+                            }
+                        }
+                        val status = opStatus
+                        if (status != null) {
+                            Text(status, color = if (opError) SignalRed else SignalGreen, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
         }
         if (isPdf) {
             if (pageCount == 0) {
