@@ -1,5 +1,7 @@
 package ai.hybrid.commandcenter
 
+import ai.hybrid.commandcenter.ui.LocalEffects
+import ai.hybrid.commandcenter.ui.rememberEffectsController
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +13,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +40,7 @@ enum class NexusDestination(val label: String, val glyph: String) {
 }
 
 /** Targets other screens may ask the shell to open. */
-enum class DeckTarget { STUDIO, COUNCIL, MODELS, DEVICE }
+enum class DeckTarget { STUDIO, COUNCIL, MODELS, DEVICE, BROWSER, ARCHIVE, REPAIRS, SETTINGS }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +60,9 @@ private fun NexusApp() {
         onBackground = PrimaryText,
         onSurface = PrimaryText
     )
+    val effects = rememberEffectsController()
     MaterialTheme(colorScheme = colors) {
+      CompositionLocalProvider(LocalEffects provides effects) {
         var selected by remember { mutableStateOf(NexusDestination.DECK) }
         var systemTab by remember { mutableIntStateOf(0) }
         var pendingPrompt by remember { mutableStateOf<String?>(null) }
@@ -72,6 +77,16 @@ private fun NexusApp() {
                 }
                 DeckTarget.DEVICE -> {
                     systemTab = SystemTab.DEVICE.ordinal
+                    selected = NexusDestination.SYSTEM
+                }
+                DeckTarget.BROWSER -> selected = NexusDestination.BROWSER
+                DeckTarget.ARCHIVE -> selected = NexusDestination.ARCHIVE
+                DeckTarget.REPAIRS -> {
+                    systemTab = SystemTab.REPAIRS.ordinal
+                    selected = NexusDestination.SYSTEM
+                }
+                DeckTarget.SETTINGS -> {
+                    systemTab = SystemTab.SETTINGS.ordinal
                     selected = NexusDestination.SYSTEM
                 }
             }
@@ -144,5 +159,6 @@ private fun NexusApp() {
                 )
             }
         }
+      }
     }
 }

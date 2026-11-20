@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,7 +42,13 @@ import ai.hybrid.commandcenter.nexus.ResourceGovernor
 import ai.hybrid.commandcenter.nexus.VoiceOutput
 import androidx.compose.runtime.DisposableEffect
 import ai.hybrid.commandcenter.nexus.CouncilAgentEvent
-import ai.hybrid.commandcenter.nexus.CouncilAgentPhase
+import ai.hybrid.commandcenter.ui.ConstellationModel
+import ai.hybrid.commandcenter.ui.CouncilConstellation
+import ai.hybrid.commandcenter.ui.LocalEffects
+import ai.hybrid.commandcenter.ui.NexAvatar
+import ai.hybrid.commandcenter.ui.NexState
+import ai.hybrid.commandcenter.ui.NexusColors
+import ai.hybrid.commandcenter.ui.TelemetryRuler
 import ai.hybrid.commandcenter.nexus.CouncilMissionRunner
 import ai.hybrid.commandcenter.nexus.CouncilOrchestrator
 import ai.hybrid.commandcenter.nexus.CouncilModelRoute
@@ -126,9 +133,12 @@ fun AiStudioScreen(
     var answer by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Провайдер не проверен") }
     var isRunning by remember { mutableStateOf(false) }
+    var lastRunFailed by remember { mutableStateOf(false) }
     var activeRun by remember { mutableStateOf<Job?>(null) }
     var recentMissions by remember { mutableStateOf(emptyList<ai.hybrid.commandcenter.nexus.MissionRecord>()) }
     var liveAgentEvents by remember { mutableStateOf(emptyMap<String, CouncilAgentEvent>()) }
+    var agentEventLog by remember { mutableStateOf(emptyList<CouncilAgentEvent>()) }
+    var lastCouncilStatus by remember { mutableStateOf<MissionStatus?>(null) }
     val voiceOutput = remember { VoiceOutput(context.applicationContext) }
     var speakStatus by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) { onDispose { voiceOutput.shutdown() } }
@@ -186,12 +196,22 @@ fun AiStudioScreen(
             .padding(horizontal = 18.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            if (councilMode) "NEXUS COUNCIL" else "NEXUS AI STUDIO",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // NEX mirrors this screen's real state: working only while a request runs.
+            NexAvatar(
+                state = when {
+                    isRunning -> NexState.THINKING
+                    lastRunFailed -> NexState.ERROR
+                    else -> NexState.STANDBY
+                }
+            )
+            Text(
+                if (councilMode) "NEXUS COUNCIL" else "NEXUS AI STUDIO",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
         Text(
             if (councilMode) {
                 "Коллективное выполнение: восемь ролей, не более трёх параллельных агентов по умолчанию."
@@ -545,9 +565,14 @@ fun AiStudioScreen(
                 val submittedPrompt = prompt
                 activeRun = scope.launch {
                     isRunning = true
+                    lastRunFailed = false
                     answer = ""
                     status = if (councilMode) "Совет анализирует задачу…" else "Модель отвечает…"
-                    if (councilMode) liveAgentEvents = emptyMap()
+                    if (councilMode) {
+                        liveAgentEvents = emptyMap()
+                        agentEventLog = emptyList()
+                        lastCouncilStatus = null
+                    }
                     var missionId: String? = null
                     try {
                         require(submittedPrompt.isNotBlank() && submittedPrompt.length <= 32_000) {
@@ -635,6 +660,7 @@ fun AiStudioScreen(
                                     useOnDeviceModel = usesOnDeviceModel,
                                     onAgentEvent = { event ->
                                         liveAgentEvents = liveAgentEvents + (event.agentId to event)
+                                        agentEventLog = (agentEventLog + event).takeLast(40)
                                     }
                                 )
                             )
@@ -708,8 +734,12 @@ fun AiStudioScreen(
                             }
                             journal.getRecentMissions(8)
                         }.also { recentMissions = it }
+                        lastRunFailed = true
                         status = error.message ?: "Ошибка выполнения запроса"
                     } finally {
+                        if (councilMode) {
+                            lastCouncilStatus = recentMissions.firstOrNull { it.id == missionId }?.status
+                        }
                         isRunning = false
                         activeRun = null
                     }
@@ -733,21 +763,15 @@ fun AiStudioScreen(
                 Text("Остановить текущую задачу")
             }
         }
-        if (councilMode && liveAgentEvents.isNotEmpty()) {
-            Text(
-                "СОБЫТИЯ АГЕНТОВ (из оркестратора)",
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary
+        if (councilMode) {
+            val nodes = ConstellationModel.fromLive(councilAgents, liveAgentEvents)
+            TelemetryRuler("NEURAL CONSTELLATION", accent = NexusColors.NeonViolet)
+            CouncilConstellation(
+                nodes = nodes,
+                manager = ConstellationModel.managerPhase(nodes, isRunning, lastCouncilStatus),
+                mode = LocalEffects.current.effective,
+                events = agentEventLog
             )
-            councilAgents.forEach { agent ->
-                val event = liveAgentEvents[agent.id]
-                if (event != null) {
-                    Text(
-                        "${agent.name}: " + agentPhaseLabel(event),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-            }
         }
         if (answer.isNotBlank() && !isRunning) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -818,13 +842,6 @@ fun AiStudioScreen(
 }
 
 
-
-private fun agentPhaseLabel(event: CouncilAgentEvent): String = when (event.phase) {
-    CouncilAgentPhase.ASSIGNED -> "назначен"
-    CouncilAgentPhase.RUNNING -> "выполняется…"
-    CouncilAgentPhase.COMPLETED -> "выполнено"
-    CouncilAgentPhase.FAILED -> "ошибка" + (event.detail?.let { ": " + it.take(60) } ?: "")
-}
 
 private fun defaultProviderEndpoint(kind: ProviderKind): String =
     ai.hybrid.commandcenter.nexus.defaultProviderEndpoint(kind)

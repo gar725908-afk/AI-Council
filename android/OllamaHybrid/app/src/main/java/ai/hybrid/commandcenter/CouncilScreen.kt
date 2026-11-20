@@ -1,5 +1,8 @@
 package ai.hybrid.commandcenter
 
+import ai.hybrid.commandcenter.ui.ConstellationModel
+import ai.hybrid.commandcenter.ui.CouncilConstellation
+import ai.hybrid.commandcenter.ui.EffectsMode
 import ai.hybrid.commandcenter.nexus.AgentJournalRecord
 import ai.hybrid.commandcenter.nexus.CouncilAgent
 import ai.hybrid.commandcenter.nexus.CouncilAgentRole
@@ -125,6 +128,7 @@ private fun CouncilCommandCenter(
     var routes by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var missions by remember { mutableStateOf<List<MissionRecord>>(emptyList()) }
     var agentResults by remember { mutableStateOf<Map<String, List<AgentJournalRecord>>>(emptyMap()) }
+    var latestResults by remember { mutableStateOf<List<AgentJournalRecord>>(emptyList()) }
     var expandedMissionId by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
 
@@ -137,10 +141,12 @@ private fun CouncilCommandCenter(
                 val routeLabels = agents.associate { agent ->
                     agent.id to routeLabel(routingStore, agent.id)
                 }
-                routeLabels to journal.getRecentMissions(10)
+                val recent = journal.getRecentMissions(10)
+                Triple(routeLabels, recent, recent.firstOrNull()?.let { journal.getAgentResults(it.id) }.orEmpty())
             }
             routes = snapshot.first
             missions = snapshot.second
+            latestResults = snapshot.third
             loaded = true
         }
     }
@@ -155,6 +161,27 @@ private fun CouncilCommandCenter(
             Spacer(Modifier.height(18.dp))
             Text("NEXUS COUNCIL", color = PrimaryText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Text("КОМАНДНЫЙ ЦЕНТР · СТАТУСЫ ИЗ ЖУРНАЛА МИССИЙ", color = Violet, fontSize = 11.sp, letterSpacing = 1.sp)
+        }
+
+        item {
+            val latest = missions.firstOrNull()
+            val nodes = ConstellationModel.fromJournal(agents, latestResults)
+            val inFlight = latest?.status in setOf(MissionStatus.QUEUED, MissionStatus.RUNNING, MissionStatus.VERIFYING)
+            CenterCard(title = "NEURAL CONSTELLATION", accent = Violet) {
+                Text(
+                    if (latest == null) "Миссий ещё не было — показан состав совета."
+                    else "Последняя миссия: " + latest.goal.take(90),
+                    color = SecondaryText,
+                    fontSize = 11.sp
+                )
+                CouncilConstellation(
+                    nodes = nodes,
+                    manager = ConstellationModel.managerPhase(nodes, inFlight, latest?.status),
+                    // History from the journal: states only, no replayed motion.
+                    mode = EffectsMode.STATIC,
+                    height = 280.dp
+                )
+            }
         }
 
         item {

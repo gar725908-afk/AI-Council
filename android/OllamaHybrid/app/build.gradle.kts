@@ -95,6 +95,11 @@ tasks.withType<Test>().configureEach {
         systemProperty("robolectric.offline", "true")
         systemProperty("robolectric.dependency.dir", dir.absolutePath)
     }
+    // `gradle :app:testDebugUnitTest -Pnexus.screenshots=true` renders the gallery;
+    // CI runs without it, so screenshots never gate or slow down the build.
+    if (project.findProperty("nexus.screenshots") == "true") {
+        systemProperty("roborazzi.test.record", "true")
+    }
 }
 
 dependencies {
@@ -127,6 +132,9 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    // JVM screenshots of real screens (Apache 2.0). No-op unless recording is requested.
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.43.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.43.0")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     // Real JVM JSON implementation; Android's unit-test stubs throw "Method not mocked".

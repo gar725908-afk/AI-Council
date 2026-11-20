@@ -1,6 +1,8 @@
 package ai.hybrid.commandcenter
 
 import ai.hybrid.commandcenter.nexus.MaterialLibrary
+import ai.hybrid.commandcenter.ui.EffectsMode
+import ai.hybrid.commandcenter.ui.LocalEffects
 import ai.hybrid.commandcenter.nexus.MissionExport
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -195,6 +197,8 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
             Text("ДАННЫЕ · ПРИВАТНОСТЬ · ДИАГНОСТИКА", color = Cyan, fontSize = 11.sp, letterSpacing = 1.sp)
         }
 
+        item { EffectsCard() }
+
         item {
             SettingsCard(title = "ХРАНИЛИЩЕ", accent = Cyan) {
                 val current = facts
@@ -305,6 +309,40 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
                 FactText("Вселенная SIRIUS · NEXUS · COUNCIL. Состояние реализации — docs/NEXUS_IMPLEMENTATION_MATRIX_RU.md в репозитории.")
             }
             Spacer(Modifier.height(22.dp))
+        }
+    }
+}
+
+/** Static / Subtle / Experimental per handoff 5; system reduced-motion always wins. */
+@Composable
+private fun EffectsCard() {
+    val effects = LocalEffects.current
+    SettingsCard(title = "ОФОРМЛЕНИЕ И ЭФФЕКТЫ", accent = Violet) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            EffectsMode.entries.forEach { mode ->
+                val selected = effects.choice == mode
+                OutlinedButton(
+                    onClick = { effects.choose(mode) },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (selected) Void else Violet,
+                        containerColor = if (selected) Violet else Color.Transparent
+                    )
+                ) { Text(mode.title, fontSize = 11.sp) }
+            }
+        }
+        FactText(
+            when (effects.choice) {
+                EffectsMode.STATIC -> "Без анимаций: ядро и NEX неподвижны, состояние передаётся цветом и текстом."
+                EffectsMode.SUBTLE -> "Анимация только на реальные события: работа Council, голосовой ввод, готовый результат."
+                EffectsMode.EXPERIMENTAL -> "Ярче свечение и ореолы. Анимации по-прежнему только на реальные события."
+            }
+        )
+        if (effects.effective != effects.choice) {
+            Text(
+                "Сейчас действует «" + effects.effective.title + "»: в системе отключены анимации или включено энергосбережение.",
+                color = SignalAmber,
+                fontSize = 11.sp
+            )
         }
     }
 }

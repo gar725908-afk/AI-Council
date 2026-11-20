@@ -7,7 +7,7 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 - Ветка: `nexus/genesis-foundation`
 - Базовый HEAD передачи: `ff35fbca9a331e832b81378e25b4c45499d0a92c`
 - Обновлено: 2026-11-20
-- Юнит-тестов: 231 (включая JVM-рендер экранов и живой MCP-сервер), локальный прогон и CI зелёные
+- Юнит-тестов: 335 (включая JVM-рендер экранов, галерею скриншотов и живой MCP-сервер), локальный прогон и CI зелёные
 - CI: `nexus-android-debug.yml` (тесты + debug APK), `android-build.yml` (валидация)
 
 Шкала статусов (по разделу 14 ТЗ), показывается только реально достигнутый:
@@ -23,12 +23,13 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 
 | Требование | Код | Статус | Тесты |
 |---|---|---|---|
-| Command Deck на реальных статусах (4.1) | `CommandDeckScreen.kt` | CI Build | рендер-smoke |
-| Command Composer + голосовой ввод (4.1, 4.8) | `CommandDeckScreen.kt`, `nexus/VoiceIO.kt` | CI Build | `VoiceErrorsTest` |
+| Command Deck на реальных статусах (4.1, 5.1) | `CommandDeckScreen.kt`, `DeckModel.kt` | Unit Tested | `DeckModelTest` (12), галерея |
+| Command Portal + голосовой ввод (4.1, 4.8) | `CommandDeckScreen.kt`, `nexus/VoiceIO.kt` | CI Build | `VoiceErrorsTest` |
 | Health check endpoint с latency (4.1, 6.3) | `nexus/ProviderHealthCheck.kt` | Unit Tested | `ProviderHealthCheckTest` (11) |
 | AI Studio: стриминг, история, озвучка ответа (4.2, 4.8) | `AiStudioScreen.kt` | CI Build | частично |
 | Council — командный центр + запуск (4.3) | `CouncilScreen.kt` | CI Build | рендер-smoke |
 | Лента реальных событий агентов (4.3) | `CouncilOrchestrator` events | Unit Tested | `CouncilAgentEventsTest` (4) |
+| Neural Constellation: живая и по журналу (5.3) | `ui/CouncilConstellation.kt` | Unit Tested | `ConstellationModelTest` (5), галерея |
 | Инспектор результатов агентов (4.3) | `CouncilScreen.kt` + `MissionJournal` | CI Build | журнал покрыт |
 | Повтор миссии (6.1) | `CouncilScreen.kt` | CI Build | — |
 | Cyber Browser: вкладки, история, загрузки (4.4) | `BrowserScreen.kt`, `nexus/BrowserTabs.kt`, `nexus/BrowserHistoryStore.kt` | Unit Tested | `BrowserTabsTest` (7) |
@@ -42,6 +43,23 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 | NEXUS Voice: распознавание и синтез (4.8) | `nexus/VoiceIO.kt` | Unit Tested | `VoiceErrorsTest` (2) |
 | Settings: данные, приватность, очистка, экспорт (4.9) | `SystemScreen.kt`, `nexus/MissionExport.kt` | Unit Tested | `MissionExportTest` (3) |
 | About / build information (4.9) | `DeviceCoreScreen.kt`, `SystemScreen.kt` | CI Build | — |
+
+## Визуальный слой и NEX (разделы 2, 5)
+
+| Требование | Код | Статус | Тесты |
+|---|---|---|---|
+| Дизайн-система: палитра, радиусы, отступы, тайминги (5) | `ui/NexusTheme.kt` | CI Build | — |
+| Режимы эффектов Static / Subtle / Experimental, системное «без анимаций» и энергосбережение побеждают (5) | `MotionPolicy`, `EffectsSettings`, карточка в Настройках | Unit Tested | `MotionPolicyTest` (6) |
+| NEX — персона: 8 состояний, реплики только из фактов (2) | `ui/NexMind.kt` | Unit Tested | `NexMindTest` (12) |
+| NEX — облик: кристалл с глазом, мимика по состоянию, моргание по нажатию (2, 5) | `ui/NexVisuals.kt` | CI Build | галерея `03_nex_states` |
+| Core Orbital: 4 измеренных сегмента, тап → обзор системы (5.1) | `ui/NexVisuals.kt`, `DeckModel.kt` | Unit Tested | `DeckModelTest` |
+| Анимации только на реальные события; в покое кадры не запрашиваются (5) | `CoreOrbital`, `CouncilConstellation` | CI Build | — |
+| Мотивы: Neural Constellation, Telemetry Rulers, Holo Markers (5) | `ui/NexDecor.kt` | CI Build | галерея |
+| Active Route, Live Systems, Recent Operations, быстрые действия (5.1) | `CommandDeckScreen.kt` | CI Build | галерея `02_deck_working` |
+| Галерея скриншотов экранов (JVM, Roborazzi) | `gallery/ScreenGalleryTest.kt` | CI Build | 6 сцен, запись по `-Pnexus.screenshots=true` |
+
+Сравнение со старыми скриншотами/видео владельца не выполнялось: их нет в
+репозитории.
 
 ## Runtime и архитектура (разделы 6, 10, 11)
 
@@ -71,22 +89,32 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 | Снимок экрана, одноразовое согласие | `androidbridge/ScreenCapture.kt` | Unit Tested | `ScreenCaptureTest` (5) |
 | Permission Center | `androidbridge/PermissionCatalog.kt`, `DeviceCoreScreen.kt` | Unit Tested | `PermissionCatalogTest` (4, сверка с манифестом) |
 | Наличие Shizuku ≠ привилегия | `CapabilityMatrix.privileges` | Unit Tested | `CapabilityMatrixTest` |
+| Shizuku-транспорт: UserService + AIDL, фиксированные команды | `androidbridge/ShizukuTransport.kt`, `NexusPrivilegedService.kt` | Unit Tested | `ShizukuTransportTest` (10) |
+| Системные настройки: чтение публичных значений, открытие экранов | `androidbridge/SystemSettingsTools.kt` | Unit Tested | `SystemSettingsCatalogTest`, `SystemSettingsToolsTest` (9) |
+
+## Сопровождение и самовосстановление
+
+| Требование | Код | Статус | Тесты |
+|---|---|---|---|
+| OCR сканов PDF на устройстве | `nexus/OcrEngine.kt`, `ArchiveScreen.kt` | Unit Tested | `OcrEngineTest` (5) |
+| NEXUS LINK v1, телефонная сторона (10.4) | `nexus/LinkProtocol.kt` | Unit Tested | `LinkProtocolTest` (15) |
+| Журнал ошибок, перехват падений, отчёт без секретов | `nexus/ErrorJournal.kt`, `NexusApplication.kt` | Unit Tested | `ErrorJournalTest` (5), `ErrorReportTest` (7) |
+| Исправления: исходник с GitHub → Council → ветка + PR (main не трогается) | `androidbridge/GitHubTools.kt`, `nexus/GitHubClient.kt`, `RepairPanel.kt` | Unit Tested | `GitHubClientTest` (6), `GitHubPathsTest` (5) |
 
 ## Не реализовано (честный список)
 
-- **Привязка Shizuku через Binder.** Наличие приложения Shizuku определяется, но
-  привилегий не даёт: нужен `dev.rikka.shizuku:api` и отдельный транспорт.
-  Сейчас привилегированные операции идут только через подтверждённый Root.
-- **Системные настройки как типизированные инструменты** (`SYSTEM_SETTINGS`):
-  честно помечено «недоступно».
-- **OCR для сканов PDF.** Текстовый слой читается, скан без текста отклоняется с
-  объяснением; распознавание изображений не реализовано.
+- **Desktop Agent для NEXUS LINK (10.4).** Протокол v1 и телефонная сторона
+  реализованы (`docs/NEXUS_LINK_PROTOCOL_V1_RU.md`, `LinkProtocolTest`);
+  программа на ПК, которая отвечает по этому протоколу, ещё не написана.
+- **NEXUS FORGE (12)** — сборка и бенчмарк на устройстве.
+- **OCR кириллицы.** Распознавание сканов работает на ML Kit (латиница);
+  кириллические сканы распознаются плохо — это ограничение модели, оно
+  показывается пользователю.
 - **OAuth-коллбеки коннекторов и их downstream-операции (8.2)** сверх MCP.
-- **NEXUS LINK (10.4)** — связь с ПК, и **NEXUS FORGE (12)**.
 - **Физическая проверка на телефоне** — загрузка и генерация локальной модели,
-  Root, Accessibility, снимок экрана, голос, производительность и расход
-  батареи (13.3, 14). Это обязательный шаг приёмки, который нельзя выполнить
-  из облачной среды.
+  Root, Shizuku, Accessibility, снимок экрана, голос, анимации, производительность
+  и расход батареи (13.3, 14). Это обязательный шаг приёмки, который нельзя
+  выполнить из облачной среды.
 
 ## Журнал срезов (все: локальная сборка + тесты → CI зелёный)
 
@@ -122,6 +150,14 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 30. Direct Root executor с фиксированными командами
 31. Accessibility: чтение экрана и нажатия
 32. Снимок экрана с одноразовым согласием
+33. Shizuku: транспорт через Binder/UserService — ADB-привилегии без root
+34. Системные настройки как типизированные инструменты
+35. OCR сканов PDF на устройстве (ML Kit, ограничения указаны)
+36. NEXUS LINK v1: спецификация и ядро на телефоне
+37. Журнал ошибок и перехват падений
+38. Исправления: Council читает исходники с GitHub и предлагает PR
+39. Стабильный порядок строк журналов, изоляция тестов БД
+40. Визуальный слой: дизайн-система, NEX, Core Orbital, новый Command Deck, Neural Constellation, режимы эффектов, галерея скриншотов
 
 ## Расхождения документации
 
