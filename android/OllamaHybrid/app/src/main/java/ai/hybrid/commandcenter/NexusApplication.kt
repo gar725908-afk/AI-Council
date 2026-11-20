@@ -1,5 +1,6 @@
 package ai.hybrid.commandcenter
 
+import ai.hybrid.commandcenter.nexus.ErrorJournal
 import android.app.Application
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import ai.hybrid.commandcenter.nexus.MissionJournal
@@ -18,6 +19,7 @@ class NexusApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        installCrashHandler()
         // Fonts/resources for PDF text extraction (Archive); cheap, one-time.
         PDFBoxResourceLoader.init(applicationContext)
         missionJournal = MissionJournal(this)
@@ -31,4 +33,21 @@ class NexusApplication : Application() {
     }
 
     suspend fun awaitStartupRecovery(): Result<Unit> = startupRecovery.await()
+
+    /** Local error journal; nothing leaves the device without the user sending it. */
+    val errorJournal: ErrorJournal by lazy { ErrorJournal(this) }
+
+    /**
+     * Records an uncaught crash before handing control to the previous handler,
+     * so the app still fails visibly instead of swallowing the error.
+     */
+    private fun installCrashHandler() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                errorJournal.recordThrowable("crash", error, BuildConfig.VERSION_NAME)
+            }
+            previous?.uncaughtException(thread, error)
+        }
+    }
 }
