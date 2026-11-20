@@ -12,6 +12,10 @@ import ai.hybrid.commandcenter.androidbridge.DeviceDiagnostics
 import ai.hybrid.commandcenter.androidbridge.DeviceDiagnosticsTool
 import ai.hybrid.commandcenter.androidbridge.DeviceInspector
 import ai.hybrid.commandcenter.androidbridge.GatewayOutcome
+import ai.hybrid.commandcenter.androidbridge.PermissionCatalog
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import ai.hybrid.commandcenter.androidbridge.RootAccessProbe
 import android.os.Build
 import ai.hybrid.commandcenter.androidbridge.RootProbeResult
@@ -297,6 +301,47 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                         )
                     }
                 }
+            }
+        }
+
+        item {
+            SectionCard(title = "PERMISSION CENTER", accent = Cyan) {
+                Text(
+                    "Что приложение объявляет в манифесте и зачем. Список в коде сверяется с манифестом тестом.",
+                    color = SecondaryText, fontSize = 11.sp
+                )
+                PermissionCatalog.declared.forEach { entry ->
+                    val granted = when (entry.grant) {
+                        PermissionCatalog.Grant.INSTALL_TIME -> "ВЫДАНО ПРИ УСТАНОВКЕ" to SignalGreen
+                        PermissionCatalog.Grant.USER_SETTING ->
+                            if (context.packageManager.canRequestPackageInstalls()) "РАЗРЕШЕНО" to SignalGreen
+                            else "ВЫКЛЮЧЕНО В СИСТЕМЕ" to SignalAmber
+                        PermissionCatalog.Grant.RUNTIME -> "ЗАПРАШИВАЕТСЯ" to SignalAmber
+                    }
+                    PrivilegeRow(
+                        name = entry.title,
+                        status = granted.first,
+                        statusColor = granted.second,
+                        detail = entry.purpose
+                    )
+                }
+                Text("НЕ ЗАПРАШИВАЕТСЯ", color = Violet, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                PermissionCatalog.notRequested.forEach { (name, why) ->
+                    Text("• $name — $why", color = SecondaryText, fontSize = 11.sp)
+                }
+                OutlinedButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null)
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                ) { Text("Открыть системные настройки приложения", fontSize = 12.sp) }
             }
         }
 
