@@ -33,7 +33,8 @@ data class CapabilityInputs(
     val shizukuInstalled: Boolean,
     val accessibilityServiceEnabled: Boolean,
     val rootProbeAttempted: Boolean,
-    val rootConfirmed: Boolean
+    val rootConfirmed: Boolean,
+    val networkAvailable: Boolean = true
 )
 
 /**
@@ -118,6 +119,17 @@ object CapabilityMatrix {
             CapabilityAvailability.UNAVAILABLE,
             null,
             "Захват экрана (MediaProjection) не реализован; потребует согласия системы"
+        ),
+        if (inputs.networkAvailable) CapabilityState(
+            BridgeCapability.REMOTE_CONNECTOR,
+            CapabilityAvailability.AVAILABLE,
+            BridgeTransport.NATIVE,
+            "Инструменты MCP-коннекторов доступны через Gateway (одобрение для изменяющих действий)"
+        ) else CapabilityState(
+            BridgeCapability.REMOTE_CONNECTOR,
+            CapabilityAvailability.UNAVAILABLE,
+            null,
+            "Нет сети — удалённые коннекторы недоступны"
         )
     )
 
@@ -218,7 +230,8 @@ class DeviceInspector(private val context: Context) {
             shizukuInstalled = isPackageInstalled(SHIZUKU_PACKAGE),
             accessibilityServiceEnabled = isOwnAccessibilityServiceEnabled(),
             rootProbeAttempted = rootProbeAttempted,
-            rootConfirmed = rootConfirmed
+            rootConfirmed = rootConfirmed,
+            networkAvailable = networkLabel() != "Нет соединения"
         )
 
     private fun thermalStatus(): Int? {

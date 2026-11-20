@@ -452,6 +452,7 @@ private fun capabilityTitle(state: CapabilityState): String = when (state.capabi
     ai.hybrid.commandcenter.androidbridge.BridgeCapability.ACCESSIBLE_UI_TREE -> "Дерево интерфейса (Accessibility)"
     ai.hybrid.commandcenter.androidbridge.BridgeCapability.UI_GESTURES -> "Жесты интерфейса"
     ai.hybrid.commandcenter.androidbridge.BridgeCapability.SCREEN_CAPTURE -> "Захват экрана"
+    ai.hybrid.commandcenter.androidbridge.BridgeCapability.REMOTE_CONNECTOR -> "MCP-коннекторы"
 }
 
 private fun batteryLabel(diag: DeviceDiagnostics): String {

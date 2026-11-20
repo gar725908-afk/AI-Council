@@ -59,6 +59,7 @@ enum class SystemTab(val label: String) {
     DEVICE("УСТРОЙСТВО"),
     MODELS("МОДЕЛИ"),
     SETTINGS("НАСТРОЙКИ"),
+    CONNECTORS("КОННЕКТОРЫ"),
     CENTER("ЦЕНТР")
 }
 
@@ -89,6 +90,7 @@ fun SystemScreen(modifier: Modifier = Modifier, initialTab: Int = 0) {
             SystemTab.DEVICE -> DeviceCoreScreen(Modifier.fillMaxSize())
             SystemTab.MODELS -> ModelCenterScreen(Modifier.fillMaxSize())
             SystemTab.SETTINGS -> SettingsPanel(Modifier.fillMaxSize())
+            SystemTab.CONNECTORS -> McpConnectorsPanel(Modifier.fillMaxSize())
             SystemTab.CENTER -> PlatformCenterScreen(Modifier.fillMaxSize())
         }
     }

@@ -48,6 +48,12 @@ class ScreenRenderSmokeTest {
     }
 
     @Test
+    fun connectorsPanelRendersEmpty() {
+        compose.setContent { McpConnectorsPanel() }
+        compose.onRoot().assertExists()
+    }
+
+    @Test
     fun browserRendersWithoutPage() {
         compose.setContent { BrowserScreen() }
         compose.onRoot().assertExists()
