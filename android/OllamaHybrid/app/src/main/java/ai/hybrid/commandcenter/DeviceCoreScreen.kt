@@ -17,6 +17,11 @@ import ai.hybrid.commandcenter.androidbridge.PermissionCatalog
 import ai.hybrid.commandcenter.androidbridge.NexusAccessibilityService
 import ai.hybrid.commandcenter.androidbridge.PrivilegedDiagnosticsTool
 import ai.hybrid.commandcenter.androidbridge.ReadScreenTool
+import ai.hybrid.commandcenter.androidbridge.ScreenCaptureGrant
+import ai.hybrid.commandcenter.androidbridge.ScreenCaptureTool
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
 import ai.hybrid.commandcenter.androidbridge.TapElementTool
 import ai.hybrid.commandcenter.androidbridge.RootShellExecutor
 import android.content.Intent
@@ -102,8 +107,58 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
             register(PrivilegedDiagnosticsTool())
             register(ReadScreenTool())
             register(TapElementTool())
+            register(ScreenCaptureTool(context.applicationContext))
         }
     }
+    var captureOutcome by remember { mutableStateOf<String?>(null) }
+    var captureRunning by remember { mutableStateOf(false) }
+    fun runCapture() {
+        captureRunning = true
+        val requestId = UUID.randomUUID().toString()
+        scope.launch {
+            val journal = (context.applicationContext as NexusApplication).missionJournal
+            val outcome = withContext(Dispatchers.IO) {
+                val inputs = inspector.capabilityInputs(
+                    rootProbeAttempted = rootProbeAttempted,
+                    rootConfirmed = rootResult?.available == true
+                )
+                BridgeGateway(
+                    registry = toolRegistry,
+                    auditSink = { entry -> journal.recordToolAudit(entry) }
+                ).execute(
+                    request = BridgeRequest(
+                        requestId = requestId,
+                        toolId = "ui.capture_screen",
+                        approval = ApprovalGrant(requestId, "ui.capture_screen", System.currentTimeMillis())
+                    ),
+                    snapshot = CapabilityMatrix.snapshot(inputs, System.currentTimeMillis()),
+                    availableTransports = setOf(BridgeTransport.NATIVE),
+                    initiator = "user"
+                )
+            }
+            captureOutcome = when (outcome) {
+                is GatewayOutcome.Success ->
+                    "✓ " + outcome.result.message + " (" +
+                        outcome.result.data["width"] + "×" + outcome.result.data["height"] + ")"
+                is GatewayOutcome.Denied -> "Отклонено (" + outcome.stage + "): " + outcome.reason
+                is GatewayOutcome.Failed -> "Ошибка (" + outcome.stage + "): " + outcome.reason
+            }
+            auditTrail = withContext(Dispatchers.IO) { journal.getRecentToolAudit(5) }
+            captureRunning = false
+        }
+    }
+
+    val captureConsent = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            ScreenCaptureGrant.store(result.resultCode, result.data)
+            runCapture()
+        } else {
+            captureOutcome = "Система не выдала согласие на снимок экрана."
+        }
+    }
+
     var uiTapTarget by remember { mutableStateOf("") }
     var uiArmed by remember { mutableStateOf(false) }
     var uiRequestId by remember { mutableStateOf("") }
@@ -457,6 +512,34 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                 val screenResult = uiOutcome
                 if (screenResult != null) {
                     Text(screenResult, color = PrimaryText, fontSize = 10.sp)
+                }
+            }
+        }
+
+        item {
+            SectionCard(title = "СНИМОК ЭКРАНА", accent = Violet) {
+                Text(
+                    "Один кадр по вашему запросу. Android каждый раз показывает своё окно согласия, " +
+                        "разрешение сгорает после одного снимка, файл остаётся во внутренней памяти приложения.",
+                    color = SecondaryText, fontSize = 11.sp
+                )
+                OutlinedButton(
+                    onClick = {
+                        if (captureRunning) return@OutlinedButton
+                        val intent = ScreenCaptureGrant.consentIntent(context)
+                        if (intent == null) {
+                            captureOutcome = "Сервис захвата экрана недоступен на этом устройстве."
+                        } else {
+                            captureOutcome = null
+                            captureConsent.launch(intent)
+                        }
+                    },
+                    enabled = !captureRunning,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
+                ) { Text(if (captureRunning) "Снимок…" else "Разрешить снимок и сделать кадр", fontSize = 12.sp) }
+                val result = captureOutcome
+                if (result != null) {
+                    Text(result, color = PrimaryText, fontSize = 11.sp)
                 }
             }
         }

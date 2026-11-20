@@ -40,6 +40,18 @@ object PermissionCatalog {
             "Микрофон",
             "NEXUS Voice: распознавание речи только после нажатия кнопки; звук обрабатывает системный распознаватель, постоянного прослушивания нет.",
             Grant.RUNTIME
+        ),
+        Entry(
+            "android.permission.FOREGROUND_SERVICE",
+            "Служба на переднем плане",
+            "Требуется Android, чтобы захват экрана выполнялся видимо для пользователя, а не скрытно.",
+            Grant.INSTALL_TIME
+        ),
+        Entry(
+            "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+            "Снимок экрана",
+            "Одиночный снимок экрана по вашему запросу; каждое согласие выдаётся системой заново и сгорает после одного кадра.",
+            Grant.INSTALL_TIME
         )
     )
 

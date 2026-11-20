@@ -10,7 +10,9 @@ class PermissionCatalogTest {
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.REQUEST_INSTALL_PACKAGES",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
     )
 
     @Test
@@ -33,6 +35,6 @@ class PermissionCatalogTest {
     @Test
     fun `not requested list still names storage and accessibility`() {
         assertTrue(PermissionCatalog.notRequested.any { it.first.contains("Хранилище") })
-        assertTrue(PermissionCatalog.notRequested.any { it.first.contains("Захват экрана") })
+        assertTrue(PermissionCatalog.notRequested.any { it.first.contains("Контакты") })
     }
 }

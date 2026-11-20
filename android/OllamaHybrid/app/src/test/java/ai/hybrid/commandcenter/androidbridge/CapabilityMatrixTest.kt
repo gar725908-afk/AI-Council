@@ -91,12 +91,14 @@ class CapabilityMatrixTest {
         val states = CapabilityMatrix.derive(
             inputs(shizukuInstalled = true, accessibilityServiceEnabled = true)
         )
-        for (capability in listOf(
-            BridgeCapability.SYSTEM_SETTINGS,
-            BridgeCapability.SCREEN_CAPTURE
-        )) {
-            assertEquals(CapabilityAvailability.UNAVAILABLE, state(states, capability).availability)
-        }
+        assertEquals(
+            CapabilityAvailability.UNAVAILABLE,
+            state(states, BridgeCapability.SYSTEM_SETTINGS).availability
+        )
+        assertEquals(
+            CapabilityAvailability.PERMISSION_REQUIRED,
+            state(states, BridgeCapability.SCREEN_CAPTURE).availability
+        )
     }
 
     @Test

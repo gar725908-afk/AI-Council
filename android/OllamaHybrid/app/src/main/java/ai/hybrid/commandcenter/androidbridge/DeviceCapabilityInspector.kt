@@ -123,9 +123,9 @@ object CapabilityMatrix {
         ),
         CapabilityState(
             BridgeCapability.SCREEN_CAPTURE,
-            CapabilityAvailability.UNAVAILABLE,
-            null,
-            "Захват экрана (MediaProjection) не реализован; потребует согласия системы"
+            CapabilityAvailability.PERMISSION_REQUIRED,
+            BridgeTransport.NATIVE,
+            "Снимок экрана доступен после согласия системы; разрешение одноразовое"
         ),
         if (inputs.networkAvailable) CapabilityState(
             BridgeCapability.REMOTE_CONNECTOR,
