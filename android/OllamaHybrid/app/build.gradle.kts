@@ -116,6 +116,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // JVM screen render smoke tests: every screen must compose without crashing.
     testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     // Real JVM JSON implementation; Android's unit-test stubs throw "Method not mocked".

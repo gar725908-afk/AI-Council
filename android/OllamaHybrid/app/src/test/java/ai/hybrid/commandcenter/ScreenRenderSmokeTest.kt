@@ -36,6 +36,12 @@ class ScreenRenderSmokeTest {
     }
 
     @Test
+    fun archiveRendersWithEmptyLibrary() {
+        compose.setContent { ArchiveScreen() }
+        compose.onRoot().assertExists()
+    }
+
+    @Test
     fun councilCommandCenterRendersFromJournal() {
         compose.setContent { CouncilScreen() }
         compose.onRoot().assertExists()

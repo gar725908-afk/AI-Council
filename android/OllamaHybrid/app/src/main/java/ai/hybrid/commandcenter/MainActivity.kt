@@ -63,7 +63,7 @@ private fun NexusApp() {
     MaterialTheme(colorScheme = colors) {
         var selected by remember { mutableIntStateOf(0) }
         var pendingPrompt by remember { mutableStateOf<String?>(null) }
-        val destinations = listOf("Главная", "AI Studio", "Council", "Модели", "Устройство", "Центр")
+        val destinations = listOf("Главная", "AI Studio", "Council", "Модели", "Устройство", "Центр", "Архив")
         Scaffold(
             containerColor = Void,
             bottomBar = {
@@ -72,7 +72,7 @@ private fun NexusApp() {
                         NavigationBarItem(
                             selected = selected == index,
                             onClick = { selected = index },
-                            icon = { Text(listOf("⌂", "✧", "◎", "◈", "▣", "＋")[index], fontSize = 18.sp) },
+                            icon = { Text(listOf("⌂", "✧", "◎", "◈", "▣", "＋", "❒")[index], fontSize = 18.sp) },
                             label = { Text(label, fontSize = 10.sp) }
                         )
                     }
@@ -101,6 +101,7 @@ private fun NexusApp() {
                 )
                 3 -> ModelCenterScreen(Modifier.padding(padding))
                 4 -> DeviceCoreScreen(Modifier.padding(padding))
+                6 -> ArchiveScreen(Modifier.padding(padding))
                 else -> PlatformCenterScreen(Modifier.padding(padding))
             }
         }
