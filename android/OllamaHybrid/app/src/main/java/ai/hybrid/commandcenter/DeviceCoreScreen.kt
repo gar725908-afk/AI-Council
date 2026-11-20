@@ -1,10 +1,17 @@
 package ai.hybrid.commandcenter
 
+import ai.hybrid.commandcenter.androidbridge.BridgeAuditEntry
+import ai.hybrid.commandcenter.androidbridge.BridgeGateway
+import ai.hybrid.commandcenter.androidbridge.BridgeRequest
+import ai.hybrid.commandcenter.androidbridge.BridgeToolRegistry
+import ai.hybrid.commandcenter.androidbridge.BridgeTransport
 import ai.hybrid.commandcenter.androidbridge.CapabilityAvailability
 import ai.hybrid.commandcenter.androidbridge.CapabilityMatrix
 import ai.hybrid.commandcenter.androidbridge.CapabilityState
 import ai.hybrid.commandcenter.androidbridge.DeviceDiagnostics
+import ai.hybrid.commandcenter.androidbridge.DeviceDiagnosticsTool
 import ai.hybrid.commandcenter.androidbridge.DeviceInspector
+import ai.hybrid.commandcenter.androidbridge.GatewayOutcome
 import ai.hybrid.commandcenter.androidbridge.RootAccessProbe
 import android.os.Build
 import ai.hybrid.commandcenter.androidbridge.RootProbeResult
@@ -38,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
+import java.util.UUID
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +81,13 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
     var capabilityStates by remember { mutableStateOf<List<CapabilityState>>(emptyList()) }
     var shizukuInstalled by remember { mutableStateOf(false) }
     var measuredAtLabel by remember { mutableStateOf("—") }
+    var gatewayResult by remember { mutableStateOf<String?>(null) }
+    var gatewayData by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var gatewayRunning by remember { mutableStateOf(false) }
+    var auditTrail by remember { mutableStateOf<List<BridgeAuditEntry>>(emptyList()) }
+    val toolRegistry = remember {
+        BridgeToolRegistry().apply { register(DeviceDiagnosticsTool(inspector)) }
+    }
 
     fun refresh() {
         scope.launch {
@@ -190,6 +205,97 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                     Text("Сбор данных…", color = SecondaryText, fontSize = 13.sp)
                 } else {
                     capabilityStates.forEach { state -> CapabilityRow(state) }
+                }
+            }
+        }
+
+        item {
+            SectionCard(title = "ИНСТРУМЕНТЫ ЧЕРЕЗ GATEWAY", accent = Violet) {
+                Text(
+                    "Единственный путь исполнения инструментов: проверка возможностей, " +
+                        "одобрений и лимитов, затем запись в аудит. Прямых вызовов в обход нет.",
+                    color = SecondaryText, fontSize = 11.sp
+                )
+                PrivilegeRow(
+                    name = "device.diagnostics",
+                    status = "READ_ONLY",
+                    statusColor = SignalGreen,
+                    detail = "Диагностика устройства через NATIVE-транспорт; одобрение не требуется."
+                )
+                OutlinedButton(
+                    onClick = {
+                        if (gatewayRunning) return@OutlinedButton
+                        gatewayRunning = true
+                        scope.launch {
+                            val journal =
+                                (context.applicationContext as NexusApplication).missionJournal
+                            val outcome = withContext(Dispatchers.IO) {
+                                val inputs = inspector.capabilityInputs(
+                                    rootProbeAttempted = rootProbeAttempted,
+                                    rootConfirmed = rootResult?.available == true
+                                )
+                                BridgeGateway(
+                                    registry = toolRegistry,
+                                    auditSink = { entry -> journal.recordToolAudit(entry) }
+                                ).execute(
+                                    request = BridgeRequest(
+                                        requestId = UUID.randomUUID().toString(),
+                                        toolId = "device.diagnostics"
+                                    ),
+                                    snapshot = CapabilityMatrix.snapshot(
+                                        inputs, System.currentTimeMillis()
+                                    ),
+                                    availableTransports = setOf(BridgeTransport.NATIVE),
+                                    initiator = "user"
+                                )
+                            }
+                            when (outcome) {
+                                is GatewayOutcome.Success -> {
+                                    gatewayResult = outcome.result.message
+                                    gatewayData = outcome.result.data
+                                }
+                                is GatewayOutcome.Denied -> {
+                                    gatewayResult = "Отклонено: " + outcome.reason
+                                    gatewayData = emptyMap()
+                                }
+                                is GatewayOutcome.Failed -> {
+                                    gatewayResult = "Ошибка: " + outcome.reason
+                                    gatewayData = emptyMap()
+                                }
+                            }
+                            auditTrail = withContext(Dispatchers.IO) {
+                                journal.getRecentToolAudit(5)
+                            }
+                            gatewayRunning = false
+                        }
+                    },
+                    enabled = !gatewayRunning,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
+                ) {
+                    Text(
+                        if (gatewayRunning) "Выполняется…" else "Выполнить device.diagnostics",
+                        fontSize = 12.sp
+                    )
+                }
+                val resultText = gatewayResult
+                if (resultText != null) {
+                    Text(resultText, color = PrimaryText, fontSize = 12.sp)
+                    gatewayData.forEach { (key, value) ->
+                        DiagnosticRow(key, value.take(40))
+                    }
+                }
+                if (auditTrail.isNotEmpty()) {
+                    Text(
+                        "АУДИТ (последние записи)",
+                        color = Violet, fontSize = 10.sp, fontWeight = FontWeight.Bold
+                    )
+                    auditTrail.forEach { entry ->
+                        Text(
+                            timeLabel(entry.createdAtEpochMillis) + " · " + entry.toolId +
+                                " · " + entry.outcome,
+                            color = SecondaryText, fontSize = 10.sp
+                        )
+                    }
                 }
             }
         }

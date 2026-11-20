@@ -1,5 +1,7 @@
 package ai.hybrid.commandcenter.nexus
 
+import ai.hybrid.commandcenter.androidbridge.BridgeAuditEntry
+
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -89,6 +91,7 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
             )
         """.trimIndent())
         createChatTables(db)
+        createToolAuditTable(db)
         db.execSQL("CREATE INDEX idx_missions_updated ON missions(updated_at DESC)")
         db.execSQL("CREATE INDEX idx_agent_results_mission ON agent_results(mission_id, created_at)")
         db.execSQL("CREATE INDEX idx_mission_events_mission ON mission_events(mission_id, created_at)")
@@ -97,6 +100,7 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // Additive migrations preserve all mission and conversation history.
         if (oldVersion < 2) createChatTables(db)
+        if (oldVersion < 3) createToolAuditTable(db)
     }
 
     private fun createChatTables(db: SQLiteDatabase) {
@@ -120,6 +124,61 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
         """.trimIndent())
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, created_at)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated ON chat_conversations(updated_at DESC)")
+    }
+
+    private fun createToolAuditTable(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS tool_audit (
+                id TEXT PRIMARY KEY NOT NULL, request_id TEXT NOT NULL,
+                tool_id TEXT NOT NULL, risk TEXT NOT NULL, transport TEXT,
+                initiator TEXT NOT NULL, approval_present INTEGER NOT NULL,
+                outcome TEXT NOT NULL, detail TEXT NOT NULL, created_at INTEGER NOT NULL
+            )
+        """.trimIndent())
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_tool_audit_created ON tool_audit(created_at DESC)"
+        )
+    }
+
+    /** Append-only: audit records are never updated or silently dropped. */
+    fun recordToolAudit(entry: BridgeAuditEntry) {
+        writableDatabase.execSQL(
+            "INSERT INTO tool_audit (id, request_id, tool_id, risk, transport, initiator, " +
+                "approval_present, outcome, detail, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            arrayOf(
+                entry.id, entry.requestId, entry.toolId, entry.risk, entry.transport,
+                entry.initiator, if (entry.approvalPresent) 1 else 0,
+                entry.outcome, entry.detail, entry.createdAtEpochMillis
+            )
+        )
+    }
+
+    fun getRecentToolAudit(limit: Int = 20): List<BridgeAuditEntry> {
+        val bounded = limit.coerceIn(1, 200)
+        return readableDatabase.rawQuery(
+            "SELECT id, request_id, tool_id, risk, transport, initiator, approval_present, " +
+                "outcome, detail, created_at FROM tool_audit ORDER BY created_at DESC LIMIT ?",
+            arrayOf(bounded.toString())
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(
+                        BridgeAuditEntry(
+                            id = cursor.getString(0),
+                            requestId = cursor.getString(1),
+                            toolId = cursor.getString(2),
+                            risk = cursor.getString(3),
+                            transport = cursor.getString(4),
+                            initiator = cursor.getString(5),
+                            approvalPresent = cursor.getInt(6) == 1,
+                            outcome = cursor.getString(7),
+                            detail = cursor.getString(8),
+                            createdAtEpochMillis = cursor.getLong(9)
+                        )
+                    )
+                }
+            }
+        }
     }
 
     fun createConversation(title: String = "Новый чат"): String {
@@ -358,6 +417,6 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
 
     companion object {
         private const val DATABASE_NAME = "nexus_missions.db"
-        private const val DATABASE_VERSION = 2
+        private const val DATABASE_VERSION = 3
     }
 }
