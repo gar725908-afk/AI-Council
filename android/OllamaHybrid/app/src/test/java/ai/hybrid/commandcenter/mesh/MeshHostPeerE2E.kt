@@ -36,7 +36,8 @@ class MeshHostPeerE2E {
         val node = MeshNode(SoftwareIdentity.generate(), trust, worker, { "ПК-узел CI" }, { MeshPolicy.of(MeshProfile.OFF) })
         val log = StringBuilder()
         try {
-            val invite = MeshInvite.parse(linkText!!)
+            log.appendLine("link: " + linkText!!.take(24) + "… (" + linkText.length + " chars)")
+            val invite = MeshInvite.parse(linkText)
             log.appendLine("invite from ${invite.name} ${invite.deviceId}, pinned key ${invite.fingerprint.take(16)}")
             val state = node.join(invite.copy(addresses = listOf(target)))
             log.appendLine("pairing started, SAS ${state.sas}")
@@ -64,6 +65,9 @@ class MeshHostPeerE2E {
             log.appendLine("answer: " + (outcome.output ?: outcome.error))
             assertTrue(status.error ?: "", status.ok)
             assertTrue(outcome.error ?: "", outcome.ok)
+        } catch (error: Throwable) {
+            log.appendLine("FAILED: " + error.stackTraceToString().take(4_000))
+            throw error
         } finally {
             out.parentFile?.mkdirs()
             out.writeText(log.toString())

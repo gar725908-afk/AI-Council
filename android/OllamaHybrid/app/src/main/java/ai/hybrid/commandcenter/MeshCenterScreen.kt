@@ -77,6 +77,8 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -332,7 +334,9 @@ private fun InvitePanel(invite: MeshInvite, onClose: () -> Unit) {
     var left by remember(invite) { mutableStateOf(invite.expiresAtEpochSec - System.currentTimeMillis() / 1000) }
     LaunchedEffect(invite) {
         while (left > 0) {
-            delay(1_000)
+            // A wall-clock tick off the UI dispatcher: the countdown follows real time, and UI tests
+            // (whose clock skips delays) are not kept busy by a loop that never catches up.
+            withContext(Dispatchers.Default) { delay(1_000) }
             left = invite.expiresAtEpochSec - System.currentTimeMillis() / 1000
         }
     }

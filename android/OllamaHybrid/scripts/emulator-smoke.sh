@@ -47,13 +47,15 @@ adb shell am instrument -w \
 echo "== NEXUS Mesh: this emulator + a second node on the CI host"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS || true
 adb shell run-as "$PKG" rm -f files/mesh-link.txt files/mesh-done.txt || true
-adb shell am instrument -w -e class "$PKG.NexusSmokeTest#e_meshJourney" -e mesh true \
+# capped: a hung UI test must not hold the job until the workflow timeout
+timeout 1800 adb shell am instrument -w -e class "$PKG.NexusSmokeTest#e_meshJourney" -e mesh true \
   "$PKG.test/androidx.test.runner.AndroidJUnitRunner" > "$OUT/mesh-instrument.txt" 2>&1 &
 MESH_PID=$!
 LINK=""
 for i in $(seq 1 120); do
-  LINK=$(adb exec-out run-as "$PKG" cat files/mesh-link.txt 2>/dev/null | tr -d '\r')
-  [ -n "$LINK" ] && break
+  # only a real link counts: before the file exists, run-as prints an error message instead
+  CANDIDATE=$(adb exec-out run-as "$PKG" cat files/mesh-link.txt 2>/dev/null | tr -d '\r\n ')
+  case "$CANDIDATE" in nexus-mesh:1:*) LINK="$CANDIDATE"; break ;; esac
   sleep 5
 done
 if [ -n "$LINK" ]; then
@@ -61,6 +63,7 @@ if [ -n "$LINK" ]; then
   MESH_LINK="$LINK" MESH_TARGET="127.0.0.1:47811" MESH_OUT="$PWD/$OUT/mesh-result.txt" \
     gradle --no-daemon -q -Pnexus.emulatorAbi=true :app:testDebugUnitTest --tests "ai.hybrid.commandcenter.mesh.MeshHostPeerE2E" \
     > "$OUT/mesh-host.txt" 2>&1 || echo "HOST PEER FAILED" >> "$OUT/mesh-host.txt"
+  cp app/build/test-results/testDebugUnitTest/TEST-ai.hybrid.commandcenter.mesh.MeshHostPeerE2E.xml "$OUT/" 2>/dev/null || true
 else
   echo "the phone never published an invite" > "$OUT/mesh-host.txt"
 fi
