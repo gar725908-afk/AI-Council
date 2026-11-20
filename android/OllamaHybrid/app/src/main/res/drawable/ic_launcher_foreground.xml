@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original NEXUS mark: orbital ring, neural constellation points and a violet core.
+     Drawn within the 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- outer orbital ring (neon cyan) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#42D9F5"
+        android:strokeWidth="2.4"
+        android:pathData="M54,27 a27,27 0 1,1 -0.01,0 z" />
+    <!-- inner thin ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#42D9F5"
+        android:strokeWidth="1.2"
+        android:strokeAlpha="0.55"
+        android:pathData="M54,35 a19,19 0 1,1 -0.01,0 z" />
+    <!-- core diamond (neon violet) -->
+    <path
+        android:fillColor="#9B7BFF"
+        android:pathData="M54,42 L63,54 L54,66 L45,54 Z" />
+    <!-- constellation points -->
+    <path android:fillColor="#42D9F5" android:pathData="M54,25.5 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <path android:fillColor="#42D9F5" android:pathData="M81,54 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <path android:fillColor="#42D9F5" android:pathData="M54,82.5 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <path android:fillColor="#42D9F5" android:pathData="M27,54 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <!-- signal traces from ring to core -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#42D9F5"
+        android:strokeWidth="1"
+        android:strokeAlpha="0.7"
+        android:pathData="M54,27.5 L54,42 M80.5,54 L63,54 M54,80.5 L54,66 M27.5,54 L45,54" />
+</vector>

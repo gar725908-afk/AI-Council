@@ -64,7 +64,7 @@ enum class SystemTab(val label: String) {
 
 /** System space: Device Core, Model Center, Settings and the Platform Center. */
 @Composable
-fun SystemScreen(initialTab: Int = 0, modifier: Modifier = Modifier) {
+fun SystemScreen(modifier: Modifier = Modifier, initialTab: Int = 0) {
     var tab by remember(initialTab) { mutableIntStateOf(initialTab.coerceIn(0, SystemTab.values().lastIndex)) }
     Column(modifier.fillMaxSize().background(Void)) {
         ScrollableTabRow(

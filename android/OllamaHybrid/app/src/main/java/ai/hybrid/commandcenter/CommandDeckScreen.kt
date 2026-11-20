@@ -80,8 +80,8 @@ private data class DeckState(
 @Composable
 fun CommandDeckScreen(
     onNavigate: (DeckTarget) -> Unit,
-    onCompose: (String, DeckTarget) -> Unit = { _, destination -> onNavigate(destination) },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCompose: (String, DeckTarget) -> Unit = { _, destination -> onNavigate(destination) }
 ) {
     val context = LocalContext.current
     var state by remember { mutableStateOf<DeckState?>(null) }
