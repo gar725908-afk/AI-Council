@@ -6,6 +6,12 @@ import ai.hybrid.commandcenter.nexus.LibrarySearch
 import ai.hybrid.commandcenter.nexus.MaterialContext
 import ai.hybrid.commandcenter.nexus.MaterialLibrary
 import ai.hybrid.commandcenter.nexus.MaterialTextExtractor
+import ai.hybrid.commandcenter.nexus.PdfPageRenderer
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -82,6 +88,7 @@ fun ArchiveScreen(
     var matches by remember { mutableStateOf<List<LibrarySearch.Match>>(emptyList()) }
     var searched by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
+    var viewingItem by remember { mutableStateOf<LibraryItem?>(null) }
 
     fun refresh() {
         scope.launch {
@@ -128,6 +135,17 @@ fun ArchiveScreen(
             importing = false
             refresh()
         }
+    }
+
+    val viewing = viewingItem
+    if (viewing != null) {
+        MaterialViewer(
+            item = viewing,
+            library = library,
+            onBack = { viewingItem = null },
+            modifier = modifier
+        )
+        return
     }
 
     LazyColumn(
@@ -272,6 +290,10 @@ fun ArchiveScreen(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(
+                        onClick = { viewingItem = item },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryText)
+                    ) { Text("Просмотр", fontSize = 11.sp) }
+                    OutlinedButton(
                         onClick = {
                             scope.launch {
                                 val text = withContext(Dispatchers.IO) { library.getText(item.id) }
@@ -314,6 +336,99 @@ fun ArchiveScreen(
             }
         }
 
+        item { Spacer(Modifier.height(22.dp)) }
+    }
+}
+
+/**
+ * Exact view of a material: PDF pages rendered from the stored original by
+ * the platform renderer; other formats show the extracted text verbatim.
+ */
+@Composable
+private fun MaterialViewer(
+    item: LibraryItem,
+    library: MaterialLibrary,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val widthPx = (LocalConfiguration.current.screenWidthDp * 2.5f).toInt().coerceIn(600, 2000)
+    var pageCount by remember(item.id) { mutableStateOf(-1) }
+    var text by remember(item.id) { mutableStateOf<String?>(null) }
+    val isPdf = item.format == "pdf" && item.originalPath != null
+
+    LaunchedEffect(item.id) {
+        withContext(Dispatchers.IO) {
+            if (isPdf) pageCount = PdfPageRenderer.pageCount(item.originalPath!!)
+            else text = library.getText(item.id)
+        }
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize().background(Void).padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    item.displayName.take(40),
+                    color = PrimaryText, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedButton(
+                    onClick = onBack,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                ) { Text("Назад", fontSize = 11.sp) }
+            }
+            Text(
+                if (isPdf) "PDF · страниц: ${if (pageCount < 0) "…" else pageCount} · рендер оригинала"
+                else item.format.uppercase() + " · извлечённый текст · ${item.textChars} симв.",
+                color = SecondaryText, fontSize = 10.sp
+            )
+        }
+        if (isPdf) {
+            if (pageCount == 0) {
+                item { Text("Оригинал не открывается системным рендером.", color = SignalRed, fontSize = 12.sp) }
+            }
+            items(pageCount.coerceAtLeast(0)) { index ->
+                var bitmap by remember(item.id, index) { mutableStateOf<Bitmap?>(null) }
+                LaunchedEffect(item.id, index) {
+                    bitmap = withContext(Dispatchers.IO) {
+                        PdfPageRenderer.render(item.originalPath!!, index, widthPx)
+                    }
+                }
+                Surface(color = SurfaceDeep, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Страница ${index + 1}", color = SecondaryText, fontSize = 10.sp)
+                        val page = bitmap
+                        if (page == null) {
+                            Text("Рендер…", color = SecondaryText, fontSize = 11.sp)
+                        } else {
+                            Image(
+                                bitmap = page.asImageBitmap(),
+                                contentDescription = "Страница ${index + 1}",
+                                modifier = Modifier.fillMaxWidth(),
+                                contentScale = ContentScale.FillWidth
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            item {
+                Surface(color = SurfaceDeep, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text ?: "Чтение…",
+                        color = PrimaryText, fontSize = 12.sp,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+        }
         item { Spacer(Modifier.height(22.dp)) }
     }
 }

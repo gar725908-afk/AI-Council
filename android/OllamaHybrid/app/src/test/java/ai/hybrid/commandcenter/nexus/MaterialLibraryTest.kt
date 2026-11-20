@@ -147,6 +147,17 @@ class MaterialLibraryTest {
     }
 
     @Test
+    fun `original file is kept and removed together with the item`() {
+        val lib = library()
+        val imported = lib.import("keep.txt", "оригинал".toByteArray()) as LibraryImportResult.Imported
+        val path = imported.item.originalPath!!
+        assertTrue(java.io.File(path).exists())
+        assertEquals(path, lib.listItems().single().originalPath)
+        lib.delete(imported.item.id)
+        assertTrue(!java.io.File(path).exists())
+    }
+
+    @Test
     fun `stored text is returned verbatim`() {
         val lib = library()
         val source = "точный текст с позицией"
