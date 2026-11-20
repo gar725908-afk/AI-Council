@@ -41,7 +41,7 @@ object PdfTextExtractor {
             }
             if (text.isBlank()) {
                 return Result.Failed(
-                    "В PDF нет текстового слоя (похоже на скан). Нужно распознавание OCR, которого в NEXUS пока нет."
+                    "В PDF нет текстового слоя (похоже на скан). Откройте файл и нажмите «Распознать текст (OCR)»."
                 )
             }
             return Result.Text(text.take(maxChars), pages)

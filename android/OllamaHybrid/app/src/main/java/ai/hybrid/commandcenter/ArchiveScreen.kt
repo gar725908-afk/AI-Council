@@ -6,6 +6,7 @@ import ai.hybrid.commandcenter.nexus.LibrarySearch
 import ai.hybrid.commandcenter.nexus.MaterialContext
 import ai.hybrid.commandcenter.nexus.MaterialLibrary
 import ai.hybrid.commandcenter.nexus.MaterialTextExtractor
+import ai.hybrid.commandcenter.nexus.OcrEngine
 import ai.hybrid.commandcenter.nexus.PdfOperations
 import ai.hybrid.commandcenter.nexus.PdfPageRenderer
 import java.io.File
@@ -66,6 +67,7 @@ private val PrimaryText = Color(0xFFF1F5FA)
 private val SecondaryText = Color(0xFFA4B1C2)
 
 private const val MAX_IMPORT_BYTES = 8_000_000
+private const val MAX_OCR_PAGES = 30
 
 /**
  * Archive / Material Library per handoff section 4.7: import through the
@@ -365,6 +367,7 @@ private fun MaterialViewer(
     var otherPdfs by remember(item.id) { mutableStateOf<List<LibraryItem>>(emptyList()) }
     var opStatus by remember(item.id) { mutableStateOf<String?>(null) }
     var opError by remember(item.id) { mutableStateOf(false) }
+    var ocrRunning by remember(item.id) { mutableStateOf(false) }
 
     fun importDerived(name: String, bytes: ByteArray, pages: Int) {
         scope.launch {
@@ -427,6 +430,64 @@ private fun MaterialViewer(
                 Surface(color = SurfaceDeep, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("ОПЕРАЦИИ С PDF", color = Violet, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text(
+                            "Распознавание нужно для сканов без текстового слоя. " + OcrEngine.SCOPE_NOTE,
+                            color = SecondaryText, fontSize = 10.sp
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                if (ocrRunning) return@OutlinedButton
+                                ocrRunning = true
+                                opStatus = "Распознавание…"
+                                opError = false
+                                scope.launch {
+                                    val pages = withContext(Dispatchers.IO) {
+                                        val total = PdfPageRenderer.pageCount(item.originalPath!!)
+                                            .coerceAtMost(MAX_OCR_PAGES)
+                                        (0 until total).mapNotNull { index ->
+                                            PdfPageRenderer.render(item.originalPath, index, 1_600)
+                                        }.mapIndexed { index, bitmap -> index + 1 to bitmap }
+                                    }
+                                    if (pages.isEmpty()) {
+                                        opStatus = "Не удалось отрисовать страницы для распознавания."
+                                        opError = true
+                                        ocrRunning = false
+                                        return@launch
+                                    }
+                                    val recognised = mutableListOf<Pair<Int, String>>()
+                                    var failure: String? = null
+                                    for ((number, bitmap) in pages) {
+                                        when (val result = OcrEngine.recognize(bitmap)) {
+                                            is OcrEngine.Result.Text -> recognised += number to result.text
+                                            is OcrEngine.Result.Empty -> Unit
+                                            is OcrEngine.Result.Failed -> failure = result.reason
+                                        }
+                                        bitmap.recycle()
+                                        if (failure != null) break
+                                    }
+                                    when {
+                                        failure != null -> {
+                                            opStatus = failure
+                                            opError = true
+                                        }
+                                        recognised.isEmpty() -> {
+                                            opStatus = "Текст не распознан ни на одной странице. " + OcrEngine.SCOPE_NOTE
+                                            opError = true
+                                        }
+                                        else -> importDerived(
+                                            item.displayName.removeSuffix(".pdf") + " (распознано).txt",
+                                            OcrEngine.assemblePages(recognised).toByteArray(),
+                                            recognised.size
+                                        )
+                                    }
+                                    ocrRunning = false
+                                }
+                            },
+                            enabled = !ocrRunning,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SignalGreen)
+                        ) {
+                            Text(if (ocrRunning) "Распознавание…" else "Распознать текст (OCR)", fontSize = 11.sp)
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             OutlinedTextField(
                                 value = rangeFrom, onValueChange = { rangeFrom = it.filter(Char::isDigit).take(5) },

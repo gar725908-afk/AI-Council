@@ -109,6 +109,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // On-device OCR (Apache 2.0, Google ML Kit): Latin script only — the
+    // Cyrillic model is not published, which the UI states honestly.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
     // Shizuku (Apache 2.0): ADB-level privileges over Binder, no root required.
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
