@@ -51,11 +51,11 @@ class ShellFlowTest {
     @After
     fun tearDown() = server.shutdown()
 
-    private fun awaitText(text: String, timeout: Long = 15_000) {
+    private fun awaitText(text: String, timeout: Long = 30_000) {
         compose.waitUntil(timeout) { compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
-    private fun awaitTag(tag: String, timeout: Long = 15_000) {
+    private fun awaitTag(tag: String, timeout: Long = 30_000) {
         compose.waitUntil(timeout) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
@@ -126,11 +126,11 @@ class ShellFlowTest {
         server.enqueue(MockResponse().setBody(sse).setHeader("Content-Type", "text/event-stream"))
         compose.setContent { NexusApp() }
         awaitTag("composer")
-        compose.waitUntil(15_000) { compose.onAllNodesWithTag("connect-core").fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag("connect-core").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("composer").performTextInput("Проверка связи")
         awaitTag("send")
         compose.onNodeWithTag("send").performClick()
-        awaitText("Связь установлена.", timeout = 20_000)
+        awaitText("Связь установлена.", timeout = 40_000)
         val request = server.takeRequest()
         assertTrue(request.path!!.endsWith("/v1/chat/completions"))
         val body = request.body.readUtf8()

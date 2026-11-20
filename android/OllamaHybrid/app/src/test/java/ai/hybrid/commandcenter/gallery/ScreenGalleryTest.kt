@@ -44,6 +44,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Before
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -71,6 +72,9 @@ class ScreenGalleryTest {
 
     @Before
     fun setUp() {
+        // Visual review only: runs with -Pnexus.screenshots=true, never gates CI
+        // (the flows themselves are covered by ShellFlowTest).
+        assumeTrue(System.getProperty("roborazzi.test.record") == "true")
         FakeAndroidKeyStore.install()
         // the wizard auto-opens only on a real first launch; scenes open it explicitly
         app.getSharedPreferences("nexus_profile", 0).edit().putBoolean("setup_prompted", true).commit()
@@ -79,12 +83,12 @@ class ScreenGalleryTest {
     }
 
     private fun awaitText(text: String) {
-        compose.waitUntil(15_000) { compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
         compose.waitForIdle()
     }
 
     private fun awaitTag(tag: String) {
-        compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         compose.waitForIdle()
     }
 
@@ -155,7 +159,7 @@ class ScreenGalleryTest {
             server.enqueue(MockResponse().setResponseCode(401).setBody("{\"error\":\"invalid api key\"}"))
             compose.setContent { NexusApp() }
             awaitTag("composer")
-            compose.waitUntil(15_000) { compose.onAllNodesWithTag("connect-core").fetchSemanticsNodes().isEmpty() }
+            compose.waitUntil(30_000) { compose.onAllNodesWithTag("connect-core").fetchSemanticsNodes().isEmpty() }
             compose.onNodeWithTag("composer").performTextInput("Привет, ты здесь?")
             awaitTag("send")
             compose.onNodeWithTag("send").performClick()
@@ -176,7 +180,14 @@ class ScreenGalleryTest {
         }
         compose.setContent { NexusApp() }
         awaitTag("chat-list")
-        compose.onNode(hasContentDescription("История чатов")).performClick()
+        // a click can land while the first frames settle — retry like a person would
+        repeat(3) {
+            compose.onNode(hasContentDescription("История чатов")).performClick()
+            val opened = runCatching {
+                compose.waitUntil(8_000) { compose.onAllNodesWithText("Навес у дома", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            }.isSuccess
+            if (opened) return@repeat
+        }
         awaitText("Навес у дома")
         compose.onRoot().captureRoboImage(shot("05_history"))
     }

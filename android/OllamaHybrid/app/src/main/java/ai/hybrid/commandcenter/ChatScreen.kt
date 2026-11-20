@@ -136,9 +136,15 @@ fun ChatTab(
             notice = null
         }
     }
-    LaunchedEffect(chat.messages.size, chat.streamingAnswer.length, chat.isRunning, chat.lastRunFailed) {
-        val total = listState.layoutInfo.totalItemsCount
-        if (total > 0) listState.scrollToItem(total - 1, 100_000)
+    // Keep the newest line in view. The index comes from the data, not from the
+    // last layout, so a long history opens at its end even before the first frame.
+    val empty = chat.messages.isEmpty() && !chat.isRunning
+    val itemCount = chat.messages.takeLast(60).size +
+        (if (chat.isRunning && chat.councilMode) 1 else 0) +
+        (if (chat.isRunning) 1 else 0) +
+        (if (chat.lastRunFailed && !chat.isRunning) 1 else 0)
+    LaunchedEffect(chat.conversationId, chat.messages.size, chat.streamingAnswer.length, chat.isRunning, chat.lastRunFailed, empty) {
+        if (!empty && itemCount > 0) listState.scrollToItem(itemCount - 1, 100_000)
     }
     LaunchedEffect(focusRequested) {
         if (focusRequested) {
@@ -187,7 +193,6 @@ fun ChatTab(
         attachment = null
     }
 
-    val empty = chat.messages.isEmpty() && !chat.isRunning
     Column(modifier) {
         ChatHeader(
             chat = chat,

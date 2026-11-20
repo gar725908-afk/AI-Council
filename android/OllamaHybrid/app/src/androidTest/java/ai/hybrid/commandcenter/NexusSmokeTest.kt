@@ -37,9 +37,10 @@ class NexusSmokeTest {
     private val ollamaUrl = args.getString("ollamaUrl") ?: "http://10.0.2.2:11434"
     private val ollamaModel = args.getString("ollamaModel") ?: "qwen2.5:0.5b"
 
-    private fun shot(name: String) {
-        compose.waitForIdle()
-        Thread.sleep(400)
+    private fun shot(name: String, idle: Boolean = true) {
+        if (idle) compose.waitForIdle()
+        // the emulator renders in software: give the display a moment to catch up
+        Thread.sleep(1_500)
         val bitmap: Bitmap = instrumentation.uiAutomation.takeScreenshot() ?: return
         val dir = File(instrumentation.targetContext.filesDir, "smoke").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -125,8 +126,8 @@ class NexusSmokeTest {
         // 7. Voice overlay (the emulator may have no speech recogniser — the overlay says so honestly).
         compose.onNodeWithTag("voice-core").performClick()
         awaitTag("voice-overlay")
-        Thread.sleep(1_500)
-        shot("12_voice")
+        // the live microphone level keeps Compose busy on purpose — no idle wait here
+        shot("12_voice", idle = false)
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitTag("composer")
         shot("13_back_to_chat")

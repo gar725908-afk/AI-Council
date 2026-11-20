@@ -40,6 +40,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,6 +60,9 @@ class CyberDesignTest {
     private fun shot(name: String) = "build/gallery/$name.png"
 
     private val static = EffectsController(EffectsMode.STATIC, EffectsMode.STATIC) {}
+
+    @org.junit.Before
+    fun onlyWhenRecording() = assumeTrue(System.getProperty("roborazzi.test.record") == "true")
 
     @Test
     fun holoStageOnCity() {

@@ -11,6 +11,9 @@ MODEL="${NEXUS_OLLAMA_MODEL:-qwen2.5:0.5b}"
 mkdir -p "$OUT/shots"
 
 adb wait-for-device
+# software-rendered CI emulators often show "Pixel Launcher isn't responding";
+# hide system error dialogs so they do not cover the app in screenshots
+adb shell settings put global hide_error_dialogs 1 || true
 adb shell getprop ro.product.cpu.abilist | tee "$OUT/abilist.txt"
 adb install -r -t app/build/outputs/apk/debug/app-debug.apk 2>&1 | tee "$OUT/install.txt"
 adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk 2>&1 | tee -a "$OUT/install.txt"
@@ -33,7 +36,7 @@ ls -la "$OUT/shots" || true
 echo "== live launch (real animations, real rendering)"
 adb shell am force-stop "$PKG" || true
 adb shell am start -W -n "$PKG/.MainActivity" | tee "$OUT/launch.txt"
-sleep 8
+sleep 10
 adb exec-out screencap -p > "$OUT/shots/20_live_chat.png" || true
 
 # open a new chat so the big hologram greets on the bridge
@@ -49,15 +52,15 @@ if m:
 PY
   if [ -s "$OUT/tap.txt" ]; then
     adb shell input tap $(cat "$OUT/tap.txt")
-    sleep 4
+    sleep 6
   fi
 fi
 adb exec-out screencap -p > "$OUT/shots/21_live_home.png" || true
-adb shell screenrecord --time-limit 10 --bit-rate 6000000 /sdcard/nexus-live.mp4 || true
+adb shell screenrecord --time-limit 12 --bit-rate 6000000 /sdcard/nexus-live.mp4 || true
 adb pull /sdcard/nexus-live.mp4 "$OUT/nexus-live.mp4" >/dev/null 2>&1 || true
 
 adb logcat -d > "$OUT/logcat.txt" || true
-grep -E "FATAL EXCEPTION|AndroidRuntime" -A 20 "$OUT/logcat.txt" > "$OUT/crashes.txt" || true
+grep -E "FATAL EXCEPTION" -A 25 "$OUT/logcat.txt" > "$OUT/crashes.txt" || true
 
 if grep -q "FAILURES!!!" "$OUT/instrument.txt" || ! grep -q "^OK (" "$OUT/instrument.txt"; then
   echo "Instrumentation failed — see instrument.txt and logcat.txt"
