@@ -92,7 +92,7 @@ class CapabilityMatrixTest {
             inputs(shizukuInstalled = true, accessibilityServiceEnabled = true)
         )
         assertEquals(
-            CapabilityAvailability.UNAVAILABLE,
+            CapabilityAvailability.AVAILABLE,
             state(states, BridgeCapability.SYSTEM_SETTINGS).availability
         )
         assertEquals(

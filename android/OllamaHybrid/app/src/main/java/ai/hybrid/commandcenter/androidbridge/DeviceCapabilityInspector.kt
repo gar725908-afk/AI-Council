@@ -95,9 +95,9 @@ object CapabilityMatrix {
         },
         CapabilityState(
             BridgeCapability.SYSTEM_SETTINGS,
-            CapabilityAvailability.UNAVAILABLE,
-            null,
-            "Типизированные инструменты настроек ещё не реализованы"
+            CapabilityAvailability.AVAILABLE,
+            BridgeTransport.NATIVE,
+            "Чтение публичных настроек и открытие системных экранов; NEXUS ничего не меняет молча"
         ),
         privilegedState(BridgeCapability.PRIVILEGED_PACKAGE_OPERATIONS, inputs),
         privilegedState(BridgeCapability.PRIVILEGED_FILESYSTEM, inputs),

@@ -18,7 +18,10 @@ import ai.hybrid.commandcenter.androidbridge.NexusAccessibilityService
 import ai.hybrid.commandcenter.androidbridge.PrivilegedDiagnosticsTool
 import ai.hybrid.commandcenter.androidbridge.ReadScreenTool
 import ai.hybrid.commandcenter.androidbridge.ScreenCaptureGrant
+import ai.hybrid.commandcenter.androidbridge.OpenSettingsScreenTool
+import ai.hybrid.commandcenter.androidbridge.ReadSystemSettingTool
 import ai.hybrid.commandcenter.androidbridge.ScreenCaptureTool
+import ai.hybrid.commandcenter.androidbridge.SystemSettingsCatalog
 import ai.hybrid.commandcenter.androidbridge.ShizukuTransport
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -109,8 +112,12 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
             register(ReadScreenTool())
             register(TapElementTool())
             register(ScreenCaptureTool(context.applicationContext))
+            register(ReadSystemSettingTool(context.applicationContext))
+            register(OpenSettingsScreenTool(context.applicationContext))
         }
     }
+    var settingsOutcome by remember { mutableStateOf<String?>(null) }
+    var settingsRunning by remember { mutableStateOf(false) }
     var captureOutcome by remember { mutableStateOf<String?>(null) }
     var captureRunning by remember { mutableStateOf(false) }
     fun runCapture() {
@@ -528,6 +535,62 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                 val screenResult = uiOutcome
                 if (screenResult != null) {
                     Text(screenResult, color = PrimaryText, fontSize = 10.sp)
+                }
+            }
+        }
+
+        item {
+            SectionCard(title = "СИСТЕМНЫЕ НАСТРОЙКИ", accent = Cyan) {
+                Text(
+                    "NEXUS читает только публичные настройки и открывает системные экраны — " +
+                        "изменения вносите вы сами. Ничего не меняется молча.",
+                    color = SecondaryText, fontSize = 11.sp
+                )
+                OutlinedButton(
+                    onClick = {
+                        if (settingsRunning) return@OutlinedButton
+                        settingsRunning = true
+                        scope.launch {
+                            val journal = (context.applicationContext as NexusApplication).missionJournal
+                            val lines = withContext(Dispatchers.IO) {
+                                val inputs = inspector.capabilityInputs(
+                                    rootProbeAttempted = rootProbeAttempted,
+                                    rootConfirmed = rootResult?.available == true
+                                )
+                                val snapshot = CapabilityMatrix.snapshot(inputs, System.currentTimeMillis())
+                                val gateway = BridgeGateway(
+                                    registry = toolRegistry,
+                                    auditSink = { entry -> journal.recordToolAudit(entry) }
+                                )
+                                SystemSettingsCatalog.Readable.entries.map { setting ->
+                                    val outcome = gateway.execute(
+                                        request = BridgeRequest(
+                                            requestId = UUID.randomUUID().toString(),
+                                            toolId = "system.read_setting",
+                                            arguments = mapOf("setting" to setting.id)
+                                        ),
+                                        snapshot = snapshot,
+                                        availableTransports = setOf(BridgeTransport.NATIVE),
+                                        initiator = "user"
+                                    )
+                                    when (outcome) {
+                                        is GatewayOutcome.Success -> outcome.result.message
+                                        is GatewayOutcome.Denied -> setting.title + ": отклонено"
+                                        is GatewayOutcome.Failed -> setting.title + ": ошибка"
+                                    }
+                                }
+                            }
+                            settingsOutcome = lines.joinToString("\n")
+                            auditTrail = withContext(Dispatchers.IO) { journal.getRecentToolAudit(5) }
+                            settingsRunning = false
+                        }
+                    },
+                    enabled = !settingsRunning,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                ) { Text(if (settingsRunning) "Чтение…" else "Прочитать настройки", fontSize = 12.sp) }
+                val settingsResult = settingsOutcome
+                if (settingsResult != null) {
+                    Text(settingsResult, color = PrimaryText, fontSize = 11.sp)
                 }
             }
         }
