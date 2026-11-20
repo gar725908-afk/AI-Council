@@ -149,13 +149,6 @@ fun McpConnectorsPanel(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            ai.hybrid.commandcenter.ui.ScreenHeader(
-                "Коннекторы",
-                subtitle = "Любой MCP-сервер, всё через Gateway",
-                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Plug, ai.hybrid.commandcenter.ui.NexusColors.NeonMagenta, size = 48.dp) }
-            )
-        }
 
         item {
             PanelCard(title = "Добавить сервер", accent = Cyan) {
@@ -270,8 +263,6 @@ fun McpConnectorsPanel(modifier: Modifier = Modifier) {
                 }
             }
         }
-
-        item { Spacer(Modifier.height(22.dp)) }
     }
 }
 

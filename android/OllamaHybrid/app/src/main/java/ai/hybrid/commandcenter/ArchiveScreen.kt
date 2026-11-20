@@ -157,13 +157,6 @@ fun ArchiveScreen(
         modifier = modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            ai.hybrid.commandcenter.ui.ScreenHeader(
-                "Архив",
-                subtitle = "Ваши материалы и поиск с цитатами",
-                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Archive, ai.hybrid.commandcenter.ui.NexusColors.NeonCyan, size = 48.dp) }
-            )
-        }
 
         item {
             ArchiveCard(title = "Импорт", accent = Cyan) {
@@ -339,8 +332,6 @@ fun ArchiveScreen(
                 }
             }
         }
-
-        item { Spacer(Modifier.height(22.dp)) }
     }
 }
 
@@ -593,7 +584,6 @@ private fun MaterialViewer(
                 }
             }
         }
-        item { Spacer(Modifier.height(22.dp)) }
     }
 }
 

@@ -65,17 +65,6 @@ fun PlatformCenterScreen(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        ai.hybrid.commandcenter.ui.ScreenHeader(
-            "Центр",
-            subtitle = "Расширения, коннекторы и обновления",
-            leading = {
-                ai.hybrid.commandcenter.ui.IconBadge(
-                    ai.hybrid.commandcenter.ui.NexIcons.Layers,
-                    ai.hybrid.commandcenter.ui.NexusColors.NeonCyan,
-                    size = 48.dp
-                )
-            }
-        )
         ai.hybrid.commandcenter.ui.SegmentedTabs(
             options = listOf("Расширения", "Коннекторы", "Обновления"),
             selected = selectedTab,
@@ -209,7 +198,6 @@ private fun ExtensionsPanel(modifier: Modifier = Modifier) {
                 }
             }
         }
-        item { Spacer(Modifier.height(8.dp)) }
     }
 }
 
@@ -249,7 +237,6 @@ private fun ConnectorsPanel(modifier: Modifier = Modifier) {
                 placeholder = "TinyFish API key"
             )
         }
-        item { Spacer(Modifier.height(8.dp)) }
     }
 }
 

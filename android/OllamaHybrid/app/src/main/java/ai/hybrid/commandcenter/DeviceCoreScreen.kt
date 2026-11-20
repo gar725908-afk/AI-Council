@@ -205,13 +205,6 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            ai.hybrid.commandcenter.ui.ScreenHeader(
-                "Устройство",
-                subtitle = "Мост NEXUS · стандартный профиль активен",
-                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Smartphone, ai.hybrid.commandcenter.ui.NexusColors.NeonCyan, size = 48.dp) }
-            )
-        }
 
         item {
             SectionCard(title = "Диагностика устройства", accent = Cyan) {

@@ -104,13 +104,6 @@ fun RepairPanel(
         modifier = modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            ai.hybrid.commandcenter.ui.ScreenHeader(
-                "Исправления",
-                subtitle = "Ошибка → Council → pull request → обновление",
-                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Wrench, ai.hybrid.commandcenter.ui.NexusColors.SignalAmber, size = 48.dp) }
-            )
-        }
 
         item {
             RepairCard(title = "Репозиторий", accent = Cyan) {
@@ -292,8 +285,6 @@ fun RepairPanel(
                 }
             }
         }
-
-        item { Spacer(Modifier.height(22.dp)) }
     }
 }
 

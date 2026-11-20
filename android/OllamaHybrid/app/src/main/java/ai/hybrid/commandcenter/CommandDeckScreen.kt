@@ -445,6 +445,7 @@ private fun Composer(
             when (event) {
                 VoiceInput.Event.Listening -> { setListening(true); voiceStatus = "Слушаю…" }
                 is VoiceInput.Event.Partial -> task = event.text
+                is VoiceInput.Event.Level -> Unit
                 is VoiceInput.Event.Final -> { task = event.text; setListening(false); voiceStatus = null }
                 is VoiceInput.Event.Error -> { setListening(false); voiceStatus = event.reason }
                 VoiceInput.Event.Ended -> setListening(false)

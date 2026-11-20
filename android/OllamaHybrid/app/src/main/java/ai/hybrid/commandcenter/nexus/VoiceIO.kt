@@ -38,6 +38,8 @@ class VoiceInput(private val context: Context) {
     sealed class Event {
         object Listening : Event()
         data class Partial(val text: String) : Event()
+        /** Microphone level from the recogniser, in dB (roughly -2…10). */
+        data class Level(val rmsDb: Float) : Event()
         data class Final(val text: String) : Event()
         data class Error(val reason: String) : Event()
         object Ended : Event()
@@ -59,7 +61,7 @@ class VoiceInput(private val context: Context) {
         speech.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) = onEvent(Event.Listening)
             override fun onBeginningOfSpeech() = Unit
-            override fun onRmsChanged(rmsdB: Float) = Unit
+            override fun onRmsChanged(rmsdB: Float) = onEvent(Event.Level(rmsdB))
             override fun onBufferReceived(buffer: ByteArray?) = Unit
             override fun onEndOfSpeech() = onEvent(Event.Ended)
             override fun onError(error: Int) = onEvent(Event.Error(VoiceErrors.describe(error)))

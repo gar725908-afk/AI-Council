@@ -73,40 +73,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun CouncilScreen(
     modifier: Modifier = Modifier,
-    initialPrompt: String? = null,
-    onInitialPromptConsumed: () -> Unit = {}
+    onRepeatMission: (String) -> Unit = {}
 ) {
-    var tab by remember { mutableIntStateOf(0) }
-    var repeatPrompt by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(initialPrompt) {
-        if (!initialPrompt.isNullOrBlank()) tab = 1
-    }
-    Column(modifier.fillMaxSize()) {
-        SegmentedTabs(
-            options = listOf("Центр", "Запуск"),
-            selected = tab,
-            onSelect = { tab = it },
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)
-        )
-        when (tab) {
-            0 -> CouncilCommandCenter(
-                onRepeatMission = { goal ->
-                    repeatPrompt = goal
-                    tab = 1
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-            else -> AiStudioScreen(
-                councilMode = true,
-                modifier = Modifier.fillMaxSize(),
-                initialPrompt = repeatPrompt ?: initialPrompt,
-                onInitialPromptConsumed = {
-                    repeatPrompt = null
-                    onInitialPromptConsumed()
-                }
-            )
-        }
-    }
+    CouncilCommandCenter(onRepeatMission = onRepeatMission, modifier = modifier)
 }
 
 @Composable
@@ -151,13 +120,6 @@ private fun CouncilCommandCenter(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item {
-            ScreenHeader(
-                "Council",
-                subtitle = "Командный центр · всё из журнала миссий",
-                leading = { NexAvatar(NexState.STANDBY, diameter = 48.dp) }
-            )
-        }
 
         item {
             val latest = missions.firstOrNull()

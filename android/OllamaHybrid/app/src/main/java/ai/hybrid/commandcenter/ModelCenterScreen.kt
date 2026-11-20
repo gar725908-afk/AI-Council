@@ -115,17 +115,6 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        ai.hybrid.commandcenter.ui.ScreenHeader(
-            "Модели",
-            subtitle = "Локальные модели, движки и активная конфигурация",
-            leading = {
-                ai.hybrid.commandcenter.ui.IconBadge(
-                    ai.hybrid.commandcenter.ui.NexIcons.Boxes,
-                    ai.hybrid.commandcenter.ui.NexusColors.NeonMagenta,
-                    size = 48.dp
-                )
-            }
-        )
 
         ai.hybrid.commandcenter.ui.SegmentedTabs(
             options = listOf("Модели", "Evolution"),

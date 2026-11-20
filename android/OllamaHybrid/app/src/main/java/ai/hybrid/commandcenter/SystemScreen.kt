@@ -179,13 +179,6 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
         modifier = modifier.padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            ai.hybrid.commandcenter.ui.ScreenHeader(
-                "Настройки",
-                subtitle = "Данные, приватность, оформление",
-                leading = { ai.hybrid.commandcenter.ui.IconBadge(ai.hybrid.commandcenter.ui.NexIcons.Settings2, ai.hybrid.commandcenter.ui.NexusColors.NeonViolet, size = 48.dp) }
-            )
-        }
 
         item { EffectsCard() }
 

@@ -88,6 +88,8 @@ private fun DrawScope.drawAurora() {
 fun Modifier.glass(shape: Shape = NexusShapes.Card, accent: Color? = null): Modifier =
     this
         .clip(shape)
+        // a dark base first, so stars behind never speckle the text
+        .background(Color(0xB8060816))
         .background(NexusBrushes.GlassFill)
         .border(1.dp, if (accent != null) NexusBrushes.accentBorder(accent) else NexusBrushes.GlassBorder, shape)
 

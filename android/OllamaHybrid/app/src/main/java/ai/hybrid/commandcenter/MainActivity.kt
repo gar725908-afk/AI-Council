@@ -1,33 +1,27 @@
 package ai.hybrid.commandcenter
 
-import ai.hybrid.commandcenter.ui.AuroraBackground
-import ai.hybrid.commandcenter.ui.NexIcon
+import ai.hybrid.commandcenter.ui.CircleIconButton
 import ai.hybrid.commandcenter.ui.NexIcons
-import ai.hybrid.commandcenter.ui.NexusBrushes
+import ai.hybrid.commandcenter.ui.NexState
 import ai.hybrid.commandcenter.ui.NexusColors
-import ai.hybrid.commandcenter.ui.NexusShapes
 import ai.hybrid.commandcenter.ui.NexusTheme
+import ai.hybrid.commandcenter.ui.SpaceBackground
 import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.annotation.DrawableRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
@@ -40,29 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-
-/** Primary spaces per handoff section 4 — each one is real, none is a placeholder. */
-enum class NexusDestination(val label: String, @DrawableRes val icon: Int) {
-    DECK("Главная", NexIcons.House),
-    STUDIO("Studio", NexIcons.Sparkles),
-    COUNCIL("Council", NexIcons.Orbit),
-    BROWSER("Браузер", NexIcons.Globe),
-    ARCHIVE("Архив", NexIcons.Archive),
-    SYSTEM("Система", NexIcons.SlidersHorizontal)
-}
 
 /** Targets other screens may ask the shell to open. */
 enum class DeckTarget { STUDIO, COUNCIL, MODELS, DEVICE, BROWSER, ARCHIVE, REPAIRS, SETTINGS }
-
-/** Space the floating navigation bar takes, so screens can keep content clear of it. */
-private val NavBarReserve = 92.dp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,163 +50,114 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * One main screen — the chat, as in ChatGPT. Every tool (council journal,
+ * browser, archive, system state, settings) opens as a page from the chat's
+ * drawer and returns with Back. No tab bar.
+ */
 @Composable
-private fun NexusApp() {
+fun NexusApp(startPage: AppPage = AppPage.CHAT) {
     NexusTheme {
-        var selected by remember { mutableStateOf(NexusDestination.DECK) }
-        var systemTab by remember { mutableIntStateOf(0) }
+        var page by remember { mutableStateOf(startPage) }
+        var systemTab by remember { mutableIntStateOf(SystemTab.SETTINGS.ordinal) }
         var pendingPrompt by remember { mutableStateOf<String?>(null) }
+        var councilStart by remember { mutableStateOf(false) }
+        var nexState by remember { mutableStateOf<NexState?>(null) }
 
-        fun open(target: DeckTarget) {
+        fun toChat(text: String? = null, council: Boolean = false) {
+            pendingPrompt = text
+            councilStart = council
+            page = AppPage.CHAT
+        }
+
+        fun openTarget(target: DeckTarget) {
             when (target) {
-                DeckTarget.STUDIO -> selected = NexusDestination.STUDIO
-                DeckTarget.COUNCIL -> selected = NexusDestination.COUNCIL
-                DeckTarget.MODELS -> {
-                    systemTab = SystemTab.MODELS.ordinal
-                    selected = NexusDestination.SYSTEM
-                }
-                DeckTarget.DEVICE -> {
-                    systemTab = SystemTab.DEVICE.ordinal
-                    selected = NexusDestination.SYSTEM
-                }
-                DeckTarget.BROWSER -> selected = NexusDestination.BROWSER
-                DeckTarget.ARCHIVE -> selected = NexusDestination.ARCHIVE
-                DeckTarget.REPAIRS -> {
-                    systemTab = SystemTab.REPAIRS.ordinal
-                    selected = NexusDestination.SYSTEM
-                }
-                DeckTarget.SETTINGS -> {
-                    systemTab = SystemTab.SETTINGS.ordinal
-                    selected = NexusDestination.SYSTEM
-                }
+                DeckTarget.STUDIO -> toChat()
+                DeckTarget.COUNCIL -> page = AppPage.COUNCIL
+                DeckTarget.BROWSER -> page = AppPage.BROWSER
+                DeckTarget.ARCHIVE -> page = AppPage.ARCHIVE
+                DeckTarget.MODELS -> { systemTab = SystemTab.MODELS.ordinal; page = AppPage.SETTINGS }
+                DeckTarget.DEVICE -> { systemTab = SystemTab.DEVICE.ordinal; page = AppPage.SETTINGS }
+                DeckTarget.REPAIRS -> { systemTab = SystemTab.REPAIRS.ordinal; page = AppPage.SETTINGS }
+                DeckTarget.SETTINGS -> { systemTab = SystemTab.SETTINGS.ordinal; page = AppPage.SETTINGS }
             }
         }
 
-        AuroraBackground(Modifier.fillMaxSize()) {
-            val screen = Modifier
+        BackHandler(enabled = page != AppPage.CHAT) { page = AppPage.CHAT }
+
+        SpaceBackground(
+            Modifier.fillMaxSize(),
+            state = if (page == AppPage.CHAT) nexState else null,
+            showHorizon = page == AppPage.CHAT
+        ) {
+            val frame = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(bottom = NavBarReserve)
-            when (selected) {
-                NexusDestination.DECK -> CommandDeckScreen(
-                    onNavigate = { open(it) },
-                    onCompose = { text, target ->
-                        pendingPrompt = text
-                        open(target)
-                    },
-                    modifier = screen
-                )
-                NexusDestination.STUDIO -> AiStudioScreen(
-                    councilMode = false,
-                    modifier = screen,
+                .imePadding()
+            when (page) {
+                AppPage.CHAT -> NexusChatScreen(
+                    modifier = frame,
                     initialPrompt = pendingPrompt,
-                    onInitialPromptConsumed = { pendingPrompt = null }
-                )
-                NexusDestination.COUNCIL -> CouncilScreen(
-                    modifier = screen,
-                    initialPrompt = pendingPrompt,
-                    onInitialPromptConsumed = { pendingPrompt = null }
-                )
-                NexusDestination.BROWSER -> BrowserScreen(
-                    modifier = screen,
-                    onSendToStudio = { text ->
-                        pendingPrompt = text
-                        selected = NexusDestination.STUDIO
+                    onInitialPromptConsumed = { pendingPrompt = null },
+                    startInCouncil = councilStart,
+                    onOpenPage = { target ->
+                        if (target == AppPage.SETTINGS) systemTab = SystemTab.SETTINGS.ordinal
+                        page = target
                     },
-                    onSendToCouncil = { text ->
-                        pendingPrompt = text
-                        selected = NexusDestination.COUNCIL
-                    }
+                    onNexState = { nexState = it }
                 )
-                NexusDestination.ARCHIVE -> ArchiveScreen(
-                    modifier = screen,
-                    onSendToStudio = { text ->
-                        pendingPrompt = text
-                        selected = NexusDestination.STUDIO
-                    },
-                    onSendToCouncil = { text ->
-                        pendingPrompt = text
-                        selected = NexusDestination.COUNCIL
-                    }
-                )
-                NexusDestination.SYSTEM -> SystemScreen(
-                    modifier = screen,
-                    initialTab = systemTab,
-                    onSendToCouncil = { text ->
-                        pendingPrompt = text
-                        selected = NexusDestination.COUNCIL
-                    }
-                )
+                AppPage.COUNCIL -> ToolPage("Совет и миссии", { page = AppPage.CHAT }, frame) {
+                    CouncilScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        onRepeatMission = { goal -> toChat(goal, council = true) }
+                    )
+                }
+                AppPage.BROWSER -> ToolPage("Браузер", { page = AppPage.CHAT }, frame) {
+                    BrowserScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        onSendToStudio = { text -> toChat(text) },
+                        onSendToCouncil = { text -> toChat(text, council = true) }
+                    )
+                }
+                AppPage.ARCHIVE -> ToolPage("Архив файлов", { page = AppPage.CHAT }, frame) {
+                    ArchiveScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        onSendToStudio = { text -> toChat(text) },
+                        onSendToCouncil = { text -> toChat(text, council = true) }
+                    )
+                }
+                AppPage.STATUS -> ToolPage("Состояние системы", { page = AppPage.CHAT }, frame) {
+                    CommandDeckScreen(
+                        onNavigate = { openTarget(it) },
+                        onCompose = { text, target -> toChat(text, council = target == DeckTarget.COUNCIL) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                AppPage.SETTINGS -> ToolPage("Настройки", { page = AppPage.CHAT }, frame) {
+                    SystemScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        initialTab = systemTab,
+                        onSendToCouncil = { text -> toChat(text, council = true) }
+                    )
+                }
             }
-            FloatingNavBar(
-                selected = selected,
-                onSelect = { selected = it },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
-            )
         }
     }
 }
 
-/**
- * Floating glass navigation: every space gets an icon and a short name; the
- * active one sits on a gradient pill. Equal widths, so it fits any phone.
- */
+/** A tool opened from the drawer: a slim bar with Back and the title, then the tool. */
 @Composable
-fun FloatingNavBar(
-    selected: NexusDestination,
-    onSelect: (NexusDestination) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .height(70.dp)
-            .shadow(24.dp, NexusShapes.Panel, ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(NexusShapes.Panel)
-            .background(Color(0xEB0F1119))
-            .border(1.dp, NexusBrushes.GlassBorder, NexusShapes.Panel)
-            .padding(horizontal = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        NexusDestination.entries.forEach { destination ->
-            val active = destination == selected
-            Column(
-                Modifier
-                    .weight(1f)
-                    .clip(NexusShapes.Control)
-                    .clickable { onSelect(destination) }
-                    .semantics {
-                        this.selected = active
-                        contentDescription = destination.label
-                    }
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Box(
-                    Modifier
-                        .size(width = 48.dp, height = 30.dp)
-                        .clip(NexusShapes.Pill)
-                        .then(if (active) Modifier.background(NexusBrushes.Primary) else Modifier),
-                    contentAlignment = Alignment.Center
-                ) {
-                    NexIcon(
-                        destination.icon,
-                        tint = if (active) Color.White else NexusColors.TextSecondary,
-                        size = 20.dp
-                    )
-                }
-                Text(
-                    destination.label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (active) NexusColors.TextPrimary else NexusColors.TextMuted,
-                    maxLines = 1
-                )
-            }
+fun ToolPage(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Column(modifier) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 12.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            CircleIconButton(NexIcons.ArrowLeft, onClick = onBack, size = 42.dp, contentDescription = "Назад")
+            Text(title, style = MaterialTheme.typography.titleLarge, color = NexusColors.TextPrimary)
         }
+        content()
     }
 }

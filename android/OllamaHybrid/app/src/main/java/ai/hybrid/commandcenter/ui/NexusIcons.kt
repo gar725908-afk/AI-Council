@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 object NexIcons {
     @DrawableRes val Activity = R.drawable.lu_activity
     @DrawableRes val Archive = R.drawable.lu_archive
+    @DrawableRes val ArrowDown = R.drawable.lu_arrow_down
     @DrawableRes val ArrowLeft = R.drawable.lu_arrow_left
     @DrawableRes val ArrowUp = R.drawable.lu_arrow_up
     @DrawableRes val AudioLines = R.drawable.lu_audio_lines
@@ -32,6 +33,8 @@ object NexIcons {
     @DrawableRes val Brain = R.drawable.lu_brain
     @DrawableRes val Bug = R.drawable.lu_bug
     @DrawableRes val ChartColumn = R.drawable.lu_chart_column
+    @DrawableRes val Check = R.drawable.lu_check
+    @DrawableRes val ChevronDown = R.drawable.lu_chevron_down
     @DrawableRes val ChevronRight = R.drawable.lu_chevron_right
     @DrawableRes val CircleAlert = R.drawable.lu_circle_alert
     @DrawableRes val CircleCheck = R.drawable.lu_circle_check
@@ -59,18 +62,23 @@ object NexIcons {
     @DrawableRes val ListChecks = R.drawable.lu_list_checks
     @DrawableRes val Lock = R.drawable.lu_lock
     @DrawableRes val MemoryStick = R.drawable.lu_memory_stick
+    @DrawableRes val Menu = R.drawable.lu_menu
+    @DrawableRes val MessageCircle = R.drawable.lu_message_circle
     @DrawableRes val MessageSquare = R.drawable.lu_message_square
     @DrawableRes val MessageSquareWarning = R.drawable.lu_message_square_warning
     @DrawableRes val Mic = R.drawable.lu_mic
     @DrawableRes val Moon = R.drawable.lu_moon
     @DrawableRes val Orbit = R.drawable.lu_orbit
+    @DrawableRes val Paperclip = R.drawable.lu_paperclip
     @DrawableRes val Play = R.drawable.lu_play
     @DrawableRes val Plug = R.drawable.lu_plug
     @DrawableRes val Plus = R.drawable.lu_plus
     @DrawableRes val Power = R.drawable.lu_power
     @DrawableRes val RefreshCw = R.drawable.lu_refresh_cw
+    @DrawableRes val Rocket = R.drawable.lu_rocket
     @DrawableRes val RotateCcw = R.drawable.lu_rotate_ccw
     @DrawableRes val Route = R.drawable.lu_route
+    @DrawableRes val Satellite = R.drawable.lu_satellite
     @DrawableRes val ScanText = R.drawable.lu_scan_text
     @DrawableRes val Search = R.drawable.lu_search
     @DrawableRes val Send = R.drawable.lu_send
@@ -82,10 +90,13 @@ object NexIcons {
     @DrawableRes val Smartphone = R.drawable.lu_smartphone
     @DrawableRes val Sparkles = R.drawable.lu_sparkles
     @DrawableRes val Square = R.drawable.lu_square
+    @DrawableRes val SquarePen = R.drawable.lu_square_pen
+    @DrawableRes val Telescope = R.drawable.lu_telescope
     @DrawableRes val Terminal = R.drawable.lu_terminal
     @DrawableRes val Thermometer = R.drawable.lu_thermometer
     @DrawableRes val TriangleAlert = R.drawable.lu_triangle_alert
     @DrawableRes val User = R.drawable.lu_user
+    @DrawableRes val Volume2 = R.drawable.lu_volume_2
     @DrawableRes val Waypoints = R.drawable.lu_waypoints
     @DrawableRes val Wifi = R.drawable.lu_wifi
     @DrawableRes val WifiOff = R.drawable.lu_wifi_off
