@@ -12,6 +12,8 @@ import ai.hybrid.commandcenter.androidbridge.DeviceDiagnostics
 import ai.hybrid.commandcenter.androidbridge.DeviceDiagnosticsTool
 import ai.hybrid.commandcenter.androidbridge.DeviceInspector
 import ai.hybrid.commandcenter.androidbridge.GatewayOutcome
+import ai.hybrid.commandcenter.androidbridge.GitHubProposeFixTool
+import ai.hybrid.commandcenter.androidbridge.GitHubReadFileTool
 import ai.hybrid.commandcenter.androidbridge.ApprovalGrant
 import ai.hybrid.commandcenter.androidbridge.PermissionCatalog
 import ai.hybrid.commandcenter.androidbridge.NexusAccessibilityService
@@ -114,6 +116,8 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
             register(ScreenCaptureTool(context.applicationContext))
             register(ReadSystemSettingTool(context.applicationContext))
             register(OpenSettingsScreenTool(context.applicationContext))
+            register(GitHubReadFileTool(context.applicationContext))
+            register(GitHubProposeFixTool(context.applicationContext))
         }
     }
     var settingsOutcome by remember { mutableStateOf<String?>(null) }

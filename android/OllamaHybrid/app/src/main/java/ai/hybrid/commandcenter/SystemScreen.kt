@@ -60,12 +60,17 @@ enum class SystemTab(val label: String) {
     MODELS("МОДЕЛИ"),
     SETTINGS("НАСТРОЙКИ"),
     CONNECTORS("КОННЕКТОРЫ"),
+    REPAIRS("ИСПРАВЛЕНИЯ"),
     CENTER("ЦЕНТР")
 }
 
 /** System space: Device Core, Model Center, Settings and the Platform Center. */
 @Composable
-fun SystemScreen(modifier: Modifier = Modifier, initialTab: Int = 0) {
+fun SystemScreen(
+    modifier: Modifier = Modifier,
+    initialTab: Int = 0,
+    onSendToCouncil: (String) -> Unit = {}
+) {
     var tab by remember(initialTab) { mutableIntStateOf(initialTab.coerceIn(0, SystemTab.values().lastIndex)) }
     Column(modifier.fillMaxSize().background(Void)) {
         ScrollableTabRow(
@@ -91,6 +96,10 @@ fun SystemScreen(modifier: Modifier = Modifier, initialTab: Int = 0) {
             SystemTab.MODELS -> ModelCenterScreen(Modifier.fillMaxSize())
             SystemTab.SETTINGS -> SettingsPanel(Modifier.fillMaxSize())
             SystemTab.CONNECTORS -> McpConnectorsPanel(Modifier.fillMaxSize())
+            SystemTab.REPAIRS -> RepairPanel(
+                modifier = Modifier.fillMaxSize(),
+                onSendToCouncil = onSendToCouncil
+            )
             SystemTab.CENTER -> PlatformCenterScreen(Modifier.fillMaxSize())
         }
     }

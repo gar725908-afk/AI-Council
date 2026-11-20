@@ -48,6 +48,12 @@ class ScreenRenderSmokeTest {
     }
 
     @Test
+    fun repairPanelRendersWithEmptyJournal() {
+        compose.setContent { RepairPanel() }
+        compose.onRoot().assertExists()
+    }
+
+    @Test
     fun connectorsPanelRendersEmpty() {
         compose.setContent { McpConnectorsPanel() }
         compose.onRoot().assertExists()

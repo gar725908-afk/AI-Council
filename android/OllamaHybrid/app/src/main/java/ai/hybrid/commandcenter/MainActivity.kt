@@ -135,8 +135,12 @@ private fun NexusApp() {
                     }
                 )
                 NexusDestination.SYSTEM -> SystemScreen(
+                    modifier = Modifier.padding(padding),
                     initialTab = systemTab,
-                    modifier = Modifier.padding(padding)
+                    onSendToCouncil = { text ->
+                        pendingPrompt = text
+                        selected = NexusDestination.COUNCIL
+                    }
                 )
             }
         }
