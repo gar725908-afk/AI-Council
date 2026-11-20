@@ -38,6 +38,8 @@ import androidx.compose.ui.platform.LocalContext
 import ai.hybrid.commandcenter.nexus.AndroidCredentialVault
 import ai.hybrid.commandcenter.androidbridge.DeviceInspector
 import ai.hybrid.commandcenter.nexus.ResourceGovernor
+import ai.hybrid.commandcenter.nexus.VoiceOutput
+import androidx.compose.runtime.DisposableEffect
 import ai.hybrid.commandcenter.nexus.CouncilAgentEvent
 import ai.hybrid.commandcenter.nexus.CouncilAgentPhase
 import ai.hybrid.commandcenter.nexus.CouncilMissionRunner
@@ -127,6 +129,9 @@ fun AiStudioScreen(
     var activeRun by remember { mutableStateOf<Job?>(null) }
     var recentMissions by remember { mutableStateOf(emptyList<ai.hybrid.commandcenter.nexus.MissionRecord>()) }
     var liveAgentEvents by remember { mutableStateOf(emptyMap<String, CouncilAgentEvent>()) }
+    val voiceOutput = remember { VoiceOutput(context.applicationContext) }
+    var speakStatus by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(Unit) { onDispose { voiceOutput.shutdown() } }
     var activeConversationId by remember { mutableStateOf<String?>(null) }
     var conversationMessages by remember { mutableStateOf(emptyList<ChatMessageRecord>()) }
     LaunchedEffect(settingsStore) {
@@ -743,6 +748,14 @@ fun AiStudioScreen(
                     )
                 }
             }
+        }
+        if (answer.isNotBlank() && !isRunning) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { speakStatus = voiceOutput.speak(answer) ?: "Озвучивание…" }) { Text("Озвучить ответ") }
+                TextButton(onClick = { voiceOutput.stop(); speakStatus = null }) { Text("Тихо") }
+            }
+            val speakLine = speakStatus
+            if (speakLine != null) Text(speakLine, style = MaterialTheme.typography.labelSmall)
         }
         Text(status, style = MaterialTheme.typography.labelMedium)
         if (recentMissions.isNotEmpty()) {

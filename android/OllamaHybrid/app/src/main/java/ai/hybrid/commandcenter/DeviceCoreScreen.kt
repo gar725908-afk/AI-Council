@@ -316,7 +316,10 @@ fun DeviceCoreScreen(modifier: Modifier = Modifier) {
                         PermissionCatalog.Grant.USER_SETTING ->
                             if (context.packageManager.canRequestPackageInstalls()) "РАЗРЕШЕНО" to SignalGreen
                             else "ВЫКЛЮЧЕНО В СИСТЕМЕ" to SignalAmber
-                        PermissionCatalog.Grant.RUNTIME -> "ЗАПРАШИВАЕТСЯ" to SignalAmber
+                        PermissionCatalog.Grant.RUNTIME ->
+                            if (androidx.core.content.ContextCompat.checkSelfPermission(context, entry.permission) ==
+                                android.content.pm.PackageManager.PERMISSION_GRANTED
+                            ) "ВЫДАНО" to SignalGreen else "НЕ ВЫДАНО (запрос по кнопке в функции)" to SignalAmber
                     }
                     PrivilegeRow(
                         name = entry.title,

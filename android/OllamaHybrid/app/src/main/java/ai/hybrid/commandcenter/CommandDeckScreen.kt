@@ -13,6 +13,13 @@ import ai.hybrid.commandcenter.nexus.ProviderHealthCheck
 import ai.hybrid.commandcenter.nexus.ProviderKind
 import ai.hybrid.commandcenter.nexus.ProviderSettings
 import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
+import ai.hybrid.commandcenter.nexus.VoiceInput
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -139,7 +146,29 @@ fun CommandDeckScreen(
 
 @Composable
 private fun ComposerCard(onCompose: (String, DeckTarget) -> Unit) {
+    val context = LocalContext.current
     var task by remember { mutableStateOf("") }
+    var voiceStatus by remember { mutableStateOf<String?>(null) }
+    var listening by remember { mutableStateOf(false) }
+    val voice = remember { VoiceInput(context.applicationContext) }
+    DisposableEffect(Unit) { onDispose { voice.stop() } }
+
+    fun startVoice() {
+        voice.start { event ->
+            when (event) {
+                VoiceInput.Event.Listening -> { listening = true; voiceStatus = "Слушаю…" }
+                is VoiceInput.Event.Partial -> task = event.text
+                is VoiceInput.Event.Final -> { task = event.text; listening = false; voiceStatus = "Распознано." }
+                is VoiceInput.Event.Error -> { listening = false; voiceStatus = event.reason }
+                VoiceInput.Event.Ended -> listening = false
+            }
+        }
+    }
+
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startVoice() else voiceStatus = "Без разрешения на микрофон голосовой ввод невозможен."
+    }
+
     DeckCard(title = "COMMAND COMPOSER", accent = Violet) {
         OutlinedTextField(
             value = task,
@@ -150,6 +179,17 @@ private fun ComposerCard(onCompose: (String, DeckTarget) -> Unit) {
             minLines = 2
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            DeckButton(if (listening) "Стоп" else "Голос", if (listening) SignalAmber else Cyan) {
+                if (listening) {
+                    voice.stop(); listening = false; voiceStatus = "Остановлено."
+                } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    startVoice()
+                } else {
+                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
             if (task.isNotBlank()) {
                 DeckButton("В AI Studio", Cyan) {
                     onCompose(task, DeckTarget.STUDIO)
@@ -159,12 +199,16 @@ private fun ComposerCard(onCompose: (String, DeckTarget) -> Unit) {
                     onCompose(task, DeckTarget.COUNCIL)
                     task = ""
                 }
-            } else {
-                Text(
-                    "Введите задачу — её можно отправить одиночной модели или совету агентов.",
-                    color = SecondaryText, fontSize = 11.sp
-                )
             }
+        }
+        val voiceLine = voiceStatus
+        if (voiceLine != null) {
+            Text(voiceLine, color = if (listening) SignalAmber else SecondaryText, fontSize = 10.sp)
+        } else if (task.isBlank()) {
+            Text(
+                "Введите или продиктуйте задачу — её можно отправить одиночной модели или совету агентов.",
+                color = SecondaryText, fontSize = 11.sp
+            )
         }
     }
 }

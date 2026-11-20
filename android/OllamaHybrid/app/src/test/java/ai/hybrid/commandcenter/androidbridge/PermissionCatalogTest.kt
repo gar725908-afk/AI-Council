@@ -9,7 +9,8 @@ class PermissionCatalogTest {
     private val manifestPermissions = setOf(
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
-        "android.permission.REQUEST_INSTALL_PACKAGES"
+        "android.permission.REQUEST_INSTALL_PACKAGES",
+        "android.permission.RECORD_AUDIO"
     )
 
     @Test
@@ -23,12 +24,15 @@ class PermissionCatalogTest {
     }
 
     @Test
-    fun `no runtime dangerous permission is declared yet`() {
-        assertTrue(PermissionCatalog.declared.none { it.grant == PermissionCatalog.Grant.RUNTIME })
+    fun `microphone is the only runtime permission and is tied to voice`() {
+        val runtime = PermissionCatalog.declared.filter { it.grant == PermissionCatalog.Grant.RUNTIME }
+        assertEquals(listOf("android.permission.RECORD_AUDIO"), runtime.map { it.permission })
+        assertTrue(runtime.single().purpose.contains("Voice"))
     }
 
     @Test
-    fun `not requested list names the microphone until voice exists`() {
-        assertTrue(PermissionCatalog.notRequested.any { it.first.contains("Микрофон") })
+    fun `not requested list still names storage and accessibility`() {
+        assertTrue(PermissionCatalog.notRequested.any { it.first.contains("Хранилище") })
+        assertTrue(PermissionCatalog.notRequested.any { it.first.contains("Accessibility") })
     }
 }

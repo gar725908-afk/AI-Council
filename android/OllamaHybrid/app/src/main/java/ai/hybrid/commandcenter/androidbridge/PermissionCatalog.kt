@@ -34,12 +34,17 @@ object PermissionCatalog {
             "Установка обновлений",
             "Установка APK-обновлений NEXUS только по явному действию пользователя.",
             Grant.USER_SETTING
+        ),
+        Entry(
+            "android.permission.RECORD_AUDIO",
+            "Микрофон",
+            "NEXUS Voice: распознавание речи только после нажатия кнопки; звук обрабатывает системный распознаватель, постоянного прослушивания нет.",
+            Grant.RUNTIME
         )
     )
 
     /** Capabilities NEXUS does NOT ask for yet; each appears only with a real feature. */
     val notRequested: List<Pair<String, String>> = listOf(
-        "Микрофон" to "появится вместе с NEXUS Voice",
         "Хранилище целиком" to "не нужно: файлы выбираются через системный диалог (SAF)",
         "Контакты, геолокация, камера" to "не используются ни одной функцией",
         "Уведомления" to "будут запрошены, когда появятся фоновые миссии с уведомлениями",
