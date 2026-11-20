@@ -94,6 +94,28 @@ class MeshNodeTest {
         assertNotNull(await { b.sessions.value[a.identity.fingerprint]?.capabilities })
     }
 
+    @Test fun theCiHostFlowWorksAgainstALocalPhone() = runBlocking {
+        // the same code the emulator E2E runs on the CI host, against a «phone» whose owner taps the button
+        val (phone, _) = node("Телефон", MeshProfile.BALANCED)
+        val port = phone.start(0)
+        val link = phone.createInvite(listOf("127.0.0.1:$port")).toLink()
+        val owner = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            await(30_000) { phone.pairing.value?.takeIf { it.status == PairingState.Status.WAITING } }
+            delay(300)
+            phone.confirmPairing()
+        }
+        val out = java.io.File.createTempFile("mesh-result", ".txt")
+        hostPeerFlow(link, "127.0.0.1:$port", out)
+        owner.join()
+        val log = out.readText()
+        assertTrue(log, log.contains("paired; channel TLSv1.3"))
+        assertTrue(log, log.contains("status ok=true"))
+        assertTrue(log, log.contains("benchmark ok=true"))
+        assertTrue(log, log.contains("answer: Телефон ответил на: Ответь одним предложением"))
+        val done = phone.tasks.value.filter { !it.outgoing && it.status == MeshTaskRecord.Status.DONE }.map { it.op }.toSet()
+        assertEquals(setOf(MeshOp.NODE_STATUS, MeshOp.RUNTIME_BENCHMARK, MeshOp.INFERENCE_RUN), done)
+    }
+
     @Test fun simultaneousConfirmationsNeverLoseEachOther() = runBlocking {
         // Both owners press «Код совпадает» at the same moment, many times over: no confirmation may be lost.
         repeat(12) { round ->

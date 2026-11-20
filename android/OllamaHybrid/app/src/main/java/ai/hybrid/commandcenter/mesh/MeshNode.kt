@@ -182,17 +182,51 @@ class MeshNode(
         val running = ConcurrentHashMap<String, Job>()
         val readyToTrust = CompletableDeferred<Unit>()
 
-        fun send(message: JSONObject) = MeshProtocol.write(output, message)
+        /**
+         * Frames are written by this session's own thread, in order. Buttons call into the node
+         * from Android's main thread, where a socket write is refused (NetworkOnMainThreadException):
+         * the emulator E2E caught a «Код совпадает» tap whose confirmation never left the phone.
+         */
+        private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+            Thread(task, "nexus-mesh-writer").apply { isDaemon = true }
+        }
+        private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** Queues one frame. Never blocks and never touches the network on the caller's thread. */
+        fun send(message: JSONObject) {
+            if (closed.get()) throw java.io.IOException("Соединение закрыто.")
+            try {
+                writer.execute {
+                    try {
+                        MeshProtocol.write(output, message)
+                    } catch (error: Exception) {
+                        close(error.message ?: "Ошибка записи в канал.")
+                    }
+                }
+            } catch (_: java.util.concurrent.RejectedExecutionException) {
+                throw java.io.IOException("Соединение закрыто.")
+            }
+        }
 
         fun close(reason: String? = null) {
-            runCatching { if (reason != null) send(MeshProtocol.message("bye", "reason" to reason.take(200))) }
-            runCatching { socket.close() }
+            if (!closed.compareAndSet(false, true)) return
             waiting.values.forEach { it.completeExceptionally(java.io.IOException(reason ?: "Соединение закрыто.")) }
             running.values.forEach { it.cancel() }
             if (live[fingerprint] === this) {
                 live.remove(fingerprint)
                 publishSessions()
             }
+            // «bye» goes out after everything already queued; the socket is closed off the caller's thread too.
+            val finish = Runnable {
+                runCatching { if (reason != null) MeshProtocol.write(output, MeshProtocol.message("bye", "reason" to reason.take(200))) }
+                runCatching { socket.close() }
+            }
+            try {
+                writer.execute(finish)
+            } catch (_: java.util.concurrent.RejectedExecutionException) {
+                Thread(finish, "nexus-mesh-close").start()
+            }
+            writer.shutdown()
         }
 
         fun info() = SessionInfo(
