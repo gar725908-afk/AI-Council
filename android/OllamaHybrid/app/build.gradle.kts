@@ -118,7 +118,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // 1.11.0 is required at runtime: LiteRT-LM 0.16.1 calls the static SendChannel.close$default
+    // that 1.10.x lacks, which crashed the app when a Gemma answer finished (seen on the CI emulator).
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // On-device OCR (Apache 2.0, Google ML Kit): Latin script only — the
     // Cyrillic model is not published, which the UI states honestly.
     implementation("com.google.mlkit:text-recognition:16.0.1")

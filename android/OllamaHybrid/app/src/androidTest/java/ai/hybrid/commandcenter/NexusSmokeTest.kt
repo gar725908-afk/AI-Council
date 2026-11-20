@@ -212,4 +212,65 @@ class NexusSmokeTest {
         shot("19_gemma_answer")
         assertTrue("NEX must answer from Gemma on LiteRT-LM", count("error-panel") == 0)
     }
+
+    private fun openPhoneSetup() {
+        awaitTag("tab-settings")
+        compose.onNodeWithTag("tab-settings").performClick()
+        awaitTag("settings-change-core")
+        compose.onNodeWithTag("settings-change-core").performClick()
+        awaitTag("path-phone")
+        compose.onNodeWithTag("path-phone").performClick()
+    }
+
+    private fun awaitSetupResult(timeout: Long) {
+        compose.waitUntil(timeout) {
+            compose.onAllNodesWithTag("setup-done", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithTag("setup-error", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun askInNewChat(question: String, shotName: String, timeout: Long = 600_000) {
+        compose.onNodeWithTag("setup-finish").performClick()
+        awaitTag("composer")
+        compose.onNode(hasContentDescription("Новый чат")).performClick()
+        Thread.sleep(1_000)
+        compose.onNodeWithTag("composer").performTextInput(question)
+        awaitTag("send")
+        compose.onNodeWithTag("send").performClick()
+        compose.waitUntil(timeout) {
+            compose.onAllNodes(hasTestTag("nex-message")).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodes(hasTestTag("error-panel")).fetchSemanticsNodes().isNotEmpty()
+        }
+        shot(shotName)
+        assertTrue("NEX must answer ($shotName)", count("error-panel") == 0)
+    }
+
+    /**
+     * «Скачивать не надо»: the CI script puts two GGUF files into the phone's
+     * Download folder. Qwen3.5 0.8B must be recognised as a catalog model
+     * (size + SHA-256) and run in place; Gemma 3 270M is unknown to the catalog
+     * and must run with the chat template stored inside the file.
+     */
+    @Test
+    fun d_foundModelsJourney() {
+        org.junit.Assume.assumeTrue(args.getString("found") == "true")
+        openPhoneSetup()
+        awaitTag("run-found-qwen3.5-0.8b", timeout = 180_000)
+        Thread.sleep(1_000)
+        shot("22_found_on_phone")
+        compose.onNodeWithTag("run-found-qwen3.5-0.8b").performScrollTo().performClick()
+        awaitSetupResult(900_000)
+        shot("23_found_ready")
+        assertTrue("the found catalog model must verify and activate", count("setup-error") == 0)
+        askInNewChat("Привет! Ответь одним предложением: что ты умеешь?", "24_found_answer")
+
+        openPhoneSetup()
+        val gemma3 = "found-run-gemma-3-270m-it-Q8_0.gguf"
+        awaitTag(gemma3, timeout = 180_000)
+        compose.onNodeWithTag(gemma3).performScrollTo().performClick()
+        awaitSetupResult(300_000)
+        shot("25_unknown_ready")
+        assertTrue("an unknown GGUF must activate in place", count("setup-error") == 0)
+        askInNewChat("Hi! Answer in one short sentence: what is the capital of France?", "26_unknown_answer")
+    }
 }

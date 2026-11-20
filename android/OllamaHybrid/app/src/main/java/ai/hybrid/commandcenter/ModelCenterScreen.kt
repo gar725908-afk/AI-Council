@@ -53,7 +53,7 @@ import java.util.Locale
 private enum class ModelCenterTab { MODELS, EVOLUTION }
 
 @Composable
-fun ModelCenterScreen(modifier: Modifier = Modifier) {
+fun ModelCenterScreen(modifier: Modifier = Modifier, chat: ChatController? = null) {
     val context = LocalContext.current
     val storage = remember(context) { NexusModelStorage(context) }
     val evolution = remember(context) { NexusEvolutionExecutor(context) }
@@ -66,12 +66,7 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
     var versions by remember { mutableStateOf(emptyList<Long>()) }
     var activeEvolutionVersion by remember { mutableStateOf(0L) }
     var auditEvents by remember { mutableStateOf(emptyList<String>()) }
-    var status by remember { mutableStateOf("Каталог подготовлен. Файлы моделей хранятся в закрытом каталоге NEXUS.") }
-    var downloadingId by remember { mutableStateOf<String?>(null) }
-    var progress by remember { mutableFloatStateOf(0f) }
-    var progressLabel by remember { mutableStateOf("") }
-    var activeDownloadCall by remember { mutableStateOf<Call?>(null) }
-    var acceptedLicenses by remember { mutableStateOf(setOf<String>()) }
+    var status by remember { mutableStateOf("Модели для телефона: 12 штук в трёх уровнях, плюс те, что уже лежат в памяти.") }
     var proposalTitle by remember { mutableStateOf("") }
     var proposalReason by remember { mutableStateOf("") }
     var proposalPayload by remember { mutableStateOf("") }
@@ -97,20 +92,6 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) { refresh() }
 
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            scope.launch {
-                status = "Импортирую модель в закрытое хранилище NEXUS…"
-                runCatching { withContext(Dispatchers.IO) { storage.importArtifact(uri) } }
-                    .onSuccess {
-                        status = "Импорт завершён: " + it.displayName + ". Файл скопирован и SHA-256 рассчитан."
-                        refresh()
-                    }
-                    .onFailure { status = it.message ?: "Не удалось импортировать модель." }
-            }
-        }
-    }
-
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -123,134 +104,11 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
         )
 
         if (tab == ModelCenterTab.MODELS) {
-            val active = installed.firstOrNull { it.id == activeId }
-            GlassSurface(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Активная локальная модель", fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary)
-                    Text(active?.displayName ?: "Не выбрана",
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(active?.let { it.runtime.name + " • " + formatBytes(it.sizeBytes) }
-                        ?: "Скачайте или импортируйте модель, затем нажмите «Активировать».",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-            }
-
-            NexusModelCatalog.starterModels.forEach { model ->
-                ModelCatalogCard(
-                    model = model,
-                    installed = installed.firstOrNull { it.id == model.id },
-                    isActive = activeId == model.id,
-                    isDownloading = downloadingId == model.id,
-                    acceptedLicense = model.artifact?.licenseId?.let { it in acceptedLicenses } == true,
-                    progress = if (downloadingId == model.id) progress else 0f,
-                    progressLabel = if (downloadingId == model.id) progressLabel else "",
-                    onLicenseChange = { accepted ->
-                        val license = model.artifact?.licenseId
-                        if (license != null) acceptedLicenses =
-                            if (accepted) acceptedLicenses + license else acceptedLicenses - license
-                    },
-                    onDownload = {
-                        scope.launch {
-                            val verdict = withContext(Dispatchers.IO) {
-                                val diag = DeviceInspector(context.applicationContext).diagnostics()
-                                ResourceGovernor.evaluate(
-                                    ResourceGovernor.Workload.MODEL_DOWNLOAD,
-                                    diag.batteryPercent, diag.charging, diag.thermalStatus, diag.ramFreeBytes
-                                )
-                            }
-                            if (verdict is ResourceGovernor.Verdict.Deny) {
-                                status = verdict.reason
-                                return@launch
-                            }
-                            downloadingId = model.id
-                            progress = 0f
-                            status = (if (verdict is ResourceGovernor.Verdict.Warn) verdict.reason + " " else "") +
-                                "Загрузка " + model.displayName + "…"
-                            runCatching {
-                                storage.download(
-                                    model,
-                                    model.artifact?.licenseId?.takeIf { license -> license in acceptedLicenses },
-                                    onProgress = { received, total ->
-                                        scope.launch {
-                                            progress = if (total > 0) received.toFloat() / total.toFloat() else 0f
-                                            progressLabel = formatBytes(received) + " / " + formatBytes(total)
-                                        }
-                                    },
-                                    onCallCreated = { call ->
-                                        scope.launch { activeDownloadCall = call }
-                                    }
-                                )
-                            }.onSuccess {
-                                status = "Модель загружена, SHA-256 подтверждён: " + it.displayName
-                                refresh()
-                            }.onFailure {
-                                status = it.message ?: "Ошибка загрузки модели."
-                            }
-                            activeDownloadCall = null
-                            downloadingId = null
-                        }
-                    },
-                    onActivate = {
-                        scope.launch {
-                            status = "Проверяю SHA-256 модели перед активацией…"
-                            runCatching { withContext(Dispatchers.IO) { storage.activate(model.id) } }
-                                .onSuccess { status = "Активная модель: " + it.displayName; refresh() }
-                                .onFailure { status = it.message ?: "Не удалось активировать модель." }
-                        }
-                    },
-                    onCancelDownload = {
-                        status = "Отменяю загрузку…"
-                        activeDownloadCall?.cancel()
-                    },
-                    onDelete = {
-                        scope.launch {
-                            runCatching { withContext(Dispatchers.IO) { storage.remove(model.id) } }
-                                .onSuccess { status = "Модель удалена из хранилища."; refresh() }
-                                .onFailure { status = it.message ?: "Не удалось удалить модель." }
-                        }
-                    }
-                )
-            }
-
-            Text("Импорт своих моделей", fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary)
-            Text("Можно выбрать файл .gguf для llama.cpp или .litertlm для LiteRT-LM. NEXUS скопирует его в app-private storage.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Важно: встроенный шаблон диалога llama.cpp сейчас рассчитан на Qwen3 ChatML. Другие GGUF могут требовать отдельную chat template и пока не гарантированно совместимы.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
-                Text("Импортировать файл модели")
-            }
-
-            installed.filter { it.imported }.forEach { model ->
-                GlassSurface(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(model.displayName, fontWeight = FontWeight.SemiBold)
-                        Text(model.runtime.name + " • " + formatBytes(model.sizeBytes),
-                            style = MaterialTheme.typography.bodySmall)
-                        Text("SHA-256: " + model.sha256, style = MaterialTheme.typography.labelSmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = {
-                                scope.launch {
-                                    status = "Проверяю SHA-256 модели перед активацией…"
-                                    runCatching { withContext(Dispatchers.IO) { storage.activate(model.id) } }
-                                        .onSuccess { status = "Активная модель: " + it.displayName; refresh() }
-                                        .onFailure { status = it.message ?: "Ошибка активации." }
-                                }
-                            }) { Text(if (activeId == model.id) "Активна" else "Активировать") }
-                            TextButton(onClick = {
-                                scope.launch {
-                                    runCatching { withContext(Dispatchers.IO) { storage.remove(model.id) } }
-                                        .onSuccess { status = "Файл модели удалён."; refresh() }
-                                        .onFailure { status = it.message ?: "Ошибка удаления." }
-                                }
-                            }) { Text("Удалить") }
-                        }
-                    }
-                }
-            }
+            Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            PhoneModelHub(chat = chat, onActivated = { record ->
+                status = "Активная модель: " + record.displayName + ". NEX теперь думает на телефоне."
+                refresh()
+            })
         } else {
             GlassSurface(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 modifier = Modifier.fillMaxWidth()) {
@@ -385,80 +243,6 @@ fun ModelCenterScreen(modifier: Modifier = Modifier) {
 
         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(18.dp))
-    }
-}
-
-@Composable
-private fun ModelCatalogCard(
-    model: NexusModelDescriptor,
-    installed: InstalledNexusModel?,
-    isActive: Boolean,
-    isDownloading: Boolean,
-    acceptedLicense: Boolean,
-    progress: Float,
-    progressLabel: String,
-    onLicenseChange: (Boolean) -> Unit,
-    onDownload: () -> Unit,
-    onActivate: () -> Unit,
-    onCancelDownload: () -> Unit,
-    onDelete: () -> Unit
-) {
-    GlassSurface(modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(model.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                if (model.recommendedForBalancedProfile) {
-                    ai.hybrid.commandcenter.ui.Tag("Рекомендуем", ai.hybrid.commandcenter.ui.NexusColors.SignalGreen)
-                }
-            }
-            Text(model.publisher + " • " + model.approximateParameterLabel,
-                style = MaterialTheme.typography.bodySmall)
-            Text("Runtime: " + model.runtimes.joinToString() + " • " + model.executionTarget,
-                style = MaterialTheme.typography.bodySmall)
-            Text(model.capabilities.joinToString(" • ") { it.name },
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (model.artifact != null) {
-                Text("Размер файла: " + formatBytes(model.artifact.sizeBytes),
-                    style = MaterialTheme.typography.bodySmall)
-                Text("SHA-256: " + model.artifact.sha256,
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Ревизия: " + model.artifact.immutableRevision.take(12),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (model.requiresLicenseAcceptance && installed == null) {
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        Checkbox(checked = acceptedLicense, onCheckedChange = onLicenseChange)
-                        Text("Принимаю лицензию " + model.artifact.licenseId,
-                            style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                if (isDownloading) {
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                    Text(progressLabel, style = MaterialTheme.typography.labelSmall)
-                    TextButton(onClick = onCancelDownload, modifier = Modifier.fillMaxWidth()) {
-                        Text("Отменить загрузку")
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (installed == null) {
-                        Button(enabled = model.isDownloadable && !isDownloading &&
-                            (!model.requiresLicenseAcceptance || acceptedLicense), onClick = onDownload) {
-                            Text(if (isDownloading) "Загрузка…" else "Скачать веса")
-                        }
-                    } else {
-                        Button(onClick = onActivate) { Text(if (isActive) "Активна" else "Активировать") }
-                        TextButton(onClick = onDelete, enabled = !isActive) { Text("Удалить") }
-                    }
-                }
-            } else {
-                Text(
-                    if (model.executionTarget == ai.hybrid.commandcenter.nexus.ModelExecutionTarget.HOME_PC_LAN)
-                        "Это будущий LAN-каталог моделей домашнего ПК. Ollama на ПК подключается в «Настройки → Ядро ИИ → На компьютере»; веса на телефон не скачиваются."
-                    else "Карточка каталога готова. Проверенный артефакт для прямой загрузки пока не закреплён; можно импортировать совместимый файл вручную.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
     }
 }
 

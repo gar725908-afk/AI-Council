@@ -18,6 +18,20 @@ adb shell getprop ro.product.cpu.abilist | tee "$OUT/abilist.txt"
 adb install -r -t app/build/outputs/apk/debug/app-debug.apk 2>&1 | tee "$OUT/install.txt"
 adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk 2>&1 | tee -a "$OUT/install.txt"
 adb shell pm grant "$PKG" android.permission.RECORD_AUDIO || true
+
+echo "== models that are already on the phone (the «found» journey)"
+FOUND=false
+mkdir -p /tmp/nexus-found
+fetch() {
+  curl -fsSL --retry 3 -o "/tmp/nexus-found/$2" "$1" && adb push "/tmp/nexus-found/$2" "/sdcard/Download/$2" >/dev/null
+}
+if fetch "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/6ab461498e2023f6e3c1baea90a8f0fe38ab64d0/Qwen3.5-0.8B-Q4_K_M.gguf" Qwen3.5-0.8B-Q4_K_M.gguf &&
+   fetch "https://huggingface.co/ggml-org/gemma-3-270m-it-GGUF/resolve/e7647be17ae1108f2f605ed061ca0608b171afff/gemma-3-270m-it-Q8_0.gguf" gemma-3-270m-it-Q8_0.gguf; then
+  FOUND=true
+fi
+# «Доступ ко всем файлам», as the owner would allow it in Settings
+adb shell appops set "$PKG" MANAGE_EXTERNAL_STORAGE allow || true
+adb shell ls -la /sdcard/Download | tee "$OUT/download-dir.txt"
 adb logcat -c || true
 
 echo "== instrumentation"
@@ -26,6 +40,7 @@ adb shell am instrument -w \
   -e ollamaUrl "http://10.0.2.2:11434" \
   -e ollamaModel "$MODEL" \
   -e gemma "${NEXUS_GEMMA:-false}" \
+  -e found "$FOUND" \
   "$PKG.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument.txt"
 
 echo "== collect test screenshots"

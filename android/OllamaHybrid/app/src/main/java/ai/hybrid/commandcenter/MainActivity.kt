@@ -148,7 +148,7 @@ fun NexusApp(
             module?.let { page ->
                 CyberBackdrop(Modifier.fillMaxSize(), scene = BackdropScene.PLAIN) {
                     ToolPage(page.title, onBack = { module = null }, modifier = frame.imePadding()) {
-                        ModuleContent(page, onToChat = ::toChat, onTarget = ::openTarget)
+                        ModuleContent(page, chat, onToChat = ::toChat, onTarget = ::openTarget)
                     }
                 }
             }
@@ -174,12 +174,12 @@ fun NexusApp(
 
 /** The tool behind each module tile. */
 @Composable
-private fun ModuleContent(page: ModulePage, onToChat: (String?, Boolean) -> Unit, onTarget: (DeckTarget) -> Unit) {
+private fun ModuleContent(page: ModulePage, chat: ChatController, onToChat: (String?, Boolean) -> Unit, onTarget: (DeckTarget) -> Unit) {
     val fill = Modifier.fillMaxSize()
     when (page) {
         ModulePage.BROWSER -> BrowserScreen(fill, onSendToStudio = { onToChat(it, false) }, onSendToCouncil = { onToChat(it, true) })
         ModulePage.ARCHIVE -> ArchiveScreen(fill, onSendToStudio = { onToChat(it, false) }, onSendToCouncil = { onToChat(it, true) })
-        ModulePage.MODELS -> ModelCenterScreen(fill)
+        ModulePage.MODELS -> ModelCenterScreen(fill, chat)
         ModulePage.DEVICE -> DeviceCoreScreen(fill)
         ModulePage.REPAIRS -> RepairPanel(fill, onSendToCouncil = { onToChat(it, true) })
         ModulePage.CONNECTORS -> McpConnectorsPanel(fill)

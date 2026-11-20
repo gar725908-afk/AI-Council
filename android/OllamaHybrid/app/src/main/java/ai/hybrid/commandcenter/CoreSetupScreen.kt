@@ -189,7 +189,7 @@ private fun ChooseStep(onPick: (SetupPath) -> Unit) {
     )
     PathCard(
         SetupPath.PHONE, NexIcons.Smartphone, "На телефоне", Cyber.Cyan, "01",
-        "Работает без интернета и без ключей. Модель скачивается один раз (0.4–2.4 ГБ).", "Офлайн · приватно", onPick
+        "Работает без интернета и без ключей. 12 моделей от 0.4 до 5.7 ГБ, или запусти уже скачанную.", "Офлайн · приватно", onPick
     )
     PathCard(
         SetupPath.PC, NexIcons.Laptop, "На компьютере", Cyber.Violet, "02",
@@ -235,117 +235,12 @@ private fun PathCard(
 
 @Composable
 private fun PhoneStep(chat: ChatController, finish: (String) -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val storage = remember { NexusModelStorage(context) }
-    var installed by remember { mutableStateOf(emptyList<InstalledNexusModel>()) }
-    var downloadingId by remember { mutableStateOf<String?>(null) }
-    var progress by remember { mutableFloatStateOf(0f) }
-    var progressLine by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var call by remember { mutableStateOf<Call?>(null) }
-    var job by remember { mutableStateOf<Job?>(null) }
-    LaunchedEffect(Unit) { installed = withContext(Dispatchers.IO) { storage.listInstalled() } }
-
     HudSectionTitle("ИИ на телефоне", accent = Cyber.Cyan)
     Text(
-        "Модель скачивается один раз с Hugging Face и проверяется по SHA-256. Потом NEX отвечает без интернета. Лучше качать по Wi-Fi.",
+        "Выбери модель по силе телефона: лёгкие летают везде, максимальным нужен флагман. Файл качается один раз с Hugging Face и проверяется по SHA-256, дальше NEX отвечает без интернета.",
         style = NexusTypography.bodyMedium, color = Cyber.TextDim
     )
-    val models = NexusModelCatalog.starterModels.filter {
-        it.isDownloadable && it.executionTarget == ModelExecutionTarget.ANDROID_ON_DEVICE
-    }
-    for (model in models) {
-        val manifest = model.artifact!!
-        val ready = installed.firstOrNull { it.id == model.id }
-        val active = downloadingId == model.id
-        val accent = if (model.recommendedForBalancedProfile) Cyber.Cyan else Cyber.Violet
-        HudPanel(
-            Modifier.fillMaxWidth().testTag("model-" + model.id),
-            accent = accent,
-            title = if (model.recommendedForBalancedProfile) "Рекомендую" else "Лёгкая",
-            index = formatSize(manifest.sizeBytes)
-        ) {
-            Text(model.displayName.uppercase(), style = CyberText.Heading, color = Cyber.Text)
-            Text(
-                when (model.id) {
-                    "google-gemma-4-e2b-it" -> "Умнее и лучше понимает по-русски. Нужно ${formatSize(manifest.sizeBytes)} свободного места; на слабом телефоне отвечает медленнее."
-                    "qwen3-0.6b" -> "Быстрая и маленькая, подойдёт слабому телефону. Отвечает проще."
-                    else -> model.publisher + " · " + model.approximateParameterLabel
-                },
-                style = NexusTypography.bodySmall, color = Cyber.TextDim
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HudChip(if (manifest.runtime == ModelRuntimeKind.LITERT_LM) "LiteRT-LM" else "llama.cpp", accent)
-                HudChip("Лицензия " + manifest.licenseId, Cyber.TextDim)
-            }
-            when {
-                ready != null -> HudButton(
-                    "Включить", {
-                        scope.launch {
-                            error = null
-                            runCatching { chat.activateOnDevice(ready) }
-                                .onSuccess { finish(ready.displayName + " · на телефоне") }
-                                .onFailure { error = it.message ?: "Не удалось включить модель." }
-                        }
-                    },
-                    Modifier.fillMaxWidth(), icon = NexIcons.Power, accent = accent
-                )
-                active -> {
-                    HudProgress(progress, accent = accent)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        HudLabel(progressLine, color = accent, modifier = Modifier.weight(1f))
-                        HudButton("Отмена", {
-                            call?.cancel()
-                            job?.cancel()
-                            downloadingId = null
-                        }, style = HudButtonStyle.Ghost, height = 36.dp)
-                    }
-                }
-                else -> HudButton(
-                    "Скачать · " + formatSize(manifest.sizeBytes), {
-                        error = null
-                        downloadingId = model.id
-                        progress = 0f
-                        progressLine = "Подключаюсь…"
-                        job = scope.launch {
-                            try {
-                                val record = storage.download(
-                                    model = model,
-                                    acceptedLicenseId = manifest.licenseId,
-                                    onProgress = { done, total ->
-                                        val t = if (total > 0) total else manifest.sizeBytes
-                                        progress = (done.toFloat() / t).coerceIn(0f, 1f)
-                                        progressLine = formatSize(done) + " из " + formatSize(t)
-                                    },
-                                    onCallCreated = { call = it }
-                                )
-                                progressLine = "Проверяю и включаю…"
-                                chat.activateOnDevice(record)
-                                installed = withContext(Dispatchers.IO) { storage.listInstalled() }
-                                finish(record.displayName + " · на телефоне")
-                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                                throw cancelled
-                            } catch (e: Exception) {
-                                error = ChatController.friendlyError(e)
-                            } finally {
-                                downloadingId = null
-                                call = null
-                            }
-                        }
-                    },
-                    Modifier.fillMaxWidth().testTag("download-" + model.id), icon = NexIcons.CloudDownload, accent = accent,
-                    enabled = downloadingId == null
-                )
-            }
-            Text(
-                "Нажимая «Скачать», ты принимаешь лицензию " + manifest.licenseId + " модели (" + manifest.source.removePrefix("https://") + ").",
-                style = CyberText.Label.copy(letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified),
-                color = Cyber.TextFaint
-            )
-        }
-    }
-    error?.let { ErrorLine(it) }
+    PhoneModelHub(chat = chat, onActivated = { record -> finish(record.displayName + " · на телефоне") })
 }
 
 // ---------------------------------------------------------------- PC (Ollama)
@@ -361,6 +256,7 @@ private fun PcStep(chat: ChatController, finish: (String) -> Unit) {
     var models by remember { mutableStateOf(emptyList<String>()) }
     var selected by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var checked by remember { mutableStateOf(false) }
 
     fun check() {
         val endpoint = LanScanner.normalizeOllamaEndpoint(address)
@@ -374,6 +270,8 @@ private fun PcStep(chat: ChatController, finish: (String) -> Unit) {
                 val list = chat.modelCatalog.listModels(ProviderKind.OLLAMA, endpoint, "")
                 models = list
                 selected = preferredModel(ProviderKind.OLLAMA, list)
+                checked = true
+                if (list.isEmpty()) error = "Ollama работает, но моделей на ПК пока нет — скачай одну кнопкой ниже."
             } catch (e: Exception) {
                 error = ChatController.friendlyError(e)
             } finally {
@@ -386,7 +284,7 @@ private fun PcStep(chat: ChatController, finish: (String) -> Unit) {
     HudPanel(Modifier.fillMaxWidth(), accent = Cyber.Violet, title = "Подготовь компьютер", index = "3 шага") {
         Step("1", "Установи Ollama с сайта ollama.com и запусти.")
         Step("2", "Открой доступ из сети: в Windows добавь переменную среды OLLAMA_HOST = 0.0.0.0 и перезапусти Ollama.")
-        Step("3", "Скачай модель в терминале, например: ollama pull qwen3:8b")
+        Step("3", "Нажми «Проверить» — модель можно скачать на ПК прямо отсюда, без терминала.")
         Text("Телефон и компьютер должны быть в одной Wi-Fi сети.", style = NexusTypography.bodySmall, color = Cyber.TextDim)
     }
     HudTextField(
@@ -431,6 +329,17 @@ private fun PcStep(chat: ChatController, finish: (String) -> Unit) {
         }
     }
     ModelChoice(models, selected, Cyber.Violet) { selected = it }
+    if (checked) {
+        OllamaOffersPanel(address, models) { tag ->
+            scope.launch {
+                runCatching { chat.modelCatalog.listModels(ProviderKind.OLLAMA, address, "") }
+                    .onSuccess { list ->
+                        models = list
+                        selected = list.firstOrNull { it.equals(tag, ignoreCase = true) } ?: preferredModel(ProviderKind.OLLAMA, list)
+                    }
+            }
+        }
+    }
     if (models.isNotEmpty()) {
         HudButton(
             "Подключить", {

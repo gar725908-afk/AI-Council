@@ -59,8 +59,13 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
                 withContext(dispatcher) {
                     lifecycle.withLock {
                         check(!closed.get()) { "LiteRT-LM gateway уже закрыт." }
-                        val modelPath = storage.activeModelPath(ModelRuntimeKind.LITERT_LM)
-                        ensureEngine(modelPath)
+                        val record = storage.activeModel()
+                            ?: throw IllegalStateException("Локальная модель не выбрана. Открой «Подключение ядра».")
+                        check(record.runtime == ModelRuntimeKind.LITERT_LM) {
+                            "Активная модель работает через другой движок. Переподключи ядро."
+                        }
+                        check(record.location != ModelLocation.EXTERNAL_URI) { "LiteRT-LM нужен файл, а не ссылка." }
+                        ensureEngine(record)
                         // Each gateway request carries complete chat history. Recreate the conversation
                         // when the history changes so old model state cannot leak between AI Studio turns.
                         replaceConversation(request)
@@ -88,9 +93,10 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
         }
     }
 
-    private fun ensureEngine(modelPath: String) {
+    private fun ensureEngine(record: InstalledNexusModel) {
+        val modelPath = record.path
         if (engine != null && loadedPath == modelPath) return
-        storage.verifyActiveModelIntegrity(ModelRuntimeKind.LITERT_LM, modelPath)
+        storage.verifyIntegrity(record)
         releaseOwnedObjects()
         check(File(modelPath).isFile) { "Файл активной LiteRT-LM модели не найден." }
         val candidate = Engine(
@@ -159,12 +165,15 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
 }
 
 private fun interface LlamaTokenSink {
-    fun onToken(value: String)
+    /** Receives complete UTF-8 characters; returning false stops generation. */
+    fun onToken(value: ByteArray): Boolean
 }
 
 /**
  * llama.cpp JNI runtime built from the pinned upstream source tag.
- * The initial Android target is arm64-v8a CPU inference. GPU offload is not claimed.
+ * Runs any chat GGUF the pinned build supports: the prompt is written in the
+ * model's own format (catalog style, or the template stored in the file).
+ * CPU inference only; GPU offload is not claimed.
  */
 class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
     private val storage = NexusModelStorage(context.applicationContext)
@@ -173,14 +182,18 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
     private val closed = AtomicBoolean(false)
     private val generation = AtomicLong(0L)
     @Volatile private var handle: Long = 0L
+    @Volatile private var loadedKey: String? = null
+    @Volatile private var loadedStyle: PromptStyle = PromptStyle.CHATML
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun stream(request: CompletionRequest): Flow<String> = callbackFlow {
         check(!closed.get()) { "llama.cpp gateway уже закрыт." }
         require(request.apiKey.isBlank()) { "Локальный llama.cpp не использует API-ключ." }
         val nativeHandle = getOrCreateHandle()
-        val prompt = buildQwenStylePrompt(request.messages)
+        val history = PromptFormats.fitHistory(request.messages)
+        val prompt = buildPrompt(nativeHandle, loadedStyle, history)
         val requestGeneration = generation.incrementAndGet()
+        val sanitizer = StreamSanitizer()
         val job = launch(Dispatchers.IO) {
             val readLock = handleLock.readLock()
             readLock.lock()
@@ -189,18 +202,21 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
                     "llama.cpp gateway closed before generation started."
                 }
                 NativeLlamaBridge.nativeGenerate(
-                    nativeHandle, prompt, 512, request.temperature.toFloat(),
+                    nativeHandle, prompt.toByteArray(Charsets.UTF_8), 1024, request.temperature.toFloat(),
                     object : LlamaTokenSink {
-                        override fun onToken(value: String) {
-                            if (generation.get() == requestGeneration) {
-                                val sent = channel.trySendBlocking(value)
-                                if (sent.isFailure && !channel.isClosedForSend) {
-                                    NativeLlamaBridge.nativeCancel(nativeHandle)
-                                }
+                        override fun onToken(value: ByteArray): Boolean {
+                            if (generation.get() != requestGeneration) return false
+                            val text = sanitizer.accept(String(value, Charsets.UTF_8))
+                            if (text.isNotEmpty()) {
+                                val sent = channel.trySendBlocking(text)
+                                if (sent.isFailure) return false
                             }
+                            return !sanitizer.reachedStop
                         }
                     }
                 )
+                val tail = sanitizer.finish()
+                if (tail.isNotEmpty() && generation.get() == requestGeneration) channel.trySendBlocking(tail)
                 close()
             } catch (error: Throwable) {
                 close(error)
@@ -221,33 +237,60 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
         }
     }
 
+    private fun buildPrompt(nativeHandle: Long, style: PromptStyle, history: List<ProviderMessage>): String {
+        PromptFormats.build(style, history)?.let { return it }
+        // NATIVE: llama.cpp applies the template stored in the GGUF; ChatML if it does not know it.
+        val messages = PromptFormats.nativeMessages(history)
+        val formatted = NativeLlamaBridge.nativeFormatChat(
+            nativeHandle,
+            messages.map { it.role.toByteArray(Charsets.UTF_8) }.toTypedArray(),
+            messages.map { it.content.toByteArray(Charsets.UTF_8) }.toTypedArray()
+        )
+        return formatted?.toString(Charsets.UTF_8) ?: PromptFormats.build(PromptStyle.CHATML, history)!!
+    }
+
     private suspend fun getOrCreateHandle(): Long = mutex.withLock {
         withContext(Dispatchers.IO) {
             val writeLock = handleLock.writeLock()
             writeLock.lock()
             try {
                 check(!closed.get()) { "llama.cpp gateway уже закрыт." }
-                val modelPath = storage.activeModelPath(ModelRuntimeKind.LLAMA_CPP)
-                check(File(modelPath).isFile) { "Файл активной GGUF-модели не найден." }
-                if (handle != 0L && loadedModelPath == modelPath) return@withContext handle
-                storage.verifyActiveModelIntegrity(ModelRuntimeKind.LLAMA_CPP, modelPath)
+                val record = storage.activeModel()
+                    ?: throw IllegalStateException("Локальная модель не выбрана. Открой «Подключение ядра».")
+                check(record.runtime == ModelRuntimeKind.LLAMA_CPP) {
+                    "Активная модель работает через другой движок. Переподключи ядро."
+                }
+                val key = record.id + "|" + record.path
+                if (handle != 0L && loadedKey == key) return@withContext handle
+                val verified = storage.verifyIntegrity(record)
 
                 val previous = handle
                 handle = 0L
-                loadedModelPath = null
+                loadedKey = null
                 if (previous != 0L) NativeLlamaBridge.nativeDestroy(previous)
 
-                val created = NativeLlamaBridge.nativeCreate(
-                    modelPath, 4096,
-                    (Runtime.getRuntime().availableProcessors() - 1).coerceIn(2, 6)
-                )
+                val threads = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(2, 6)
+                val created = if (verified.location == ModelLocation.EXTERNAL_URI) {
+                    storage.openReadDescriptor(verified).use { descriptor ->
+                        NativeLlamaBridge.nativeCreateFromFd(descriptor.fd, CONTEXT_SIZE, threads)
+                    }
+                } else {
+                    check(File(verified.path).isFile) { "Файл GGUF-модели не найден." }
+                    NativeLlamaBridge.nativeCreate(verified.path, CONTEXT_SIZE, threads)
+                }
                 check(created != 0L) { "llama.cpp не смог открыть GGUF-модель." }
                 if (closed.get()) {
                     NativeLlamaBridge.nativeDestroy(created)
                     throw IllegalStateException("llama.cpp gateway закрыт во время инициализации.")
                 }
+                loadedStyle = verified.promptStyle
+                    ?: NexusModelCatalog.find(verified.catalogId ?: verified.id)?.promptStyle
+                    ?: PromptFormats.detect(
+                        NativeLlamaBridge.nativeMetadata(created, "general.architecture")?.toString(Charsets.UTF_8),
+                        NativeLlamaBridge.nativeChatTemplate(created)?.toString(Charsets.UTF_8)
+                    )
                 handle = created
-                loadedModelPath = modelPath
+                loadedKey = key
                 created
             } finally {
                 writeLock.unlock()
@@ -255,7 +298,6 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
         }
     }
 
-    @Volatile private var loadedModelPath: String? = null
     private val cleanupExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "nexus-llama-cleanup").apply { isDaemon = true }
     }
@@ -278,7 +320,7 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
                 try {
                     val ownedHandle = handle
                     handle = 0L
-                    loadedModelPath = null
+                    loadedKey = null
                     if (ownedHandle != 0L) NativeLlamaBridge.nativeDestroy(ownedHandle)
                 } finally {
                     writeLock.unlock()
@@ -288,19 +330,8 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
         }.onFailure { cleanupExecutor.shutdown() }
     }
 
-    private fun buildQwenStylePrompt(messages: List<ProviderMessage>): String {
-        val system = messages.filter { it.role == "system" }.joinToString("\n\n") { it.content }
-        val conversation = messages.filter { it.role == "user" || it.role == "assistant" }
-        return buildString {
-            if (system.isNotBlank()) {
-                append("<|im_start|>system\n"); append(system); append("<|im_end|>\n")
-            }
-            conversation.forEach { message ->
-                append(if (message.role == "assistant") "<|im_start|>assistant\n" else "<|im_start|>user\n")
-                append(message.content); append("<|im_end|>\n")
-            }
-            append("<|im_start|>assistant\n<think>\n\n</think>\n")
-        }
+    private companion object {
+        const val CONTEXT_SIZE = 4096
     }
 }
 
@@ -308,7 +339,11 @@ private object NativeLlamaBridge {
     init { System.loadLibrary("nexus_llama_jni") }
 
     external fun nativeCreate(modelPath: String, contextSize: Int, threads: Int): Long
-    external fun nativeGenerate(handle: Long, prompt: String, maxTokens: Int, temperature: Float, sink: LlamaTokenSink)
+    external fun nativeCreateFromFd(fd: Int, contextSize: Int, threads: Int): Long
+    external fun nativeMetadata(handle: Long, key: String): ByteArray?
+    external fun nativeChatTemplate(handle: Long): ByteArray?
+    external fun nativeFormatChat(handle: Long, roles: Array<ByteArray>, contents: Array<ByteArray>): ByteArray?
+    external fun nativeGenerate(handle: Long, prompt: ByteArray, maxTokens: Int, temperature: Float, sink: LlamaTokenSink)
     external fun nativeCancel(handle: Long)
     external fun nativeDestroy(handle: Long)
 }

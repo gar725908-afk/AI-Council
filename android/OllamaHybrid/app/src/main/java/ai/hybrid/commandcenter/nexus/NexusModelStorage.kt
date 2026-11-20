@@ -22,15 +22,36 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** Where an installed model's bytes live. */
+enum class ModelLocation {
+    /** Downloaded or copied into NEXUS's private storage. */
+    MANAGED,
+    /** A file the owner already had on the phone (shared storage), used in place. */
+    EXTERNAL_FILE,
+    /** A document the owner picked through Android's file picker, used in place by descriptor. */
+    EXTERNAL_URI
+}
+
 data class InstalledNexusModel(
     val id: String,
     val displayName: String,
+    /** Absolute path, or a content:// URI for [ModelLocation.EXTERNAL_URI]. */
     val path: String,
     val runtime: ModelRuntimeKind,
     val sizeBytes: Long,
+    /** SHA-256 when known; empty for a found file that is not from the catalog. */
     val sha256: String,
-    val imported: Boolean
-)
+    val imported: Boolean,
+    val location: ModelLocation = ModelLocation.MANAGED,
+    val catalogId: String? = null,
+    val promptStyle: PromptStyle? = null,
+    val architecture: String? = null,
+    /** File modification time when the bytes were last verified; 0 = never. */
+    val modifiedAt: Long = 0L,
+    val verifiedAt: Long = 0L
+) {
+    val isExternal: Boolean get() = location != ModelLocation.MANAGED
+}
 
 /**
  * Owns app-private model files and the installed-model registry.
@@ -52,12 +73,12 @@ class NexusModelStorage(context: Context) {
         prefs.all.entries
             .filter { it.key.startsWith("model.") && it.value is String }
             .mapNotNull { (_, value) -> runCatching { decodeRecord(value as String) }.getOrNull() }
-            .filter(::hasValidManagedFile)
+            .filter(::isUsable)
             .sortedBy { it.displayName.lowercase(Locale.ROOT) }
 
     fun installed(id: String): InstalledNexusModel? =
         prefs.getString(recordKey(id), null)?.let { runCatching { decodeRecord(it) }.getOrNull() }
-            ?.takeIf(::hasValidManagedFile)
+            ?.takeIf(::isUsable)
 
     fun activeModel(): InstalledNexusModel? =
         prefs.getString(ACTIVE_ID, null)?.let(::installed)
@@ -78,13 +99,24 @@ class NexusModelStorage(context: Context) {
             "Активная модель изменилась во время подготовки inference runtime."
         }
         verifyArtifactIntegrity(active)
+        Unit
     }
 
     fun activate(id: String): InstalledNexusModel {
         val record = installed(id) ?: throw IllegalArgumentException("Модель не установлена или файл отсутствует.")
-        verifyArtifactIntegrity(record)
+        val verified = verifyArtifactIntegrity(record)
         check(prefs.edit().putString(ACTIVE_ID, id).commit()) { "Не удалось сохранить активную модель." }
-        return record
+        return verified
+    }
+
+    /** Verifies the active model before an engine maps it; cheap when nothing changed since the last check. */
+    fun verifyIntegrity(record: InstalledNexusModel): InstalledNexusModel = verifyArtifactIntegrity(record)
+
+    /** Opens a picked document for reading; the caller owns (and must close) the descriptor. */
+    fun openReadDescriptor(record: InstalledNexusModel): android.os.ParcelFileDescriptor {
+        require(record.location == ModelLocation.EXTERNAL_URI) { "Модель хранится как обычный файл." }
+        return appContext.contentResolver.openFileDescriptor(Uri.parse(record.path), "r")
+            ?: throw IOException("Android не дал открыть выбранный файл модели. Выбери его заново.")
     }
 
     fun deactivate() {
@@ -253,7 +285,11 @@ class NexusModelStorage(context: Context) {
             runtime = verified.runtime,
             sizeBytes = received,
             sha256 = actualHash,
-            imported = false
+            imported = false,
+            catalogId = model.id,
+            promptStyle = model.promptStyle,
+            modifiedAt = destination.lastModified(),
+            verifiedAt = System.currentTimeMillis()
         )
         saveRecord(record)
         record
@@ -298,23 +334,31 @@ class NexusModelStorage(context: Context) {
                 }
             }
             require(total > 0L) { "Выбран пустой файл." }
-            if (runtime == ModelRuntimeKind.LLAMA_CPP) {
-                val magic = ByteArray(4)
-                FileInputStream(partial).use { check(it.read(magic) == 4 && String(magic, Charsets.US_ASCII) == "GGUF") {
-                    "Файл имеет расширение GGUF, но заголовок формата не распознан."
-                } }
-            }
-            val id = "imported-" + UUID.randomUUID().toString().take(8)
+            val header = if (runtime == ModelRuntimeKind.LLAMA_CPP) {
+                val info = runCatching { FileInputStream(partial).use { GgufHeader.read(it) } }.getOrElse {
+                    throw IllegalArgumentException("Файл имеет расширение GGUF, но заголовок формата не распознан.")
+                }
+                check(info.kind.runnable) { "Этот GGUF не запустится в чате: " + info.kind.note + "." }
+                info
+            } else null
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            val catalog = NexusModelCatalog.matchFile(total, displayName)
+                ?.takeIf { it.artifact?.sha256.equals(hash, ignoreCase = true) && installed(it.id) == null }
+            val id = catalog?.id ?: ("imported-" + UUID.randomUUID().toString().take(8))
             promote(partial, target)
             val record = InstalledNexusModel(
                 id = id,
-                displayName = displayName,
+                displayName = catalog?.displayName ?: header?.title ?: displayName,
                 path = target.absolutePath,
                 runtime = runtime,
                 sizeBytes = total,
                 sha256 = hash,
-                imported = true
+                imported = catalog == null,
+                catalogId = catalog?.id,
+                promptStyle = catalog?.promptStyle ?: header?.let { PromptFormats.detect(it.architecture, it.chatTemplate) },
+                architecture = header?.architecture,
+                modifiedAt = target.lastModified(),
+                verifiedAt = System.currentTimeMillis()
             )
             saveRecord(record)
             record
@@ -330,10 +374,19 @@ class NexusModelStorage(context: Context) {
         check(prefs.getString(ACTIVE_ID, null) != id) {
             "Сначала переключите активную модель, затем удаляйте эту."
         }
-        val artifact = File(record.path)
-        if (artifact.exists()) {
-            check(artifact.delete()) {
-                "Не удалось удалить файл модели; запись в каталоге сохранена."
+        if (record.location == ModelLocation.MANAGED) {
+            val artifact = File(record.path)
+            if (artifact.exists()) {
+                check(artifact.delete()) {
+                    "Не удалось удалить файл модели; запись в каталоге сохранена."
+                }
+            }
+        } else if (record.location == ModelLocation.EXTERNAL_URI) {
+            // The owner's file stays where it is; NEXUS only forgets it.
+            runCatching {
+                appContext.contentResolver.releasePersistableUriPermission(
+                    Uri.parse(record.path), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
             }
         }
         check(prefs.edit().remove(recordKey(id)).commit()) {
@@ -350,6 +403,12 @@ class NexusModelStorage(context: Context) {
             .put("sizeBytes", record.sizeBytes)
             .put("sha256", record.sha256)
             .put("imported", record.imported)
+            .put("location", record.location.name)
+            .put("catalogId", record.catalogId ?: JSONObject.NULL)
+            .put("promptStyle", record.promptStyle?.name ?: JSONObject.NULL)
+            .put("architecture", record.architecture ?: JSONObject.NULL)
+            .put("modifiedAt", record.modifiedAt)
+            .put("verifiedAt", record.verifiedAt)
         check(prefs.edit().putString(recordKey(record.id), json.toString()).commit()) {
             "Не удалось сохранить запись модели."
         }
@@ -364,35 +423,198 @@ class NexusModelStorage(context: Context) {
             runtime = ModelRuntimeKind.valueOf(json.getString("runtime")),
             sizeBytes = json.getLong("sizeBytes"),
             sha256 = json.getString("sha256"),
-            imported = json.optBoolean("imported", false)
+            imported = json.optBoolean("imported", false),
+            location = runCatching { ModelLocation.valueOf(json.optString("location", "MANAGED")) }
+                .getOrDefault(ModelLocation.MANAGED),
+            catalogId = json.optStringOrNull("catalogId") ?: NexusModelCatalog.find(json.getString("id"))?.id,
+            promptStyle = json.optStringOrNull("promptStyle")?.let { runCatching { PromptStyle.valueOf(it) }.getOrNull() },
+            architecture = json.optStringOrNull("architecture"),
+            modifiedAt = json.optLong("modifiedAt", 0L),
+            verifiedAt = json.optLong("verifiedAt", 0L)
         )
     }
 
-    private fun hasValidManagedFile(record: InstalledNexusModel): Boolean = runCatching {
-        val managedRoot = root.canonicalFile
-        val artifact = File(record.path).canonicalFile
-        artifact.parentFile == managedRoot && artifact.isFile &&
-            artifact.length() == record.sizeBytes && record.sizeBytes > 0L &&
-            record.sha256.matches(Regex("[A-Fa-f0-9]{64}"))
+    private fun JSONObject.optStringOrNull(key: String): String? =
+        if (isNull(key)) null else optString(key, "").takeIf { it.isNotBlank() }
+
+    private fun isUsable(record: InstalledNexusModel): Boolean = runCatching {
+        if (record.sizeBytes <= 0L) return@runCatching false
+        when (record.location) {
+            ModelLocation.MANAGED -> {
+                val managedRoot = root.canonicalFile
+                val artifact = File(record.path).canonicalFile
+                artifact.parentFile == managedRoot && artifact.isFile &&
+                    artifact.length() == record.sizeBytes && record.sha256.matches(SHA256)
+            }
+            ModelLocation.EXTERNAL_FILE -> {
+                val artifact = File(record.path)
+                artifact.isFile && artifact.canRead() && artifact.length() == record.sizeBytes
+            }
+            ModelLocation.EXTERNAL_URI -> documentSize(Uri.parse(record.path)) == record.sizeBytes
+        }
     }.getOrDefault(false)
 
-    private fun verifyArtifactIntegrity(record: InstalledNexusModel) {
-        check(hasValidManagedFile(record)) {
-            "Файл модели отсутствует, имеет неверный размер или находится вне хранилища NEXUS."
+    private fun documentSize(uri: Uri): Long? =
+        appContext.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
         }
-        val digest = MessageDigest.getInstance("SHA-256")
-        FileInputStream(record.path).use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
+
+    private fun documentModified(uri: Uri): Long =
+        runCatching {
+            appContext.contentResolver.query(
+                uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null
+            )?.use { cursor -> if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else 0L } ?: 0L
+        }.getOrDefault(0L)
+
+    private fun currentModified(record: InstalledNexusModel): Long = when (record.location) {
+        ModelLocation.EXTERNAL_URI -> documentModified(Uri.parse(record.path))
+        else -> File(record.path).lastModified()
+    }
+
+    private fun openStream(record: InstalledNexusModel): java.io.InputStream = when (record.location) {
+        ModelLocation.EXTERNAL_URI -> appContext.contentResolver.openInputStream(Uri.parse(record.path))
+            ?: throw IOException("Android не дал открыть выбранный файл модели.")
+        else -> FileInputStream(record.path)
+    }
+
+    /**
+     * Proves the bytes before an engine maps them. A full SHA-256 pass runs once
+     * after install and again only if the file's size or modification time
+     * changed — re-hashing gigabytes on every launch cost the owner a minute.
+     */
+    private fun verifyArtifactIntegrity(record: InstalledNexusModel): InstalledNexusModel {
+        check(isUsable(record)) {
+            if (record.isExternal) "Файл модели «" + record.displayName + "» пропал или изменился. Найди модели заново."
+            else "Файл модели отсутствует, имеет неверный размер или находится вне хранилища NEXUS."
+        }
+        val modified = currentModified(record)
+        val unchanged = record.verifiedAt > 0L && modified == record.modifiedAt
+        if (unchanged) return record
+        val expected = record.sha256.takeIf { it.matches(SHA256) }
+            ?: run {
+                // A found file that is not from the catalog has no reference hash: check that it is still a GGUF.
+                if (record.runtime == ModelRuntimeKind.LLAMA_CPP) {
+                    openStream(record).use { GgufHeader.read(it) }
+                }
+                val refreshed = record.copy(modifiedAt = modified, verifiedAt = System.currentTimeMillis())
+                saveRecord(refreshed)
+                return refreshed
             }
-        }
-        val actual = digest.digest().joinToString("") { "%02x".format(it) }
-        check(actual.equals(record.sha256, ignoreCase = true)) {
+        val actual = openStream(record).use { sha256Of(it) }
+        check(actual.equals(expected, ignoreCase = true)) {
             "SHA-256 файла модели не совпадает с реестром. Модель не будет активирована."
         }
+        val refreshed = record.copy(modifiedAt = modified, verifiedAt = System.currentTimeMillis())
+        saveRecord(refreshed)
+        return refreshed
+    }
+
+    private fun sha256Of(input: java.io.InputStream, total: Long = 0L, onProgress: (Long, Long) -> Unit = { _, _ -> }): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 32)
+        var done = 0L
+        var reported = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+            done += count
+            if (done - reported >= 32L * 1024 * 1024) { onProgress(done, total); reported = done }
+        }
+        onProgress(done, total)
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Registers a model file the owner already has, without copying it.
+     * A catalog-sized file is hashed first: only a proven copy takes the
+     * catalog identity (and its prompt format); anything else is "found".
+     */
+    suspend fun registerFound(
+        found: FoundModelFile,
+        onProgress: (Long, Long) -> Unit = { _, _ -> }
+    ): InstalledNexusModel = withContext(Dispatchers.IO) {
+        check(found.runnable) { found.problem ?: "Этот файл нельзя запустить." }
+        val file = File(found.path)
+        check(file.isFile && file.canRead()) { "Нет доступа к файлу " + found.fileName + "." }
+        val catalog = found.catalogMatch
+        val existing = catalog?.let { installed(it.id) }
+        if (existing != null) return@withContext existing
+        val hash = if (catalog != null) FileInputStream(file).use { sha256Of(it, file.length(), onProgress) } else ""
+        val proven = catalog != null && catalog.artifact?.sha256.equals(hash, ignoreCase = true)
+        val record = InstalledNexusModel(
+            id = if (proven) catalog!!.id else foundId(found.path, found.sizeBytes),
+            displayName = if (proven) catalog!!.displayName else found.title,
+            path = file.absolutePath,
+            runtime = found.runtime,
+            sizeBytes = file.length(),
+            sha256 = hash,
+            imported = !proven,
+            location = ModelLocation.EXTERNAL_FILE,
+            catalogId = if (proven) catalog!!.id else null,
+            promptStyle = if (proven) catalog!!.promptStyle
+            else found.gguf?.let { PromptFormats.detect(it.architecture, it.chatTemplate) },
+            architecture = found.gguf?.architecture,
+            modifiedAt = file.lastModified(),
+            verifiedAt = System.currentTimeMillis()
+        )
+        saveRecord(record)
+        record
+    }
+
+    /**
+     * Uses a document picked in Android's file picker. GGUF files run in place
+     * through a file descriptor; LiteRT-LM needs a real path, so those are copied.
+     */
+    suspend fun registerDocument(
+        uri: Uri,
+        onProgress: (Long, Long) -> Unit = { _, _ -> }
+    ): InstalledNexusModel = withContext(Dispatchers.IO) {
+        val resolver = appContext.contentResolver
+        val (name, size) = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
+            ?.use { cursor ->
+                if (!cursor.moveToFirst()) null
+                else (cursor.getString(0) ?: "model") to (if (cursor.isNull(1)) -1L else cursor.getLong(1))
+            } ?: ("model" to -1L)
+        val lower = name.lowercase(Locale.ROOT)
+        if (lower.endsWith(".litertlm")) return@withContext importArtifact(uri)
+        require(lower.endsWith(".gguf")) { "Поддерживаются файлы .gguf и .litertlm." }
+        require(size > 0L) { "Android не сообщил размер файла. Попробуй выбрать его через «Файлы»." }
+        val header = (resolver.openInputStream(uri) ?: throw IOException("Не удалось открыть выбранный файл."))
+            .use { GgufHeader.read(it) }
+        check(header.kind.runnable) { "Этот GGUF не запустится в чате: " + header.kind.note + "." }
+        check((header.splitCount ?: 1) <= 1) {
+            "Модель разбита на части. Положи все части в одну папку и найди их кнопкой «Найти на телефоне»."
+        }
+        runCatching { resolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        val catalog = NexusModelCatalog.matchFile(size, name)
+        catalog?.let { installed(it.id) }?.let { return@withContext it }
+        val hash = if (catalog != null) {
+            (resolver.openInputStream(uri) ?: throw IOException("Не удалось открыть выбранный файл.")).use { sha256Of(it, size, onProgress) }
+        } else ""
+        val proven = catalog != null && catalog.artifact?.sha256.equals(hash, ignoreCase = true)
+        val record = InstalledNexusModel(
+            id = if (proven) catalog!!.id else foundId(uri.toString(), size),
+            displayName = if (proven) catalog!!.displayName else (header.title ?: name.removeSuffix(".gguf")),
+            path = uri.toString(),
+            runtime = ModelRuntimeKind.LLAMA_CPP,
+            sizeBytes = size,
+            sha256 = hash,
+            imported = !proven,
+            location = ModelLocation.EXTERNAL_URI,
+            catalogId = if (proven) catalog!!.id else null,
+            promptStyle = if (proven) catalog!!.promptStyle else PromptFormats.detect(header.architecture, header.chatTemplate),
+            architecture = header.architecture,
+            modifiedAt = documentModified(uri),
+            verifiedAt = System.currentTimeMillis()
+        )
+        saveRecord(record)
+        record
+    }
+
+    private fun foundId(location: String, size: Long): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest((location + "#" + size).toByteArray())
+        return "found-" + digest.take(5).joinToString("") { "%02x".format(it) }
     }
 
     private fun ensureRoot() {
@@ -423,6 +645,7 @@ class NexusModelStorage(context: Context) {
     }
 
     companion object {
+        private val SHA256 = Regex("[A-Fa-f0-9]{64}")
         private const val ACTIVE_ID = "active_model_id"
         private const val PROGRESS_REPORT_INTERVAL_BYTES = 1L * 1024L * 1024L
     }
