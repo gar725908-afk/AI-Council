@@ -7,8 +7,8 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 - Ветка: `nexus/genesis-foundation`
 - Базовый HEAD передачи: `ff35fbca9a331e832b81378e25b4c45499d0a92c`
 - Обновлено: 2026-11-20
-- Юнит-тестов: 349 (включая JVM-рендер экранов, галерею скриншотов и живой MCP-сервер), локальный прогон и CI зелёные
-- CI: `nexus-android-debug.yml` (тесты + debug APK), `android-build.yml` (валидация)
+- Юнит-тестов: 373 (включая JVM-рендер экранов, сквозные сценарии оболочки, галерею скриншотов и живой MCP-сервер), локальный прогон зелёный
+- CI: `nexus-android-debug.yml` (тесты + debug APK), `android-build.yml` (валидация), `nexus-android-emulator.yml` (приложение на Android-эмуляторе + Ollama на раннере: настройка ядра, реальный ответ, совет, все вкладки, голос; скриншоты, видео, logcat)
 
 Шкала статусов (по разделу 14 ТЗ), показывается только реально достигнутый:
 `Planned → In Progress → Implemented → Unit Tested → CI Build → Tested on Physical Device → Released`
@@ -26,7 +26,7 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 | Command Deck на реальных статусах (4.1, 5.1) | `CommandDeckScreen.kt`, `DeckModel.kt` | Unit Tested | `DeckModelTest` (12), галерея |
 | Command Portal + голосовой ввод (4.1, 4.8) | `CommandDeckScreen.kt`, `nexus/VoiceIO.kt` | CI Build | `VoiceErrorsTest` |
 | Health check endpoint с latency (4.1, 6.3) | `nexus/ProviderHealthCheck.kt` | Unit Tested | `ProviderHealthCheckTest` (11) |
-| AI Studio: стриминг, история, озвучка ответа (4.2, 4.8) | `AiStudioScreen.kt` | CI Build | частично |
+| Чат NEX: стриминг, история, озвучка ответа (4.2, 4.8) | `ChatController.kt`, `ChatScreen.kt` | Unit Tested | `ShellFlowTest` (ответ через совместимый сервер), эмулятор |
 | Council — командный центр + запуск (4.3) | `CouncilScreen.kt` | CI Build | рендер-smoke |
 | Лента реальных событий агентов (4.3) | `CouncilOrchestrator` events | Unit Tested | `CouncilAgentEventsTest` (4) |
 | Neural Constellation: живая и по журналу (5.3) | `ui/CouncilConstellation.kt` | Unit Tested | `ConstellationModelTest` (5), галерея |
@@ -46,28 +46,27 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 
 ## Визуальный слой и NEX (разделы 2, 5)
 
-Третья редакция по решению владельца: «как ChatGPT, но будто приложение из
-3055 года». Командная палуба и шесть вкладок заменены одним экраном-чатом;
-инструменты открываются из бокового меню.
+Четвёртая редакция по решению владельца: изучены ~110 картинок по запросам
+«приложение ИИ будущего» и «… киберпанк». Итог — тёмный HUD-интерфейс с
+неоном, голограмма ИИ на проекторе и неоновый город; всё упрощено до чата и
+нижней панели.
 
 | Требование | Код | Статус | Тесты |
 |---|---|---|---|
-| Один главный экран — чат (как ChatGPT): меню, выбор режима NEX/Совет, новый чат | `ChatScreen.kt` | CI Build | галерея `01`–`06` |
-| Ответы NEX без пузырей, с разметкой (заголовки, списки, цитаты, код) | `ui/Markdown.kt` | Unit Tested | `MarkdownParserTest` (4) |
-| Космический фон «Deep Field»: звёзды, туманность, дуга горизонта планеты; цвет атмосферы = состояние NEX | `ui/SpaceBackground.kt` | CI Build | галерея |
-| Кнопка «+»: дуга действий (голос, файл, сайт, совет) | `ChatScreen.kt` | CI Build | галерея `05` |
-| Голос на весь экран; кольца следуют реальному уровню микрофона | `ChatScreen.kt`, `VoiceInput.Event.Level` | CI Build | галерея `06` |
-| Файл в чат: текст извлекается и уходит как цитируемый контекст | `ChatScreen.kt`, `MaterialTextExtractor`, `MaterialContext` | CI Build | экстракторы покрыты |
+| Дизайн-система CYBER: палитра, Exo 2 / Inter / JetBrains Mono, HUD-панели со срезанными углами и подсветкой | `ui/Cyber.kt`, `ui/NexusTheme.kt`, `ui/NexusType.kt`, `ui/NexusComponents.kt` | CI Build | галерея `d03` |
+| NEX-голограмма: 3D-голова из линий (кольца, меридианы, черты лица), глаза, рот при речи, проектор, частицы, сканлайны; цвет = реальное состояние | `ui/Hologram.kt` | Unit Tested | `CoreSetupLogicTest` (геометрия), галерея `d01`, `d02` |
+| Неоновый город, перспективная сетка, сканлайны (сцены CITY/DIM/PLAIN) | `ui/CyberBackdrop.kt` | CI Build | галерея |
+| Оболочка: 4 вкладки (Чат, Совет, Модули, Настройки) + голосовое ядро в центре | `MainActivity.kt`, `CyberShell.kt` | Unit Tested | `ShellFlowTest`, эмулятор |
+| Чат: приветствие с голограммой, быстрый старт, режим NEX/Совет, HUD-сообщения, ошибка с «Повторить» | `ChatScreen.kt`, `ChatController.kt` | Unit Tested | `ShellFlowTest`, галерея `01`–`05` |
+| Разговор голосом: слушает → думает → отвечает вслух (рот голограммы по реальному синтезу) | `CyberShell.kt` (`VoiceOverlay`), `nexus/VoiceIO.kt` | CI Build | галерея `06`, эмулятор |
+| Мастер «Подключение ядра»: телефон (загрузка + SHA-256), ПК (Ollama, автопоиск в Wi-Fi), облако (13 сервисов, проверка ключа) | `CoreSetupScreen.kt`, `nexus/LanScanner.kt` | Unit Tested | `ShellFlowTest` (Ollama), `CoreSetupLogicTest` (8), эмулятор |
+| Мастер открывается сам при первом запуске, если ядро не подключено | `MainActivity.kt`, `NexusProfile` | Unit Tested | `ShellFlowTest` |
+| Ответы NEX с разметкой; чистый текст для озвучки и копирования | `ui/Markdown.kt` | Unit Tested | `MarkdownParserTest` (4) |
 | Совет прямо в ленте: живое созвездие по событиям оркестратора | `ChatScreen.kt`, `ui/CouncilConstellation.kt` | Unit Tested | `ConstellationModelTest` (5) |
-| Модель и ключи, маршруты агентов — в выдвижных шторках | `ChatScreen.kt` | CI Build | — |
-| Боковое меню: история чатов, Совет, Браузер, Архив, Состояние, Настройки | `ChatScreen.kt`, `MainActivity.kt` | CI Build | галерея `04` |
-| NEX — персона и облик (8 состояний, мимика, моргание) | `ui/NexMind.kt`, `ui/NexVisuals.kt` | Unit Tested | `NexMindTest` (12), галерея `07` |
-| Состояние системы (бывшая палуба) с Core Orbital | `CommandDeckScreen.kt`, `DeckModel.kt` | Unit Tested | `DeckModelTest` (12), галерея `13` |
-| Шрифты Inter / Unbounded и иконки Lucide в APK | `res/font`, `res/drawable/lu_*.xml` | CI Build | лицензии в `third_party_licenses/` |
-| Режимы эффектов; системное «без анимаций» и энергосбережение побеждают | `MotionPolicy`, Настройки | Unit Tested | `MotionPolicyTest` (6) |
-
-Сравнение со старыми скриншотами/видео владельца не выполнялось: их нет в
-репозитории.
+| Маршруты агентов — во вкладке «Совет» | `CouncilTab.kt` | CI Build | галерея `11` |
+| Режимы эффектов (по умолчанию «Ярко»); системное «без анимаций» и энергосбережение побеждают | `MotionPolicy`, Настройки | Unit Tested | `MotionPolicyTest` (6) |
+| NEX — персона (8 состояний) | `ui/NexMind.kt` | Unit Tested | `NexMindTest` (12) |
+| Шрифты Exo 2 / Inter / JetBrains Mono и иконки Lucide в APK | `res/font`, `res/drawable/lu_*.xml` | CI Build | лицензии в `third_party_licenses/` |
 
 ## Runtime и архитектура (разделы 6, 10, 11)
 
@@ -168,6 +167,7 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 40. Визуальный слой: дизайн-система, NEX, Core Orbital, новый Command Deck, Neural Constellation, режимы эффектов, галерея скриншотов
 41. Редизайн по отзыву владельца: шрифты, иконки, стекло, аврора, NEX-питомец, плавающая навигация, все экраны в одном стиле
 42. «Как ChatGPT из 3055 года»: один экран-чат, боковое меню, космос с горизонтом, дуга действий, голос на весь экран, файлы и совет прямо в чате
+43. CYBER по референсам владельца: голограмма NEX, неоновый город, HUD; 4 вкладки + голосовое ядро; мастер подключения ядра (телефон / ПК с автопоиском / облако); исправлен адрес Fireworks (`gofireworks.org` → `api.fireworks.ai/inference/v1`); сквозной тест на Android-эмуляторе с Ollama
 
 ## Расхождения документации
 

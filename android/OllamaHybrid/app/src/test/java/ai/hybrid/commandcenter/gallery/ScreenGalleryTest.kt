@@ -1,10 +1,15 @@
 package ai.hybrid.commandcenter.gallery
 
-import ai.hybrid.commandcenter.AppPage
+import ai.hybrid.commandcenter.AppTab
+import ai.hybrid.commandcenter.ModulePage
 import ai.hybrid.commandcenter.NexusApp
 import ai.hybrid.commandcenter.NexusApplication
+import ai.hybrid.commandcenter.SetupPath
+import ai.hybrid.commandcenter.CoreSetupScreen
+import ai.hybrid.commandcenter.rememberChatController
 import ai.hybrid.commandcenter.nexus.AgentRunResult
 import ai.hybrid.commandcenter.nexus.AgentRunStatus
+import ai.hybrid.commandcenter.nexus.AndroidCredentialVault
 import ai.hybrid.commandcenter.nexus.CouncilAgentEvent
 import ai.hybrid.commandcenter.nexus.CouncilAgentPhase
 import ai.hybrid.commandcenter.nexus.CouncilOrchestrator
@@ -12,37 +17,32 @@ import ai.hybrid.commandcenter.nexus.MissionStatus
 import ai.hybrid.commandcenter.nexus.ProviderSettings
 import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
 import ai.hybrid.commandcenter.testing.FakeAndroidKeyStore
+import ai.hybrid.commandcenter.ui.BackdropScene
 import ai.hybrid.commandcenter.ui.ConstellationModel
-import ai.hybrid.commandcenter.ui.CoreOrbital
 import ai.hybrid.commandcenter.ui.CouncilConstellation
+import ai.hybrid.commandcenter.ui.CyberBackdrop
 import ai.hybrid.commandcenter.ui.EffectsController
 import ai.hybrid.commandcenter.ui.EffectsMode
-import ai.hybrid.commandcenter.ui.NexState
-import ai.hybrid.commandcenter.ui.NexusColors
-import ai.hybrid.commandcenter.ui.NexusText
+import ai.hybrid.commandcenter.ui.EffectsSettings
 import ai.hybrid.commandcenter.ui.NexusTheme
-import ai.hybrid.commandcenter.ui.OrbitalSegment
-import ai.hybrid.commandcenter.ui.SegmentStatus
-import ai.hybrid.commandcenter.ui.SpaceBackground
-import ai.hybrid.commandcenter.ui.Tag
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -54,7 +54,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Visual gallery of the real app rendered on the JVM at phone size.
  * Records PNGs only with -Pnexus.screenshots=true; otherwise each capture is a
- * no-op, so this never gates CI. Not a substitute for a physical device.
+ * no-op, so this never gates CI. Not a substitute for a real device — the
+ * emulator workflow captures that.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -69,132 +70,167 @@ class ScreenGalleryTest {
     private fun shot(name: String) = "build/gallery/$name.png"
 
     @Before
-    fun keystore() = FakeAndroidKeyStore.install()
+    fun setUp() {
+        FakeAndroidKeyStore.install()
+        // the wizard auto-opens only on a real first launch; scenes open it explicitly
+        app.getSharedPreferences("nexus_profile", 0).edit().putBoolean("setup_prompted", true).commit()
+        // Static pose: exact, comparable frames (the hologram turned three-quarters).
+        EffectsSettings.save(app, EffectsMode.STATIC)
+    }
 
     private fun awaitText(text: String) {
-        compose.waitUntil(10_000) { compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(15_000) { compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
         compose.waitForIdle()
     }
 
-    private fun cloudProvider() = ProviderSettingsStore(app).save(
-        ProviderSettings(endpoint = "https://api.openai.com/v1", model = "gpt-4.1-mini", providerKind = "OPENAI")
-    )
+    private fun awaitTag(tag: String) {
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitForIdle()
+    }
 
-    @Test
-    fun chatEmpty() {
-        cloudProvider()
-        compose.setContent { NexusApp() }
-        awaitText("Куда летим")
-        compose.onRoot().captureRoboImage(shot("01_chat_empty"))
+    private fun cloudCore() {
+        ProviderSettingsStore(app).save(
+            ProviderSettings(endpoint = "https://openrouter.ai/api/v1", model = "deepseek/deepseek-chat-v3:free", providerKind = "OPENROUTER")
+        )
+        AndroidCredentialVault(app).put(AndroidCredentialVault.providerKeyId("OPENROUTER"), "sk-or-test")
+        app.getSharedPreferences("nexus_profile", 0).edit().putString("name", "Али").commit()
     }
 
     @Test
-    fun chatFirstLaunchNeedsModel() {
+    fun homeFirstLaunch() {
         compose.setContent { NexusApp() }
-        awaitText("Куда летим")
-        compose.onRoot().captureRoboImage(shot("02_chat_setup"))
+        awaitTag("connect-core")
+        compose.onRoot().captureRoboImage(shot("01_home_first_launch"))
     }
 
     @Test
-    fun chatConversation() {
-        cloudProvider()
+    fun homeReady() {
+        cloudCore()
+        compose.setContent { NexusApp() }
+        awaitText("Письмо, пост")
+        compose.onRoot().captureRoboImage(shot("02_home_ready"))
+    }
+
+    @Test
+    fun homeReadyBright() {
+        cloudCore()
+        EffectsSettings.save(app, EffectsMode.EXPERIMENTAL)
+        compose.setContent { NexusApp() }
+        awaitText("Письмо, пост")
+        compose.onRoot().captureRoboImage(shot("02b_home_bright"))
+    }
+
+    @Test
+    fun conversation() {
+        cloudCore()
         val journal = app.missionJournal
         val chat = journal.createConversation()
-        journal.appendChatMessage(chat, "user", "Как быстрее всего долететь до Марса в 3055 году?")
+        journal.appendChatMessage(chat, "user", "Сравни два варианта навеса для двора: металл или дерево?")
         journal.appendChatMessage(
-            chat,
-            "assistant",
+            chat, "assistant",
             """
-            Короткий ответ: **через орбитальный разгон и ионный двигатель**.
+            **Коротко:** для двора в Ингушетии чаще выигрывает **металлический каркас** с поликарбонатом.
 
-            Что важно:
-            - окно запуска открывается раз в 26 месяцев;
-            - с ионной тягой путь занимает около **40 дней** вместо полугода;
-            - топливо выгоднее брать на лунной станции.
+            - металл: служит 20+ лет, не боится влаги и жуков;
+            - дерево: теплее на вид, но нужна пропитка каждые 2–3 года;
+            - по цене каркасы близки, крыша решает больше.
 
-            > Совет: выбирайте рейс с остановкой на Фобосе — там пересадка на посадочный модуль.
+            > Совет: если хочется уюта — металлический каркас и деревянная обшивка.
             """.trimIndent()
         )
-        journal.appendChatMessage(chat, "user", "А сколько это стоит?")
+        journal.appendChatMessage(chat, "user", "А сколько материала нужно на 4×6 метров?")
         compose.setContent { NexusApp() }
-        awaitText("сколько это стоит")
-        compose.onRoot().captureRoboImage(shot("03_chat_conversation"))
+        awaitText("сколько материала")
+        compose.onRoot().captureRoboImage(shot("03_conversation"))
     }
 
     @Test
-    fun chatDrawer() {
-        cloudProvider()
+    fun conversationError() {
+        val server = MockWebServer()
+        server.start()
+        try {
+            ProviderSettingsStore(app).save(
+                ProviderSettings(endpoint = server.url("/v1").toString().trimEnd('/'), model = "nexus-test", providerKind = "OPENAI_COMPATIBLE")
+            )
+            server.enqueue(MockResponse().setResponseCode(401).setBody("{\"error\":\"invalid api key\"}"))
+            compose.setContent { NexusApp() }
+            awaitTag("composer")
+            compose.waitUntil(15_000) { compose.onAllNodesWithTag("connect-core").fetchSemanticsNodes().isEmpty() }
+            compose.onNodeWithTag("composer").performTextInput("Привет, ты здесь?")
+            awaitTag("send")
+            compose.onNodeWithTag("send").performClick()
+            awaitTag("error-panel")
+            compose.onRoot().captureRoboImage(shot("04_conversation_error"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun history() {
+        cloudCore()
         val journal = app.missionJournal
-        listOf("Маршрут до Марса", "Разбор договора поставки", "Идеи для навеса у дома").forEach { title ->
-            val id = journal.createConversation()
+        listOf("Навес у дома", "Сверка Главснаб", "Письмо поставщику").forEach { title ->
+            val id = journal.createConversation(title)
             journal.appendChatMessage(id, "user", title)
         }
         compose.setContent { NexusApp() }
-        awaitText("Идеи для навеса")
-        compose.onNodeWithContentDescription("Меню").performClick()
-        compose.mainClock.advanceTimeBy(600)
-        awaitText("Состояние системы")
-        compose.onRoot().captureRoboImage(shot("04_chat_drawer"))
+        awaitTag("chat-list")
+        compose.onNode(hasContentDescription("История чатов")).performClick()
+        awaitText("Навес у дома")
+        compose.onRoot().captureRoboImage(shot("05_history"))
     }
 
     @Test
-    fun chatRadialMenu() {
-        cloudProvider()
-        compose.setContent { NexusApp() }
-        awaitText("Куда летим")
-        compose.onNodeWithContentDescription("Действия").performClick()
-        compose.mainClock.advanceTimeBy(800)
-        awaitText("Файл")
-        compose.onRoot().captureRoboImage(shot("05_chat_radial"))
+    fun voice() {
+        cloudCore()
+        compose.setContent { NexusApp(startVoice = true) }
+        awaitTag("voice-overlay")
+        compose.onRoot().captureRoboImage(shot("06_voice"))
     }
 
     @Test
-    fun chatVoice() {
-        cloudProvider()
-        compose.setContent { NexusApp() }
-        awaitText("Куда летим")
-        compose.onNodeWithContentDescription("Голос").performClick()
-        compose.waitForIdle()
-        compose.onRoot().captureRoboImage(shot("06_chat_voice"))
-    }
-
-    /** Every NEX mood side by side, in Static mode so the frame is exact. */
-    @Test
-    @Config(qualifiers = "+h1250dp")
-    fun nexStates() {
-        val segments = listOf(
-            OrbitalSegment("Модель", "", SegmentStatus.OK),
-            OrbitalSegment("Сеть", "", SegmentStatus.OK),
-            OrbitalSegment("Устройство", "", SegmentStatus.WARN),
-            OrbitalSegment("Council", "", SegmentStatus.ACTIVE)
-        )
-        compose.setContent {
-            NexusTheme(effects = EffectsController(EffectsMode.STATIC, EffectsMode.STATIC) {}) {
-                SpaceBackground(Modifier.fillMaxSize()) {
-                    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("NEX", style = NexusText.Wordmark)
-                        Text("Настроение по реальному состоянию", color = NexusColors.TextSecondary, fontSize = 14.sp)
-                        NexState.entries.chunked(2).forEach { pair ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                pair.forEach { state ->
-                                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        CoreOrbital(segments = segments, state = state, mode = EffectsMode.STATIC, diameter = 170.dp)
-                                        Tag(state.title, state.color)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        compose.waitForIdle()
-        compose.onRoot().captureRoboImage(shot("07_nex_states"))
+    @Config(qualifiers = "+h1100dp")
+    fun setupChoose() {
+        compose.setContent { NexusApp(startSetup = true) }
+        awaitTag("path-cloud")
+        compose.onRoot().captureRoboImage(shot("07_setup_choose"))
     }
 
     @Test
     @Config(qualifiers = "+h1500dp")
-    fun councilPage() {
+    fun setupPhone() {
+        compose.setContent { NexusTheme { CyberBackdrop(Modifier.fillMaxSize(), scene = BackdropScene.PLAIN) {
+            CoreSetupScreen(rememberChatController(), onClose = {}, startPath = SetupPath.PHONE)
+        } } }
+        awaitText("Скачать")
+        compose.onRoot().captureRoboImage(shot("08_setup_phone"))
+    }
+
+    @Test
+    @Config(qualifiers = "+h1300dp")
+    fun setupPc() {
+        compose.setContent { NexusTheme { CyberBackdrop(Modifier.fillMaxSize(), scene = BackdropScene.PLAIN) {
+            CoreSetupScreen(rememberChatController(), onClose = {}, startPath = SetupPath.PC)
+        } } }
+        awaitTag("ollama-address")
+        compose.onRoot().captureRoboImage(shot("09_setup_pc"))
+    }
+
+    @Test
+    @Config(qualifiers = "+h1500dp")
+    fun setupCloud() {
+        compose.setContent { NexusTheme { CyberBackdrop(Modifier.fillMaxSize(), scene = BackdropScene.PLAIN) {
+            CoreSetupScreen(rememberChatController(), onClose = {}, startPath = SetupPath.CLOUD)
+        } } }
+        awaitTag("cloud-key")
+        compose.onRoot().captureRoboImage(shot("10_setup_cloud"))
+    }
+
+    @Test
+    @Config(qualifiers = "+h1500dp")
+    fun councilTab() {
+        cloudCore()
         val journal = app.missionJournal
         val agents = CouncilOrchestrator.defaultAgents()
         val missionId = journal.createMission("Оценить риски перехода склада на новую WMS", "", "")
@@ -208,15 +244,14 @@ class ScreenGalleryTest {
             )
         }
         journal.transition(missionId, MissionStatus.FAILED, error = "Синтез не выполнен: исполнитель упал")
-        compose.setContent { NexusApp(startPage = AppPage.COUNCIL) }
+        compose.setContent { NexusApp(startTab = AppTab.COUNCIL) }
         awaitText("Созвездие совета")
-        compose.onRoot().captureRoboImage(shot("08_council_page"))
+        compose.onRoot().captureRoboImage(shot("11_council_tab"))
     }
 
-    /** Live constellation mid-mission: every phase at once. */
     @Test
     @Config(qualifiers = "+h1100dp")
-    fun councilLiveConstellation() {
+    fun councilLive() {
         val agents = CouncilOrchestrator.defaultAgents()
         val phases = listOf(
             CouncilAgentPhase.COMPLETED, CouncilAgentPhase.RUNNING, CouncilAgentPhase.RUNNING,
@@ -230,7 +265,7 @@ class ScreenGalleryTest {
         val latest = events.associateBy { it.agentId }
         compose.setContent {
             NexusTheme(effects = EffectsController(EffectsMode.STATIC, EffectsMode.STATIC) {}) {
-                SpaceBackground(Modifier.fillMaxSize()) {
+                CyberBackdrop(Modifier.fillMaxSize(), scene = BackdropScene.DIM) {
                     Column(Modifier.fillMaxSize().padding(16.dp)) {
                         val nodes = ConstellationModel.fromLive(agents, latest)
                         CouncilConstellation(
@@ -244,37 +279,47 @@ class ScreenGalleryTest {
             }
         }
         compose.waitForIdle()
-        compose.onRoot().captureRoboImage(shot("09_council_live"))
+        compose.onRoot().captureRoboImage(shot("12_council_live"))
     }
 
     @Test
-    fun browserPage() {
-        compose.setContent { NexusApp(startPage = AppPage.BROWSER) }
+    @Config(qualifiers = "+h1100dp")
+    fun modulesTab() {
+        compose.setContent { NexusApp(startTab = AppTab.MODULES) }
+        awaitTag("module-system")
+        compose.onRoot().captureRoboImage(shot("13_modules_tab"))
+    }
+
+    @Test
+    @Config(qualifiers = "+h1700dp")
+    fun settingsTab() {
+        cloudCore()
+        compose.setContent { NexusApp(startTab = AppTab.SETTINGS) }
+        awaitText("Модели на телефоне")
+        compose.onRoot().captureRoboImage(shot("14_settings_tab"))
+    }
+
+    @Test
+    fun browserModule() {
+        compose.setContent { NexusApp(startModule = ModulePage.BROWSER) }
         awaitText("Адрес или поиск")
-        compose.onRoot().captureRoboImage(shot("10_browser"))
-    }
-
-    @Test
-    fun archivePage() {
-        compose.setContent { NexusApp(startPage = AppPage.ARCHIVE) }
-        awaitText("Архив файлов")
-        compose.onRoot().captureRoboImage(shot("11_archive"))
-    }
-
-    @Test
-    @Config(qualifiers = "+h1400dp")
-    fun settingsPage() {
-        compose.setContent { NexusApp(startPage = AppPage.SETTINGS) }
-        awaitText("Оформление")
-        compose.onRoot().captureRoboImage(shot("12_settings"))
+        compose.onRoot().captureRoboImage(shot("15_module_browser"))
     }
 
     @Test
     @Config(qualifiers = "+h2000dp")
-    fun statusPage() {
-        cloudProvider()
-        compose.setContent { NexusApp(startPage = AppPage.STATUS) }
+    fun statusModule() {
+        cloudCore()
+        compose.setContent { NexusApp(startModule = ModulePage.STATUS) }
         awaitText("Недавнее")
-        compose.onRoot().captureRoboImage(shot("13_status"))
+        compose.onRoot().captureRoboImage(shot("16_module_status"))
+    }
+
+    @Test
+    @Config(qualifiers = "+h1400dp")
+    fun modelsModule() {
+        compose.setContent { NexusApp(startModule = ModulePage.MODELS) }
+        awaitText("Gemma")
+        compose.onRoot().captureRoboImage(shot("17_module_models"))
     }
 }

@@ -3,7 +3,7 @@ package ai.hybrid.commandcenter.ui
 import android.content.Context
 import android.os.PowerManager
 import android.provider.Settings
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -22,64 +22,66 @@ import androidx.compose.ui.unit.dp
  * for colour, shape, spacing and motion so every screen speaks one language.
  */
 object NexusColors {
-    // Base
-    val Void = Color(0xFF06070B)
-    val DeepSurface = Color(0xFF0D0F16)
-    val RaisedSurface = Color(0xFF141722)
-    val ElevatedSurface = Color(0xFF1C2030)
+    // Base: night city
+    val Void = Color(0xFF02040A)
+    val DeepSurface = Color(0xFF070D1A)
+    val RaisedSurface = Color(0xFF0C1427)
+    val ElevatedSurface = Color(0xFF121C34)
 
-    // Glass layers (translucent white over the aurora background)
-    val GlassFillTop = Color(0x17FFFFFF)
-    val GlassFillBottom = Color(0x0AFFFFFF)
-    val GlassBorderTop = Color(0x33FFFFFF)
-    val GlassBorderBottom = Color(0x0DFFFFFF)
-    val Hairline = Color(0x1AFFFFFF)
+    // HUD layers (cyan-tinted, translucent over the backdrop)
+    val GlassFillTop = Color(0x1400E5FF)
+    val GlassFillBottom = Color(0x05000000)
+    val GlassBorderTop = Color(0x6600E5FF)
+    val GlassBorderBottom = Color(0x1400E5FF)
+    val Hairline = Color(0x2400E5FF)
 
     // Text
-    val TextPrimary = Color(0xFFF4F6FB)
-    val TextSecondary = Color(0xFFA3ABBD)
-    val TextMuted = Color(0xFF6B7386)
+    val TextPrimary = Color(0xFFEAF6FF)
+    val TextSecondary = Color(0xFF93A7C4)
+    val TextMuted = Color(0xFF56667F)
 
-    // Accents (handoff palette)
-    val NeonCyan = Color(0xFF42D9F5)
-    val NeonViolet = Color(0xFF9B7BFF)
-    val NeonMagenta = Color(0xFFF05BCB)
-    val SignalGreen = Color(0xFF43D6A0)
-    val SignalAmber = Color(0xFFF2B65D)
-    val SignalRed = Color(0xFFFF647C)
+    // Neon accents
+    val NeonCyan = Color(0xFF00E5FF)
+    val NeonViolet = Color(0xFF8F6BFF)
+    val NeonMagenta = Color(0xFFFF2E97)
+    val NeonYellow = Color(0xFFFCEE0A)
+    val SignalGreen = Color(0xFF2BFF9A)
+    val SignalAmber = Color(0xFFFFB547)
+    val SignalRed = Color(0xFFFF3B5C)
 
     /** Kept for older call sites; now a hairline rather than a slab. */
-    val Divider = Color(0xFF232838)
+    val Divider = Color(0xFF15203A)
 }
 
 object NexusBrushes {
-    /** Primary action: violet into magenta. */
-    val Primary = Brush.linearGradient(listOf(Color(0xFF7D6BFF), Color(0xFFB36CFF), Color(0xFFF05BCB)))
+    /** Primary action: cyan through violet into magenta. */
+    val Primary = Brush.linearGradient(listOf(Color(0xFF00E5FF), Color(0xFF8F6BFF), Color(0xFFFF2E97)))
 
     /** Cool accent: cyan into violet. */
-    val Cool = Brush.linearGradient(listOf(Color(0xFF42D9F5), Color(0xFF7D6BFF)))
+    val Cool = Brush.linearGradient(listOf(Color(0xFF00E5FF), Color(0xFF8F6BFF)))
 
-    /** Wordmark: white into lavender. */
-    val Wordmark = Brush.linearGradient(listOf(Color(0xFFFFFFFF), Color(0xFFC9BFFF), Color(0xFF8FE6FA)))
+    /** Wordmark: ice into cyan into magenta. */
+    val Wordmark = Brush.horizontalGradient(listOf(Color(0xFFCFFCFF), Color(0xFF00E5FF), Color(0xFFB98CFF), Color(0xFFFF2E97)))
 
     val GlassFill = Brush.verticalGradient(listOf(NexusColors.GlassFillTop, NexusColors.GlassFillBottom))
-    val GlassBorder = Brush.verticalGradient(listOf(NexusColors.GlassBorderTop, NexusColors.GlassBorderBottom))
+    val GlassBorder = Brush.linearGradient(listOf(NexusColors.GlassBorderTop, NexusColors.GlassBorderBottom, Color(0x4000E5FF)))
 
     fun accentBorder(accent: Color) =
-        Brush.verticalGradient(listOf(accent.copy(alpha = 0.55f), accent.copy(alpha = 0.08f)))
+        Brush.linearGradient(listOf(accent.copy(alpha = 0.6f), accent.copy(alpha = 0.12f), accent.copy(alpha = 0.4f)))
 }
 
+/** Chamfered silhouettes: HUD panels instead of soft rounded cards. */
 object NexusShapes {
-    val ControlRadius = 14.dp
-    val CardRadius = 22.dp
-    val PanelRadius = 28.dp
-    val SheetRadius = 32.dp
+    val ControlRadius = 9.dp
+    val CardRadius = 12.dp
+    val PanelRadius = 14.dp
+    val SheetRadius = 18.dp
 
-    val Control = RoundedCornerShape(ControlRadius)
-    val Card = RoundedCornerShape(CardRadius)
-    val Panel = RoundedCornerShape(PanelRadius)
-    val Sheet = RoundedCornerShape(SheetRadius)
-    val Pill = RoundedCornerShape(percent = 50)
+    val Control = CutCornerShape(topStart = ControlRadius, topEnd = 0.dp, bottomEnd = ControlRadius, bottomStart = 0.dp)
+    val Card = CutCornerShape(topStart = CardRadius, topEnd = 0.dp, bottomEnd = CardRadius, bottomStart = 0.dp)
+    val Panel = CutCornerShape(topStart = PanelRadius, topEnd = 0.dp, bottomEnd = PanelRadius, bottomStart = 0.dp)
+    val Sheet = CutCornerShape(topStart = SheetRadius, topEnd = 0.dp, bottomEnd = SheetRadius, bottomStart = 0.dp)
+    val Pill = CutCornerShape(7.dp)
 }
 
 object NexusSpacing {
@@ -103,12 +105,12 @@ object NexusMotion {
 
 /** Effects intensity the user picks; the system may still force Static. */
 enum class EffectsMode(val id: String, val title: String) {
-    STATIC("static", "Статичный"),
-    SUBTLE("subtle", "Сдержанный"),
-    EXPERIMENTAL("experimental", "Экспериментальный");
+    STATIC("static", "Статично"),
+    SUBTLE("subtle", "Сдержанно"),
+    EXPERIMENTAL("experimental", "Ярко");
 
     companion object {
-        fun byId(id: String?): EffectsMode = entries.firstOrNull { it.id == id } ?: SUBTLE
+        fun byId(id: String?): EffectsMode = entries.firstOrNull { it.id == id } ?: EXPERIMENTAL
     }
 }
 
@@ -166,7 +168,7 @@ data class EffectsController(
 )
 
 val LocalEffects = compositionLocalOf {
-    EffectsController(EffectsMode.SUBTLE, EffectsMode.SUBTLE) {}
+    EffectsController(EffectsMode.EXPERIMENTAL, EffectsMode.EXPERIMENTAL) {}
 }
 
 /** Created once at the app root and provided through [LocalEffects]. */

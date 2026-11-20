@@ -23,7 +23,7 @@ enum class NexState(val title: String) {
     val color: Color
         get() = when (this) {
             STANDBY -> NexusColors.NeonCyan
-            LISTENING -> NexusColors.NeonCyan
+            LISTENING -> NexusColors.NeonMagenta
             THINKING -> NexusColors.NeonViolet
             SUCCESS -> NexusColors.SignalGreen
             ATTENTION -> NexusColors.SignalAmber

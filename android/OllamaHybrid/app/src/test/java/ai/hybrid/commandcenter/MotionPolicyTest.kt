@@ -40,9 +40,9 @@ class MotionPolicyTest {
     }
 
     @Test
-    fun `unknown stored mode falls back to subtle`() {
-        assertEquals(EffectsMode.SUBTLE, EffectsMode.byId(null))
-        assertEquals(EffectsMode.SUBTLE, EffectsMode.byId("glitter"))
+    fun `unknown stored mode falls back to the bright default`() {
+        assertEquals(EffectsMode.EXPERIMENTAL, EffectsMode.byId(null))
+        assertEquals(EffectsMode.EXPERIMENTAL, EffectsMode.byId("glitter"))
         assertEquals(EffectsMode.STATIC, EffectsMode.byId("static"))
     }
 }

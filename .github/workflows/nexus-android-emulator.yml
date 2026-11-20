@@ -1,0 +1,84 @@
+name: NEXUS Android emulator E2E
+
+# Runs the real app on an Android emulator: first launch, core setup against a
+# real Ollama server on the runner (reached from the emulator as 10.0.2.2), a
+# streamed answer, the council, every tab and the voice overlay. Screenshots,
+# a short screen recording and logcat are uploaded as an artifact.
+
+on:
+  push:
+    branches:
+      - nexus/genesis-foundation
+    paths:
+      - "android/OllamaHybrid/**"
+      - ".github/workflows/nexus-android-emulator.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nexus-android-emulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emulator-e2e:
+    name: Owner journey on an emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      NEXUS_OLLAMA_MODEL: qwen2.5:0.5b
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Build app and test APKs
+        working-directory: android/OllamaHybrid
+        run: gradle --no-daemon --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
+
+      - name: Start Ollama with a small model on the runner
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve > /tmp/ollama.log 2>&1 &) || true
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:11434/api/tags && break; sleep 2; done
+          ollama pull "$NEXUS_OLLAMA_MODEL"
+          curl -s http://127.0.0.1:11434/api/tags
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the owner journey on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          working-directory: android/OllamaHybrid
+          script: bash scripts/emulator-smoke.sh
+
+      - name: Upload screenshots, video and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS-emulator-e2e
+          path: |
+            android/OllamaHybrid/build/emulator-smoke/
+          if-no-files-found: warn
+          retention-days: 14

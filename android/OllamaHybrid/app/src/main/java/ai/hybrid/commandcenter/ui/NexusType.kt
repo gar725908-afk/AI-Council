@@ -7,7 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
@@ -20,8 +20,8 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
 /**
- * Typography: Inter for interface text (full Cyrillic), Inter Display for
- * large headings, Unbounded for the wordmark and brand moments.
+ * Typography: Exo 2 for headings, buttons and the wordmark, Inter for
+ * reading, JetBrains Mono for HUD labels — all with full Cyrillic.
  * Fonts ship inside the APK (OFL 1.1, see third_party_licenses/).
  */
 val InterFamily = FontFamily(
@@ -29,16 +29,6 @@ val InterFamily = FontFamily(
     Font(R.font.inter_medium, FontWeight.Medium),
     Font(R.font.inter_semibold, FontWeight.SemiBold),
     Font(R.font.inter_bold, FontWeight.Bold)
-)
-
-val InterDisplayFamily = FontFamily(
-    Font(R.font.inter_display_semibold, FontWeight.SemiBold),
-    Font(R.font.inter_display_bold, FontWeight.Bold)
-)
-
-val UnboundedFamily = FontFamily(
-    Font(R.font.unbounded_semibold, FontWeight.SemiBold),
-    Font(R.font.unbounded_bold, FontWeight.Bold)
 )
 
 private fun inter(size: Int, line: Int, weight: FontWeight, tracking: Double = 0.0) = TextStyle(
@@ -50,44 +40,56 @@ private fun inter(size: Int, line: Int, weight: FontWeight, tracking: Double = 0
 )
 
 private fun display(size: Int, line: Int, weight: FontWeight, tracking: Double) = TextStyle(
-    fontFamily = InterDisplayFamily,
+    fontFamily = Exo2Family,
     fontWeight = weight,
     fontSize = size.sp,
     lineHeight = line.sp,
     letterSpacing = tracking.sp
 )
 
+private fun mono(size: Double, line: Int, weight: FontWeight, tracking: Double) = TextStyle(
+    fontFamily = MonoFamily,
+    fontWeight = weight,
+    fontSize = size.sp,
+    lineHeight = line.sp,
+    letterSpacing = tracking.sp
+)
+
+/**
+ * Exo 2 for headings and buttons (futuristic, full Cyrillic), Inter for
+ * reading, JetBrains Mono for the small HUD labels.
+ */
 val NexusTypography = Typography(
-    displayLarge = display(40, 46, FontWeight.Bold, -0.8),
-    displayMedium = display(34, 40, FontWeight.Bold, -0.6),
-    displaySmall = display(28, 34, FontWeight.Bold, -0.4),
-    headlineLarge = display(26, 32, FontWeight.SemiBold, -0.3),
-    headlineMedium = display(22, 28, FontWeight.SemiBold, -0.2),
-    headlineSmall = display(20, 26, FontWeight.SemiBold, -0.2),
-    titleLarge = inter(18, 24, FontWeight.SemiBold, -0.1),
-    titleMedium = inter(16, 22, FontWeight.SemiBold),
+    displayLarge = display(40, 46, FontWeight.Bold, 0.5),
+    displayMedium = display(34, 40, FontWeight.Bold, 0.4),
+    displaySmall = display(28, 34, FontWeight.Bold, 0.3),
+    headlineLarge = display(26, 32, FontWeight.Bold, 0.3),
+    headlineMedium = display(22, 28, FontWeight.Bold, 0.3),
+    headlineSmall = display(20, 26, FontWeight.SemiBold, 0.3),
+    titleLarge = display(18, 24, FontWeight.SemiBold, 0.3),
+    titleMedium = display(16, 22, FontWeight.SemiBold, 0.2),
     titleSmall = inter(14, 20, FontWeight.Medium),
     bodyLarge = inter(16, 24, FontWeight.Normal),
     bodyMedium = inter(14, 20, FontWeight.Normal),
     bodySmall = inter(12, 16, FontWeight.Normal),
-    labelLarge = inter(14, 20, FontWeight.SemiBold),
-    labelMedium = inter(12, 16, FontWeight.Medium, 0.1),
-    labelSmall = inter(11, 14, FontWeight.Medium, 0.2)
+    labelLarge = display(14, 20, FontWeight.SemiBold, 0.6),
+    labelMedium = mono(11.5, 16, FontWeight.Medium, 0.2),
+    labelSmall = mono(10.5, 14, FontWeight.Medium, 0.4)
 )
 
 /** Extra styles the Material scale has no slot for. */
 object NexusText {
     val Wordmark = TextStyle(
-        fontFamily = UnboundedFamily,
-        fontWeight = FontWeight.Bold,
+        fontFamily = Exo2Family,
+        fontWeight = FontWeight.ExtraBold,
         fontSize = 22.sp,
-        letterSpacing = 1.sp,
+        letterSpacing = 6.sp,
         brush = NexusBrushes.Wordmark
     )
 
     /** Big numbers: tabular figures so values do not jump while updating. */
     val Metric = TextStyle(
-        fontFamily = InterDisplayFamily,
+        fontFamily = Exo2Family,
         fontWeight = FontWeight.SemiBold,
         fontSize = 28.sp,
         lineHeight = 32.sp,
@@ -97,18 +99,18 @@ object NexusText {
 
     /** Small uppercase eyebrow, used sparingly above key numbers. */
     val Eyebrow = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 11.sp,
-        letterSpacing = 0.8.sp
+        fontFamily = MonoFamily,
+        fontWeight = FontWeight.Medium,
+        fontSize = 10.5.sp,
+        letterSpacing = 1.2.sp
     )
 }
 
 private val NexusColorScheme = darkColorScheme(
-    primary = Color(0xFFB4A6FF),
-    onPrimary = Color(0xFF120B2E),
-    primaryContainer = Color(0xFF2A2156),
-    onPrimaryContainer = Color(0xFFE6E0FF),
+    primary = NexusColors.NeonCyan,
+    onPrimary = Color(0xFF00141A),
+    primaryContainer = Color(0xFF0B2A36),
+    onPrimaryContainer = Color(0xFFCFFCFF),
     secondary = NexusColors.NeonCyan,
     onSecondary = Color(0xFF00222B),
     tertiary = NexusColors.NeonMagenta,
@@ -122,18 +124,18 @@ private val NexusColorScheme = darkColorScheme(
     surfaceContainerHigh = NexusColors.ElevatedSurface,
     surfaceContainerHighest = NexusColors.ElevatedSurface,
     surfaceContainerLow = NexusColors.DeepSurface,
-    outline = Color(0xFF353B4F),
-    outlineVariant = Color(0xFF232838),
+    outline = Color(0x6600E5FF),
+    outlineVariant = Color(0x2400E5FF),
     error = NexusColors.SignalRed,
     onError = Color(0xFF2B0710)
 )
 
 private val NexusMaterialShapes = Shapes(
-    extraSmall = RoundedCornerShape(10.dp),
-    small = RoundedCornerShape(14.dp),
-    medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(26.dp),
-    extraLarge = RoundedCornerShape(32.dp)
+    extraSmall = CutCornerShape(5.dp),
+    small = CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp),
+    medium = CutCornerShape(topStart = 12.dp, bottomEnd = 12.dp),
+    large = CutCornerShape(topStart = 16.dp, bottomEnd = 16.dp),
+    extraLarge = CutCornerShape(topStart = 20.dp, bottomEnd = 20.dp)
 )
 
 /**

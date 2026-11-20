@@ -15,7 +15,6 @@ import ai.hybrid.commandcenter.ui.HairlineDivider
 import ai.hybrid.commandcenter.ui.IconBadge
 import ai.hybrid.commandcenter.ui.InfoLine
 import ai.hybrid.commandcenter.ui.ListRow
-import ai.hybrid.commandcenter.ui.NexAvatar
 import ai.hybrid.commandcenter.ui.NexIcon
 import ai.hybrid.commandcenter.ui.NexIcons
 import ai.hybrid.commandcenter.ui.NexState
@@ -179,7 +178,7 @@ private fun CouncilCommandCenter(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         IconBadge(NexIcons.History, NexusColors.TextSecondary)
                         Text(
-                            "Миссий ещё не было. Запустите первую на вкладке «Запуск».",
+                            "Миссий ещё не было. Нажми «Задать задачу» — совет разберёт её в чате.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = NexusColors.TextSecondary
                         )

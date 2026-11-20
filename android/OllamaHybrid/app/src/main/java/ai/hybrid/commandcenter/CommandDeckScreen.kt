@@ -20,7 +20,7 @@ import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
 import ai.hybrid.commandcenter.nexus.VoiceInput
 import ai.hybrid.commandcenter.ui.CircleIconButton
 import ai.hybrid.commandcenter.ui.ConstellationModel
-import ai.hybrid.commandcenter.ui.CoreOrbital
+import ai.hybrid.commandcenter.ui.NexHoloStage
 import ai.hybrid.commandcenter.ui.Dot
 import ai.hybrid.commandcenter.ui.EffectsMode
 import ai.hybrid.commandcenter.ui.GlassCard
@@ -319,13 +319,11 @@ private fun Hero(
         spacing = 6.dp
     ) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            CoreOrbital(
-                segments = segments,
+            NexHoloStage(
                 state = nexState,
                 mode = mode,
-                diameter = 232.dp,
-                description = nexLine,
-                onTap = onToggleOverview
+                size = 240.dp,
+                modifier = Modifier.clickable(onClick = onToggleOverview)
             )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -515,7 +513,7 @@ private fun Composer(
                 contentDescription = "Отправить"
             )
         }
-        SegmentedTabs(listOf("AI Studio", "Council"), target, { target = it })
+        SegmentedTabs(listOf("Чат NEX", "Совет"), target, { target = it })
         Text(
             voiceStatus ?: if (target == 0) {
                 "Один ответ выбранной модели, с потоковым выводом."
@@ -712,7 +710,7 @@ private fun RouteCard(
 @Composable
 private fun QuickActions(deck: DeckState, onNavigate: (DeckTarget) -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        QuickAction(NexIcons.Sparkles, "Studio", NexusColors.NeonViolet) { onNavigate(DeckTarget.STUDIO) }
+        QuickAction(NexIcons.Sparkles, "Чат", NexusColors.NeonViolet) { onNavigate(DeckTarget.STUDIO) }
         QuickAction(NexIcons.Archive, "Архив", NexusColors.NeonCyan) { onNavigate(DeckTarget.ARCHIVE) }
         QuickAction(NexIcons.Boxes, "Модели", NexusColors.NeonMagenta) { onNavigate(DeckTarget.MODELS) }
         QuickAction(
@@ -787,7 +785,7 @@ private fun RecentOperations(deck: DeckState, onNavigate: (DeckTarget) -> Unit) 
                 icon = NexIcons.MessageSquare,
                 accent = NexusColors.NeonCyan,
                 title = chat.title.ifBlank { "Диалог" },
-                meta = "AI Studio · " + timeLabel(chat.updatedAt),
+                meta = "Чат · " + timeLabel(chat.updatedAt),
                 trailing = { Tag("Диалог", NexusColors.NeonCyan) },
                 onClick = { onNavigate(DeckTarget.STUDIO) }
             )

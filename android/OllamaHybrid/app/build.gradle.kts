@@ -4,8 +4,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val nexusVersionName = providers.environmentVariable("NEXUS_VERSION_NAME").orElse("0.6.0").get()
-val nexusVersionCode = providers.environmentVariable("NEXUS_VERSION_CODE").orNull?.toIntOrNull() ?: 6
+val nexusVersionName = providers.environmentVariable("NEXUS_VERSION_NAME").orElse("0.7.0").get()
+val nexusVersionCode = providers.environmentVariable("NEXUS_VERSION_CODE").orNull?.toIntOrNull() ?: 7
 val nexusSigningStoreFile = providers.environmentVariable("NEXUS_SIGNING_STORE_FILE").orNull
 val nexusSigningStorePassword = providers.environmentVariable("NEXUS_SIGNING_STORE_PASSWORD").orNull
 val nexusSigningKeyAlias = providers.environmentVariable("NEXUS_SIGNING_KEY_ALIAS").orNull
@@ -142,4 +142,11 @@ dependencies {
     // Use a real JVM JSON implementation in local unit tests instead of android.jar mock stubs.
     testImplementation("org.json:json:20260814")
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Real-device smoke test on an emulator in CI (see .github/workflows/nexus-android-emulator.yml).
+    androidTestImplementation(platform("androidx.compose:compose-bom:2025.05.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
 }

@@ -317,7 +317,7 @@ fun CouncilConstellation(
                     drawCircle(Color.White.copy(alpha = 0.8f), radius = 33.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
                 }
             }
-            NexOrb(state = managerNex, mode = EffectsMode.STATIC, diameter = 60.dp)
+            NexHoloAvatar(state = managerNex, mode = EffectsMode.STATIC, size = 62.dp)
         }
 
         Legend()

@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -84,14 +85,31 @@ private fun DrawScope.drawAurora() {
     pool(Offset(w * 0.85f, h * 1.02f), w * 0.95f, NexusColors.NeonMagenta, 0.10f)
 }
 
-/** Translucent glass surface with a light top edge. */
-fun Modifier.glass(shape: Shape = NexusShapes.Card, accent: Color? = null): Modifier =
-    this
+/**
+ * HUD surface (name kept for the many call sites): dark translucent fill so
+ * the city behind never speckles the text, a cyan tint at the top, a
+ * gradient hairline and — on chamfered panels — lit chamfer accents.
+ */
+fun Modifier.glass(shape: Shape = NexusShapes.Card, accent: Color? = null): Modifier {
+    val cut = when {
+        shape === NexusShapes.Card -> NexusShapes.CardRadius
+        shape === NexusShapes.Panel -> NexusShapes.PanelRadius
+        shape === NexusShapes.Sheet -> NexusShapes.SheetRadius
+        else -> null
+    }
+    val lit = accent ?: NexusColors.NeonCyan
+    return this
+        .then(
+            if (cut != null) Modifier.drawWithContent {
+                drawContent()
+                drawChamferAccents(lit, cut.toPx(), alpha = if (accent != null) 1f else 0.75f)
+            } else Modifier
+        )
         .clip(shape)
-        // a dark base first, so stars behind never speckle the text
-        .background(Color(0xB8060816))
+        .background(Color(0xE0060C19))
         .background(NexusBrushes.GlassFill)
         .border(1.dp, if (accent != null) NexusBrushes.accentBorder(accent) else NexusBrushes.GlassBorder, shape)
+}
 
 @Composable
 fun GlassCard(
@@ -145,11 +163,11 @@ fun IconBadge(@DrawableRes icon: Int, accent: Color, modifier: Modifier = Modifi
     Box(
         modifier
             .size(size)
-            .clip(RoundedCornerShape(size * 0.32f))
+            .clip(HudShapes.chamfer(size * 0.22f))
             .background(
-                Brush.linearGradient(listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.10f)))
+                Brush.linearGradient(listOf(accent.copy(alpha = 0.22f), accent.copy(alpha = 0.06f)))
             )
-            .border(1.dp, accent.copy(alpha = 0.28f), RoundedCornerShape(size * 0.32f)),
+            .border(1.dp, accent.copy(alpha = 0.55f), HudShapes.chamfer(size * 0.22f)),
         contentAlignment = Alignment.Center
     ) {
         NexIcon(icon, tint = accent, size = size * 0.5f)
@@ -166,13 +184,13 @@ fun PrimaryButton(
     modifier: Modifier = Modifier,
     @DrawableRes icon: Int? = null,
     enabled: Boolean = true,
-    brush: Brush = NexusBrushes.Primary,
-    glow: Color = NexusColors.NeonViolet
+    brush: Brush = Brush.horizontalGradient(listOf(NexusColors.NeonCyan, Color(0xFF7DF3FF))),
+    glow: Color = NexusColors.NeonCyan
 ) {
-    val shape = NexusShapes.Pill
+    val shape = NexusShapes.Control
     Row(
         modifier
-            .then(if (enabled) Modifier.shadow(14.dp, shape, ambientColor = glow, spotColor = glow) else Modifier)
+            .then(if (enabled) Modifier.shadow(10.dp, shape, ambientColor = glow, spotColor = glow) else Modifier)
             .clip(shape)
             .background(if (enabled) brush else SolidColor(NexusColors.ElevatedSurface))
             .clickable(enabled = enabled, onClick = onClick)
@@ -180,9 +198,9 @@ fun PrimaryButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
     ) {
-        val content = if (enabled) Color.White else NexusColors.TextMuted
+        val content = if (enabled) Cyber.OnNeon else NexusColors.TextMuted
         if (icon != null) NexIcon(icon, tint = content, size = 18.dp)
-        Text(text, style = MaterialTheme.typography.labelLarge, color = content, maxLines = 1)
+        Text(text.uppercase(), style = CyberText.Button, color = content, maxLines = 1)
     }
 }
 
@@ -196,16 +214,21 @@ fun SoftButton(
     tint: Color = NexusColors.TextPrimary,
     enabled: Boolean = true
 ) {
+    val shape = NexusShapes.Control
+    val edge = if (tint == NexusColors.TextPrimary) NexusColors.NeonCyan else tint
     Row(
         modifier
-            .glass(NexusShapes.Pill)
+            .clip(shape)
+            .background(Color(0xD9060C19))
+            .background(edge.copy(alpha = 0.07f))
+            .border(1.dp, edge.copy(alpha = if (enabled) 0.5f else 0.18f), shape)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
     ) {
         val color = if (enabled) tint else NexusColors.TextMuted
-        if (icon != null) NexIcon(icon, tint = color, size = 17.dp)
+        if (icon != null) NexIcon(icon, tint = if (enabled) edge else color, size = 17.dp)
         Text(text, style = MaterialTheme.typography.labelLarge, color = color, maxLines = 1)
     }
 }
@@ -228,11 +251,14 @@ fun CircleIconButton(
             .then(
                 if (filled) {
                     Modifier
-                        .shadow(12.dp, CircleShape, ambientColor = NexusColors.NeonViolet, spotColor = NexusColors.NeonViolet)
-                        .clip(CircleShape)
+                        .shadow(10.dp, HudShapes.Octagon, ambientColor = NexusColors.NeonCyan, spotColor = NexusColors.NeonCyan)
+                        .clip(HudShapes.Octagon)
                         .background(brush)
                 } else {
-                    Modifier.glass(CircleShape)
+                    Modifier
+                        .clip(HudShapes.Octagon)
+                        .background(Color(0xD9060C19))
+                        .border(1.dp, NexusColors.NeonCyan.copy(alpha = 0.4f), HudShapes.Octagon)
                 }
             )
             .clickable(onClick = onClick),
@@ -283,14 +309,15 @@ fun StatusPill(
 @Composable
 fun Tag(text: String, color: Color, modifier: Modifier = Modifier) {
     Text(
-        text,
+        text.uppercase(),
         style = MaterialTheme.typography.labelSmall,
         color = color,
         maxLines = 1,
         modifier = modifier
-            .clip(NexusShapes.Pill)
-            .background(color.copy(alpha = 0.14f))
-            .padding(horizontal = 9.dp, vertical = 4.dp)
+            .clip(HudShapes.Small)
+            .background(color.copy(alpha = 0.12f))
+            .border(1.dp, color.copy(alpha = 0.4f), HudShapes.Small)
+            .padding(horizontal = 8.dp, vertical = 3.dp)
     )
 }
 
@@ -299,8 +326,11 @@ fun Dot(color: Color, size: Dp = 8.dp) {
     Box(
         Modifier
             .size(size)
-            .shadow(6.dp, CircleShape, ambientColor = color, spotColor = color)
-            .background(color, CircleShape)
+            .drawBehind {
+                drawRect(color.copy(alpha = 0.25f), topLeft = Offset(-size.toPx() * 0.4f, -size.toPx() * 0.4f),
+                    size = androidx.compose.ui.geometry.Size(size.toPx() * 1.8f, size.toPx() * 1.8f))
+            }
+            .background(color)
     )
 }
 
@@ -323,8 +353,8 @@ fun SectionHeader(
                 Modifier.clip(NexusShapes.Pill).clickable(onClick = onAction).padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(action, style = MaterialTheme.typography.labelLarge, color = NexusColors.NeonViolet)
-                NexIcon(NexIcons.ChevronRight, tint = NexusColors.NeonViolet, size = 16.dp)
+                Text(action, style = MaterialTheme.typography.labelLarge, color = NexusColors.NeonCyan)
+                NexIcon(NexIcons.ChevronRight, tint = NexusColors.NeonCyan, size = 16.dp)
             }
         }
     }
@@ -379,7 +409,7 @@ fun SegmentedTabs(
                 .width(thumbWidth)
                 .fillMaxHeight()
                 .clip(NexusShapes.Pill)
-                .background(NexusBrushes.Primary)
+                .background(Brush.horizontalGradient(listOf(NexusColors.NeonCyan, Color(0xFF7DF3FF))))
         )
         Row(Modifier.fillMaxWidth().fillMaxHeight()) {
             options.forEachIndexed { index, option ->
@@ -394,7 +424,7 @@ fun SegmentedTabs(
                     Text(
                         option,
                         style = MaterialTheme.typography.labelLarge,
-                        color = if (index == selected) Color.White else NexusColors.TextSecondary,
+                        color = if (index == selected) Cyber.OnNeon else NexusColors.TextSecondary,
                         maxLines = 1,
                         textAlign = TextAlign.Center
                     )
@@ -560,17 +590,20 @@ fun ChipTabs(
             Row(
                 Modifier
                     .clip(NexusShapes.Pill)
-                    .then(if (active) Modifier.background(NexusBrushes.Primary) else Modifier.glass(NexusShapes.Pill))
+                    .then(
+                        if (active) Modifier.background(Brush.horizontalGradient(listOf(NexusColors.NeonCyan, Color(0xFF7DF3FF))))
+                        else Modifier.glass(NexusShapes.Pill)
+                    )
                     .clickable { onSelect(index) }
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                NexIcon(icon, tint = if (active) Color.White else NexusColors.TextSecondary, size = 16.dp)
+                NexIcon(icon, tint = if (active) Cyber.OnNeon else NexusColors.TextSecondary, size = 16.dp)
                 Text(
                     label,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (active) Color.White else NexusColors.TextSecondary,
+                    color = if (active) Cyber.OnNeon else NexusColors.TextSecondary,
                     maxLines = 1
                 )
             }

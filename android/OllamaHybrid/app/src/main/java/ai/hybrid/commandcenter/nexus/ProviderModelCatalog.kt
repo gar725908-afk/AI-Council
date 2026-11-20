@@ -201,7 +201,7 @@ class ProviderModelCatalog(
         ProviderKind.GROQ -> "https://api.groq.com/openai/v1"
         ProviderKind.MISTRAL -> "https://api.mistral.ai/v1"
         ProviderKind.TOGETHER -> "https://api.together.ai/v1"
-        ProviderKind.FIREWORKS -> "https://api.gofireworks.org/v1"
+        ProviderKind.FIREWORKS -> "https://api.fireworks.ai/inference/v1"
         ProviderKind.XAI -> "https://api.x.ai/v1"
         ProviderKind.CEREBRAS -> "https://api.cerebras.ai/v1"
         ProviderKind.NVIDIA -> "https://integrate.api.nvidia.com/v1"

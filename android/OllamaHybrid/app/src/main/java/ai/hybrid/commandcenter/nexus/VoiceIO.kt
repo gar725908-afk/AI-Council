@@ -92,11 +92,27 @@ class VoiceInput(private val context: Context) {
 class VoiceOutput(context: Context) {
     @Volatile private var ready = false
     @Volatile private var languageSupported = false
+
+    /** Real speaking state from the synthesiser (start/done/error), for the hologram's mouth. */
+    @Volatile var onSpeakingChanged: ((Boolean) -> Unit)? = null
+
     private val tts: TextToSpeech = TextToSpeech(context.applicationContext) { status ->
         ready = status == TextToSpeech.SUCCESS
         if (ready) {
             val result = runCatching { ttsSetLanguage() }.getOrDefault(TextToSpeech.LANG_NOT_SUPPORTED)
             languageSupported = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
+        }
+    }
+
+    init {
+        runCatching {
+            tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) { onSpeakingChanged?.invoke(true) }
+                override fun onDone(utteranceId: String?) { onSpeakingChanged?.invoke(false) }
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) { onSpeakingChanged?.invoke(false) }
+                override fun onStop(utteranceId: String?, interrupted: Boolean) { onSpeakingChanged?.invoke(false) }
+            })
         }
     }
 
@@ -113,6 +129,7 @@ class VoiceOutput(context: Context) {
 
     fun stop() {
         runCatching { tts.stop() }
+        onSpeakingChanged?.invoke(false)
     }
 
     fun shutdown() {

@@ -110,6 +110,20 @@ object MarkdownParser {
     }
 
     /** Inline spans: **bold**, *italic* / _italic_, `code`, [text](url). */
+    /** Plain text for speech and copying: Markdown markers removed, structure kept. */
+    fun plain(source: String): String = parse(source).joinToString("\n") { block ->
+        fun clean(t: String) = inline(t, Color.Unspecified, Color.Unspecified).text
+        when (block) {
+            is MdBlock.Heading -> clean(block.text).trimEnd('.', ':') + "."
+            is MdBlock.Paragraph -> clean(block.text)
+            is MdBlock.Bullet -> clean(block.text)
+            is MdBlock.Numbered -> block.number + ". " + clean(block.text)
+            is MdBlock.Quote -> clean(block.text)
+            is MdBlock.Code -> block.code
+            MdBlock.Rule -> ""
+        }
+    }.trim()
+
     fun inline(text: String, codeColor: Color, linkColor: Color): AnnotatedString = buildAnnotatedString {
         var i = 0
         while (i < text.length) {
@@ -159,8 +173,8 @@ fun MarkdownText(
 ) {
     val blocks = remember(text) { MarkdownParser.parse(text) }
     val body = MaterialTheme.typography.bodyLarge.copy(lineHeight = 1.55.em, color = color)
-    val code = Space.Ion
-    val link = Space.Ion
+    val code = Cyber.CyanSoft
+    val link = Cyber.CyanSoft
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         blocks.forEachIndexed { index, block ->
             val last = index == blocks.lastIndex
@@ -178,11 +192,11 @@ fun MarkdownText(
                 )
                 is MdBlock.Paragraph -> Text(withTrailing(MarkdownParser.inline(block.text, code, link)), style = body)
                 is MdBlock.Bullet -> Row(Modifier.padding(start = (block.depth * 16).dp)) {
-                    Text("•", style = body.copy(color = Space.Ion), modifier = Modifier.width(18.dp))
+                    Text("•", style = body.copy(color = Cyber.CyanSoft), modifier = Modifier.width(18.dp))
                     Text(withTrailing(MarkdownParser.inline(block.text, code, link)), style = body)
                 }
                 is MdBlock.Numbered -> Row {
-                    Text(block.number + ".", style = body.copy(color = Space.Ion), modifier = Modifier.width(26.dp))
+                    Text(block.number + ".", style = body.copy(color = Cyber.CyanSoft), modifier = Modifier.width(26.dp))
                     Text(withTrailing(MarkdownParser.inline(block.text, code, link)), style = body)
                 }
                 is MdBlock.Quote -> Row {
@@ -191,7 +205,7 @@ fun MarkdownText(
                             .width(3.dp)
                             .height(22.dp)
                             .clip(NexusShapes.Pill)
-                            .background(Space.Plasma)
+                            .background(Cyber.Violet)
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
