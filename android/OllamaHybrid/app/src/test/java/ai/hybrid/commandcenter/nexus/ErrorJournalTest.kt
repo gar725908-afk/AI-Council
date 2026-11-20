@@ -3,6 +3,7 @@ package ai.hybrid.commandcenter.nexus
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -76,6 +77,16 @@ class ErrorJournalTest {
 
     private fun journal() = ErrorJournal(ApplicationProvider.getApplicationContext())
 
+    /**
+     * Robolectric keeps one app-private database per test class, so a test that
+     * asserts on the whole journal must start from a known-empty state instead
+     * of depending on execution order.
+     */
+    @Before
+    fun startFromEmptyJournal() {
+        journal().clear()
+    }
+
     @Test
     fun `errors are stored newest first with environment`() {
         val j = journal()
@@ -85,6 +96,17 @@ class ErrorJournalTest {
         assertEquals(listOf("вторая", "первая"), entries.map { it.summary })
         assertTrue(entries.first().device.isNotBlank())
         assertTrue(entries.first().androidRelease.contains("API"))
+    }
+
+    @Test
+    fun `errors recorded in the same millisecond keep insertion order`() {
+        // A crash cascade records several errors within one millisecond; the
+        // newest must still come first instead of depending on SQLite's whim.
+        val j = journal()
+        repeat(12) { index -> j.record("crash", "ошибка $index", "детали", "1.0") }
+        val summaries = j.recent().map { it.summary }
+        assertEquals("ошибка 11", summaries.first())
+        assertEquals("ошибка 0", summaries.last())
     }
 
     @Test

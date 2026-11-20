@@ -36,7 +36,7 @@ class ErrorJournal(context: Context) : SQLiteOpenHelper(
                 "summary TEXT NOT NULL, details TEXT NOT NULL, app_version TEXT NOT NULL, " +
                 "android_release TEXT NOT NULL, device TEXT NOT NULL, occurred_at INTEGER NOT NULL)"
         )
-        db.execSQL("CREATE INDEX idx_errors_time ON errors(occurred_at DESC)")
+        db.execSQL("CREATE INDEX idx_errors_time ON errors(occurred_at DESC, id DESC)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
@@ -56,7 +56,7 @@ class ErrorJournal(context: Context) : SQLiteOpenHelper(
             )
         )
         writableDatabase.execSQL(
-            "DELETE FROM errors WHERE id NOT IN (SELECT id FROM errors ORDER BY occurred_at DESC LIMIT $MAX_ROWS)"
+            "DELETE FROM errors WHERE id NOT IN (SELECT id FROM errors ORDER BY occurred_at DESC, id DESC LIMIT $MAX_ROWS)"
         )
     }
 
@@ -73,7 +73,7 @@ class ErrorJournal(context: Context) : SQLiteOpenHelper(
     fun recent(limit: Int = 50): List<ErrorEntry> =
         readableDatabase.rawQuery(
             "SELECT id, kind, summary, details, app_version, android_release, device, occurred_at " +
-                "FROM errors ORDER BY occurred_at DESC LIMIT ?",
+                "FROM errors ORDER BY occurred_at DESC, id DESC LIMIT ?",
             arrayOf(limit.coerceIn(1, 500).toString())
         ).use { cursor ->
             buildList {

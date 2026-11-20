@@ -27,13 +27,13 @@ class BrowserHistoryStore(context: Context) : SQLiteOpenHelper(
             arrayOf(url.take(2048), title.take(200), System.currentTimeMillis())
         )
         writableDatabase.execSQL(
-            "DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY visited_at DESC LIMIT $MAX_ROWS)"
+            "DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY visited_at DESC, id DESC LIMIT $MAX_ROWS)"
         )
     }
 
     fun recent(limit: Int = 50): List<BrowserHistoryEntry> =
         readableDatabase.rawQuery(
-            "SELECT url, title, visited_at FROM history ORDER BY visited_at DESC LIMIT ?",
+            "SELECT url, title, visited_at FROM history ORDER BY visited_at DESC, id DESC LIMIT ?",
             arrayOf(limit.coerceIn(1, 500).toString())
         ).use { cursor ->
             buildList {

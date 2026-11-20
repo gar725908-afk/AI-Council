@@ -157,7 +157,7 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
         val bounded = limit.coerceIn(1, 200)
         return readableDatabase.rawQuery(
             "SELECT id, request_id, tool_id, risk, transport, initiator, approval_present, " +
-                "outcome, detail, created_at FROM tool_audit ORDER BY created_at DESC LIMIT ?",
+                "outcome, detail, created_at FROM tool_audit ORDER BY created_at DESC, rowid DESC LIMIT ?",
             arrayOf(bounded.toString())
         ).use { cursor ->
             buildList {
@@ -272,8 +272,8 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
         return readableDatabase.rawQuery(
             "SELECT id, conversation_id, role, content, created_at FROM (" +
                 "SELECT id, conversation_id, role, content, created_at FROM chat_messages " +
-                "WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?" +
-                ") ORDER BY created_at ASC",
+                "WHERE conversation_id = ? ORDER BY created_at DESC, id DESC LIMIT ?" +
+                ") ORDER BY created_at ASC, id ASC",
             arrayOf(conversationId, safeLimit.toString())
         ).use { cursor ->
             buildList {

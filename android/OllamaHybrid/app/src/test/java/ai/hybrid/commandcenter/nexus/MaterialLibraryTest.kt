@@ -4,6 +4,7 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -105,6 +106,12 @@ class LibrarySearchTest {
 class MaterialLibraryTest {
 
     private fun library() = MaterialLibrary(ApplicationProvider.getApplicationContext())
+
+    /** One database per test class: start from a known-empty state, not from test order. */
+    @Before
+    fun startFromEmptyLibrary() {
+        library().clearAll()
+    }
 
     @Test
     fun `imported text file is listed with hash and searchable`() {

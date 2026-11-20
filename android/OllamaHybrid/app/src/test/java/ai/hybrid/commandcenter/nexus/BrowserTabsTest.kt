@@ -3,6 +3,7 @@ package ai.hybrid.commandcenter.nexus
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -57,6 +58,12 @@ class BrowserTabsTest {
 class BrowserHistoryStoreTest {
 
     private fun store() = BrowserHistoryStore(ApplicationProvider.getApplicationContext())
+
+    /** One database per test class: start from a known-empty state, not from test order. */
+    @Before
+    fun startFromEmptyHistory() {
+        store().clear()
+    }
 
     @Test
     fun `visits are recorded newest first and clearable`() {
