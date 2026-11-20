@@ -31,6 +31,7 @@ enum class NexusDestination(val label: String, val glyph: String) {
     DECK("Главная", "⌂"),
     STUDIO("AI Studio", "✧"),
     COUNCIL("Council", "◎"),
+    BROWSER("Браузер", "◍"),
     ARCHIVE("Архив", "❒"),
     SYSTEM("Система", "▣")
 }
@@ -110,6 +111,13 @@ private fun NexusApp() {
                     modifier = Modifier.padding(padding),
                     initialPrompt = pendingPrompt,
                     onInitialPromptConsumed = { pendingPrompt = null }
+                )
+                NexusDestination.BROWSER -> BrowserScreen(
+                    modifier = Modifier.padding(padding),
+                    onSendToStudio = { text ->
+                        pendingPrompt = text
+                        selected = NexusDestination.STUDIO
+                    }
                 )
                 NexusDestination.ARCHIVE -> ArchiveScreen(
                     modifier = Modifier.padding(padding),

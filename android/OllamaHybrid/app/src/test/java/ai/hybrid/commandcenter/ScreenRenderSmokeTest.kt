@@ -48,6 +48,12 @@ class ScreenRenderSmokeTest {
     }
 
     @Test
+    fun browserRendersWithoutPage() {
+        compose.setContent { BrowserScreen() }
+        compose.onRoot().assertExists()
+    }
+
+    @Test
     fun archiveRendersWithEmptyLibrary() {
         compose.setContent { ArchiveScreen() }
         compose.onRoot().assertExists()
