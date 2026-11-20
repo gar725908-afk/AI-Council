@@ -14,9 +14,9 @@ object MaterialTextExtractor {
     }
 
     const val MAX_TEXT_CHARS = 2_000_000
-    private val supported = setOf("txt", "md", "markdown", "json", "log", "csv", "pdf")
+    private val supported = setOf("txt", "md", "markdown", "json", "log", "csv", "pdf", "xlsx", "docx")
 
-    fun supportedFormatsLabel(): String = "PDF (текстовый слой), TXT, MD, JSON, LOG, CSV"
+    fun supportedFormatsLabel(): String = "PDF (текстовый слой), XLSX, DOCX, TXT, MD, JSON, LOG, CSV"
 
     fun extract(fileName: String, bytes: ByteArray): Extraction {
         val extension = fileName.substringAfterLast('.', "").lowercase()
@@ -28,6 +28,18 @@ object MaterialTextExtractor {
         }
         if (bytes.isEmpty()) {
             return Extraction.Unsupported("Файл пуст.")
+        }
+        if (extension == "xlsx") {
+            return when (val result = OfficeTextExtractor.extractXlsx(bytes)) {
+                is OfficeTextExtractor.Result.Text -> Extraction.Text(result.text, "xlsx")
+                is OfficeTextExtractor.Result.Failed -> Extraction.Unsupported(result.reason)
+            }
+        }
+        if (extension == "docx") {
+            return when (val result = OfficeTextExtractor.extractDocx(bytes)) {
+                is OfficeTextExtractor.Result.Text -> Extraction.Text(result.text, "docx")
+                is OfficeTextExtractor.Result.Failed -> Extraction.Unsupported(result.reason)
+            }
         }
         if (extension == "pdf") {
             return when (val result = PdfTextExtractor.extract(bytes)) {
