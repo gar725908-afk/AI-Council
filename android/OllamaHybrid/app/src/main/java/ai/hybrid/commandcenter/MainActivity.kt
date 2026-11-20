@@ -117,6 +117,10 @@ private fun NexusApp() {
                     onSendToStudio = { text ->
                         pendingPrompt = text
                         selected = NexusDestination.STUDIO
+                    },
+                    onSendToCouncil = { text ->
+                        pendingPrompt = text
+                        selected = NexusDestination.COUNCIL
                     }
                 )
                 NexusDestination.ARCHIVE -> ArchiveScreen(
@@ -124,6 +128,10 @@ private fun NexusApp() {
                     onSendToStudio = { text ->
                         pendingPrompt = text
                         selected = NexusDestination.STUDIO
+                    },
+                    onSendToCouncil = { text ->
+                        pendingPrompt = text
+                        selected = NexusDestination.COUNCIL
                     }
                 )
                 NexusDestination.SYSTEM -> SystemScreen(

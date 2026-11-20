@@ -64,7 +64,8 @@ private const val MAX_PAGE_TEXT_CHARS = 200_000
 @Composable
 fun BrowserScreen(
     modifier: Modifier = Modifier,
-    onSendToStudio: (String) -> Unit = {}
+    onSendToStudio: (String) -> Unit = {},
+    onSendToCouncil: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -178,6 +179,17 @@ fun BrowserScreen(
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
                 ) { Text("Текст → AI Studio", fontSize = 11.sp) }
+            }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        withPageText { text ->
+                            val name = pageTitle.ifBlank { currentUrl.orEmpty() }
+                            onSendToCouncil(MaterialContext.buildPrompt(name, text))
+                        }
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
+                ) { Text("Текст → Council", fontSize = 11.sp) }
             }
             item {
                 OutlinedButton(

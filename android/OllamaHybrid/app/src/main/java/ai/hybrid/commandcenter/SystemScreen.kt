@@ -1,6 +1,9 @@
 package ai.hybrid.commandcenter
 
 import ai.hybrid.commandcenter.nexus.MaterialLibrary
+import ai.hybrid.commandcenter.nexus.MissionExport
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import ai.hybrid.commandcenter.nexus.NexusModelStorage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -134,6 +137,29 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) { refresh() }
 
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching {
+                    val journal = (context.applicationContext as NexusApplication).missionJournal
+                    val missions = journal.getRecentMissions(500)
+                    val results = missions.associate { it.id to journal.getAgentResults(it.id) }
+                    val json = MissionExport.toJson(missions, results, System.currentTimeMillis())
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+                        ?: error("Не удалось открыть файл для записи.")
+                    missions.size
+                }
+            }
+            statusLine = outcome.fold(
+                onSuccess = { "Экспортировано миссий: $it (JSON, без ключей)." },
+                onFailure = { "Экспорт не выполнен: " + (it.message ?: "ошибка") }
+            )
+        }
+    }
+
     fun runDestructive(key: String, label: String, action: suspend () -> Unit) {
         if (armedAction != key) {
             armedAction = key
@@ -182,6 +208,16 @@ fun SettingsPanel(modifier: Modifier = Modifier) {
                 FactText("Сеть используется только для настроенных endpoint-ов и источников моделей по HTTPS; загрузки проверяются по SHA-256.")
                 FactText("Телеметрии и сторонней аналитики в приложении нет.")
                 FactText("Root и привилегированные действия выполняются только по явному запросу и проходят через Gateway с аудитом.")
+            }
+        }
+
+        item {
+            SettingsCard(title = "ЭКСПОРТ", accent = Cyan) {
+                FactText("Ваши данные — ваши. Миссии и результаты агентов выгружаются в JSON через системный диалог сохранения.")
+                OutlinedButton(
+                    onClick = { exportLauncher.launch("nexus-missions.json") },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                ) { Text("Экспортировать миссии (JSON)", fontSize = 12.sp) }
             }
         }
 

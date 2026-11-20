@@ -68,7 +68,8 @@ private const val MAX_IMPORT_BYTES = 8_000_000
 @Composable
 fun ArchiveScreen(
     modifier: Modifier = Modifier,
-    onSendToStudio: (String) -> Unit = {}
+    onSendToStudio: (String) -> Unit = {},
+    onSendToCouncil: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -284,6 +285,17 @@ fun ArchiveScreen(
                         },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
                     ) { Text("В AI Studio", fontSize = 11.sp) }
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val text = withContext(Dispatchers.IO) { library.getText(item.id) }
+                                if (text != null) {
+                                    onSendToCouncil(MaterialContext.buildPrompt(item.displayName, text))
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet)
+                    ) { Text("В Council", fontSize = 11.sp) }
                     OutlinedButton(
                         onClick = {
                             scope.launch {
