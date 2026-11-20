@@ -37,11 +37,35 @@ adb logcat -c || true
 echo "== instrumentation"
 adb shell am instrument -w \
   -e class "$PKG.NexusSmokeTest" \
+  -e notClass "$PKG.NexusSmokeTest#e_meshJourney" \
   -e ollamaUrl "http://10.0.2.2:11434" \
   -e ollamaModel "$MODEL" \
   -e gemma "${NEXUS_GEMMA:-false}" \
   -e found "$FOUND" \
   "$PKG.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument.txt"
+
+echo "== NEXUS Mesh: this emulator + a second node on the CI host"
+adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS || true
+adb shell run-as "$PKG" rm -f files/mesh-link.txt files/mesh-done.txt || true
+adb shell am instrument -w -e class "$PKG.NexusSmokeTest#e_meshJourney" -e mesh true \
+  "$PKG.test/androidx.test.runner.AndroidJUnitRunner" > "$OUT/mesh-instrument.txt" 2>&1 &
+MESH_PID=$!
+LINK=""
+for i in $(seq 1 120); do
+  LINK=$(adb exec-out run-as "$PKG" cat files/mesh-link.txt 2>/dev/null | tr -d '\r')
+  [ -n "$LINK" ] && break
+  sleep 5
+done
+if [ -n "$LINK" ]; then
+  adb forward tcp:47811 tcp:47811
+  MESH_LINK="$LINK" MESH_TARGET="127.0.0.1:47811" MESH_OUT="$PWD/$OUT/mesh-result.txt" \
+    gradle --no-daemon -q -Pnexus.emulatorAbi=true :app:testDebugUnitTest --tests "ai.hybrid.commandcenter.mesh.MeshHostPeerE2E" \
+    > "$OUT/mesh-host.txt" 2>&1 || echo "HOST PEER FAILED" >> "$OUT/mesh-host.txt"
+else
+  echo "the phone never published an invite" > "$OUT/mesh-host.txt"
+fi
+wait $MESH_PID
+cat "$OUT/mesh-result.txt" 2>/dev/null || true
 
 echo "== collect test screenshots"
 for f in $(adb shell run-as "$PKG" ls files/smoke 2>/dev/null | tr -d '\r'); do
@@ -80,6 +104,10 @@ grep -E "FATAL EXCEPTION" -A 25 "$OUT/logcat.txt" > "$OUT/crashes.txt" || true
 
 if grep -q "FAILURES!!!" "$OUT/instrument.txt" || ! grep -q "^OK (" "$OUT/instrument.txt"; then
   echo "Instrumentation failed — see instrument.txt and logcat.txt"
+  exit 1
+fi
+if grep -q "FAILURES!!!" "$OUT/mesh-instrument.txt" || ! grep -q "^OK (" "$OUT/mesh-instrument.txt" || grep -q "HOST PEER FAILED" "$OUT/mesh-host.txt"; then
+  echo "NEXUS Mesh journey failed — see mesh-instrument.txt, mesh-host.txt and mesh-result.txt"
   exit 1
 fi
 if grep -q "Process: $PKG" "$OUT/crashes.txt"; then

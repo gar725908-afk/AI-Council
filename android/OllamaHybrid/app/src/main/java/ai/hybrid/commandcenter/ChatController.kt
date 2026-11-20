@@ -105,7 +105,8 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
     private val appContext = context.applicationContext
     val settingsStore = ProviderSettingsStore(appContext)
     val credentialVault = AndroidCredentialVault(appContext)
-    val engineRegistry = NexusEngineRegistry(appContext)
+    private val sharedEngines = appContext as? NexusApplication
+    val engineRegistry: NexusEngineRegistry = sharedEngines?.engines ?: NexusEngineRegistry(appContext)
     val modelCatalog = ProviderModelCatalog()
     val routingStore = CouncilRoutingStore(appContext)
     val councilAgents = CouncilOrchestrator.defaultAgents()
@@ -299,7 +300,8 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
         activeRun?.cancel()
         voiceOutput.onSpeakingChanged = null
         voiceOutput.shutdown()
-        engineRegistry.close()
+        // The registry is application-scoped (shared with the Mesh worker); only a private one is closed here.
+        if (sharedEngines == null) engineRegistry.close()
     }
 
     // ---- configuration changes (wizard, manual settings) ----

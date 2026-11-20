@@ -273,4 +273,46 @@ class NexusSmokeTest {
         assertTrue("an unknown GGUF must activate in place", count("setup-error") == 0)
         askInNewChat("Hi! Answer in one short sentence: what is the capital of France?", "26_unknown_answer")
     }
+
+    /**
+     * NEXUS Mesh between two real machines: this emulator (Android Keystore key,
+     * foreground worker) and a second node on the CI host that connects through
+     * `adb forward`. Pairing is confirmed here by pressing the button, then the
+     * host sends a real task that this phone's AI core executes.
+     */
+    @Test
+    fun e_meshJourney() {
+        org.junit.Assume.assumeTrue(args.getString("mesh") == "true")
+        // the task history is persistent: start from a clean one so an old result cannot pass this test
+        ai.hybrid.commandcenter.mesh.MeshRuntime.node(instrumentation.targetContext).clearHistory()
+        awaitTag("tab-modules")
+        compose.onNodeWithTag("tab-modules").performClick()
+        awaitTag("module-mesh")
+        compose.onNodeWithTag("module-mesh").performScrollTo().performClick()
+        awaitTag("mesh-node")
+        if (count("mesh-start") > 0) compose.onNodeWithTag("mesh-start").performClick()
+        awaitTag("mesh-stop", timeout = 30_000)
+        compose.onNodeWithTag("mesh-invite").performScrollTo().performClick()
+        awaitTag("mesh-invite-link")
+        val link = compose.onNodeWithTag("mesh-invite-link").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString("") { it.text }
+        File(instrumentation.targetContext.filesDir, "mesh-link.txt").writeText(link)
+        shot("30_mesh_invite")
+        // the host peer connects through adb forward and asks to pair
+        awaitTag("mesh-sas", timeout = 600_000)
+        shot("31_mesh_sas")
+        compose.onNodeWithTag("mesh-confirm").performScrollTo().performClick()
+        awaitTag("mesh-paired", timeout = 120_000)
+        shot("32_mesh_paired")
+        // the host asks for status and a benchmark first, then the model answer — wait for that one
+        val inference = "mesh-task-in-inference_run-"
+        compose.waitUntil(900_000) {
+            count(inference + "done") > 0 || count(inference + "failed") > 0 || count(inference + "rejected") > 0
+        }
+        Thread.sleep(2_000)
+        shot("33_mesh_task_done")
+        assertTrue("the remote model task must complete on this phone", count(inference + "done") > 0)
+        assertTrue("the status task must complete too", count("mesh-task-in-node_status-done") > 0)
+        File(instrumentation.targetContext.filesDir, "mesh-done.txt").writeText("ok")
+    }
 }

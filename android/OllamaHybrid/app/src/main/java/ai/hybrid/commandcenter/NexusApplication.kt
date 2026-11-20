@@ -40,6 +40,12 @@ class NexusApplication : Application() {
     val errorJournal: ErrorJournal by lazy { ErrorJournal(this) }
 
     /**
+     * One engine registry for the whole app: the chat and the Mesh worker share
+     * the same loaded on-device model instead of mapping it twice into memory.
+     */
+    val engines: ai.hybrid.commandcenter.nexus.NexusEngineRegistry by lazy { ai.hybrid.commandcenter.nexus.NexusEngineRegistry(this) }
+
+    /**
      * Records an uncaught crash before handing control to the previous handler,
      * so the app still fails visibly instead of swallowing the error.
      */

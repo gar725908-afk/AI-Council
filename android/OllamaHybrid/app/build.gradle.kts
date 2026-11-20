@@ -72,6 +72,15 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            all { test ->
+                // Robolectric's Conscrypt reads InetAddress internals when it serves TLS
+                // (NEXUS Mesh tests run real mutual-TLS sockets on the JVM).
+                test.jvmArgs("--add-opens=java.base/java.net=ALL-UNNAMED")
+                // The Mesh host-peer E2E reads its target from the CI environment.
+                listOf("MESH_LINK", "MESH_TARGET", "MESH_OUT").forEach { key ->
+                    System.getenv(key)?.let { test.environment(key, it) }
+                }
+            }
         }
     }
 
@@ -124,6 +133,10 @@ dependencies {
     // On-device OCR (Apache 2.0, Google ML Kit): Latin script only — the
     // Cyrillic model is not published, which the UI states honestly.
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    // NEXUS Mesh pairing: QR codes are drawn with ZXing core (Apache-2.0) and scanned
+    // with the Google code scanner (no camera permission; UI provided by Play services).
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     // Shizuku (Apache 2.0): ADB-level privileges over Binder, no root required.
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")

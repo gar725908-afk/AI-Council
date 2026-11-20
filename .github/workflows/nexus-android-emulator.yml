@@ -53,7 +53,7 @@ jobs:
 
       - name: Build app and test APKs
         working-directory: android/OllamaHybrid
-        run: gradle --no-daemon --stacktrace -Pnexus.emulatorAbi=true :app:assembleDebug :app:assembleDebugAndroidTest
+        run: gradle --no-daemon --stacktrace -Pnexus.emulatorAbi=true :app:assembleDebug :app:assembleDebugAndroidTest :app:compileDebugUnitTestKotlin
 
       - name: Start Ollama with a small model on the runner
         run: |

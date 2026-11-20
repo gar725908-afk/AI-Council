@@ -7,8 +7,8 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 - Ветка: `nexus/genesis-foundation`
 - Базовый HEAD передачи: `ff35fbca9a331e832b81378e25b4c45499d0a92c`
 - Обновлено: 2026-11-21
-- Юнит-тестов: 423 (включая JVM-рендер экранов, сквозные сценарии оболочки, галерею скриншотов, живой MCP-сервер и Ollama /api/pull на MockWebServer), локальный прогон зелёный
-- CI: `nexus-android-debug.yml` (тесты + debug APK), `android-build.yml` (валидация), `nexus-android-emulator.yml` (приложение на Android-эмуляторе + Ollama на раннере: настройка ядра, реальный ответ, совет, все вкладки, голос; скриншоты, видео, logcat)
+- Юнит-тестов: 440 (включая JVM-рендер экранов, сквозные сценарии оболочки, галерею скриншотов, живой MCP-сервер, Ollama /api/pull на MockWebServer и узлы NEXUS Mesh на настоящих TLS-сокетах), локальный прогон зелёный
+- CI: `nexus-android-debug.yml` (тесты + debug APK), `android-build.yml` (валидация), `nexus-android-emulator.yml` (приложение на Android-эмуляторе + Ollama на раннере: настройка ядра, реальный ответ, совет, все вкладки, голос, модели на устройстве, сопряжение NEXUS Mesh со вторым узлом на раннере и задача по сети; скриншоты, видео, logcat)
 
 Шкала статусов (по разделу 14 ТЗ), показывается только реально достигнутый:
 `Planned → In Progress → Implemented → Unit Tested → CI Build → Tested on Physical Device → Released`
@@ -108,12 +108,35 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 | Журнал ошибок, перехват падений, отчёт без секретов | `nexus/ErrorJournal.kt`, `NexusApplication.kt` | Unit Tested | `ErrorJournalTest` (5), `ErrorReportTest` (7) |
 | Исправления: исходник с GitHub → Council → ветка + PR (main не трогается) | `androidbridge/GitHubTools.kt`, `nexus/GitHubClient.kt`, `RepairPanel.kt` | Unit Tested | `GitHubClientTest` (6), `GitHubPathsTest` (5) |
 
+## NEXUS Mesh — сеть своих телефонов
+
+Подробно: [README Mesh](NEXUS_MESH_README_RU.md), [протокол](NEXUS_MESH_PROTOCOL_RU.md),
+[безопасность](NEXUS_MESH_SECURITY_MODEL_RU.md), [архитектура](NEXUS_MESH_ARCHITECTURE_RU.md),
+[план тестирования](NEXUS_MESH_TEST_PLAN_RU.md).
+
+| Требование | Код | Статус | Тесты |
+|---|---|---|---|
+| Ключ устройства в Android Keystore, ID из отпечатка | `mesh/MeshIdentity.kt` | CI Build | `MeshProtocolTest`, эмулятор |
+| Сопряжение: ссылка/QR, HMAC-доказательство, SAS, подтверждение на обоих | `mesh/MeshProtocol.kt`, `mesh/MeshNode.kt`, `MeshCenterScreen.kt` | Unit Tested | `MeshNodeTest`, `MeshProtocolTest` |
+| Взаимный TLS с закреплением ключей, только частные адреса | `mesh/MeshNode.kt` | Unit Tested | `MeshNodeTest` |
+| Отзыв доверия | `mesh/MeshTrust.kt`, `mesh/MeshNode.kt` | Unit Tested | `revokedPhoneCanNoLongerRunTasks` |
+| Типизированные задачи: состояние, ответ модели, замер | `mesh/MeshNode.kt`, `mesh/MeshRuntime.kt` | Unit Tested | `MeshNodeTest`, `MeshHostPeerE2E` (эмулятор) |
+| Resource Governor + запрет облачного ядра по умолчанию | `mesh/MeshGovernor.kt` | Unit Tested | `MeshNodeTest` |
+| Сохранённая история задач | `mesh/MeshTrust.kt` | Unit Tested | `taskHistorySurvives…`, `storedHistory…` |
+| mDNS в Wi-Fi, фоновая служба | `mesh/MeshRuntime.kt`, `mesh/MeshService.kt` | CI Build | нужна проверка на двух телефонах |
+| Разные сети (Tailscale) | частные адреса 100.64/10 | Experimental | — |
+| WebRTC, планировщик 3+ узлов, Council на телефонах, llama.cpp RPC | — | Planned | — |
+
 ## Не реализовано (честный список)
 
 - **Desktop Agent для NEXUS LINK (10.4).** Протокол v1 и телефонная сторона
   реализованы (`docs/NEXUS_LINK_PROTOCOL_V1_RU.md`, `LinkProtocolTest`);
   программа на ПК, которая отвечает по этому протоколу, ещё не написана.
 - **NEXUS FORGE (12)** — сборка и бенчмарк на устройстве.
+- **NEXUS Mesh, фазы 3–6** — WebRTC-транспорт, автоматический планировщик для
+  трёх и более узлов, Council на нескольких телефонах, распределение одной
+  модели через llama.cpp RPC. Фазы 1–2 (сопряжение, защищённый канал, задачи
+  в одной сети) реализованы, на физических телефонах не проверены.
 - **OCR кириллицы.** Распознавание сканов работает на ML Kit (латиница);
   кириллические сканы распознаются плохо — это ограничение модели, оно
   показывается пользователю.
@@ -175,6 +198,7 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 48. Темы «Неон-город», «Космос», «Аниме» (палитра как snapshot-состояние, процедурные сцены, японские подписи шрифтом Noto Sans JP-подмножеством, тест покрытия глифов), кольцо вокруг фронтальной камеры по состоянию NEX, полосы «опасность» на ошибках, ядро-реактор в доке
 49. Живой питомец NEX: уровень и опыт только за реальные события, настроение из последних ответов, заряда и времени простоя, сон и реакции на касание, профиль с 13 достижениями
 50. Идеи JARVIS: команды без ИИ (время, дата, заряд, точный калькулятор BigDecimal, будильник, таймер, приложения), голосовые будильники — только после «Подтвердить» (60 с), честное «Передано Android»; отрицания/вопросы/цитаты/составные запросы не исполняются; выбор голоса (офлайн/через интернет), скорость речи, озвучка по предложениям; возврат неотправленного текста при ошибке
+51. NEXUS Mesh, фазы 1–2: ключ устройства в Android Keystore, сопряжение по ссылке/QR с HMAC-доказательством и 6-значным кодом на обоих телефонах, взаимный TLS 1.3 с закреплёнными ключами, только частные сети, три типизированные операции, Resource Governor (4 профиля, лимит ответа, облачное ядро только с разрешения), отзыв, история задач, mDNS, фоновая служба, экран Mesh; сквозной тест «эмулятор ↔ второй узел на CI»
 
 ## Расхождения документации
 

@@ -3,69 +3,55 @@
 **NEXUS** — персональная Android AI-экосистема, оформленная в художественной вселенной SIRIUS. Внеземное происхождение — художественный канон, не утверждение о реальном источнике ПО.
 
 ## Документы
+- [Матрица реализации](docs/NEXUS_IMPLEMENTATION_MATRIX_RU.md) — **источник правды**: требование → код → статус → тесты, журнал срезов и честный список того, что не сделано.
+- [NEXUS Mesh](docs/NEXUS_MESH_README_RU.md) — закрытая сеть своих телефонов: сопряжение, защищённый канал, задачи; [протокол](docs/NEXUS_MESH_PROTOCOL_RU.md), [безопасность](docs/NEXUS_MESH_SECURITY_MODEL_RU.md), [архитектура](docs/NEXUS_MESH_ARCHITECTURE_RU.md), [тесты](docs/NEXUS_MESH_TEST_PLAN_RU.md).
 - [NEXUS CODEX](docs/NEXUS_CODEX_RU.md) — история, канон, имена и визуальный язык.
 - [Техническая дорожная карта](docs/NEXUS_TECHNICAL_ROADMAP_RU.md).
-- [Инженерный аудит](docs/NEXUS_ENGINEERING_AUDIT_RU.md).
+- [Инженерный аудит](docs/NEXUS_ENGINEERING_AUDIT_RU.md) — исторический документ, часть выводов устарела (см. матрицу).
 - [V3 Full AI Ecosystem](docs/V3_FULL_AI_ECOSYSTEM_ARCHITECTURE_RU.md).
 - [Evolution Core](docs/EVOLUTION_CORE_ARCHITECTURE_RU.md).
-- [Local-first Council и Android execution](docs/LOCAL_FIRST_COUNCIL_AND_ANDROID_EXECUTION_RU.md) — локальная модель-Manager, веб-сессии ИИ, ручной режим, будущий Desktop Link и NEXUS FORGE.
-- [Ollama LAN Node](docs/NEXUS_LAN_OLLAMA_NODE_RU.md) — использование локальной модели на домашнем ПК через Ollama API по Wi-Fi/LAN, с маршрутизацией, потоковой передачей, отказоустойчивостью и безопасным pairing.
-- [NEXUS MODEL CENTER и EVOLUTION](docs/NEXUS_MODEL_CENTER_AND_EVOLUTION_RU.md) — LiteRT-LM и llama.cpp, закреплённые Gemma 4 E2B / Qwen3 GGUF артефакты, загрузчик весов, экран Model Center и контролируемые версии Evolution. Тестирование отложено.
+- [Local-first Council и Android execution](docs/LOCAL_FIRST_COUNCIL_AND_ANDROID_EXECUTION_RU.md).
+- [Ollama LAN Node](docs/NEXUS_LAN_OLLAMA_NODE_RU.md) — модель на домашнем ПК через Ollama по Wi-Fi/LAN.
+- [NEXUS MODEL CENTER и EVOLUTION](docs/NEXUS_MODEL_CENTER_AND_EVOLUTION_RU.md) — LiteRT-LM и llama.cpp, загрузчик весов, Model Center.
+- [NEXUS LINK v1](docs/NEXUS_LINK_PROTOCOL_V1_RU.md), [Extension API](docs/NEXUS_EXTENSION_API_V1_RU.md), [подпись релизов](docs/NEXUS_ANDROID_RELEASE_SIGNING_RU.md), [дизайн-система](docs/UI_DESIGN_SYSTEM_RU.md).
 
 ## Сборка
-В каталоге проекта находятся корневые Gradle-конфигурации, Android Manifest и Jetpack Compose entry point. CI настроен на Gradle 8.13 и JDK 17 для сборки debug APK. Unit tests временно исключены из CI до отдельного этапа тестирования.
 
-Локальная сборка из Android Studio:
-1. Откройте каталог android/OllamaHybrid.
-2. Установите Android SDK Platform 36 и JDK 17.
-3. Синхронизируйте Gradle-проект.
-4. Запустите задачу :app:assembleDebug.
+CI (GitHub Actions, Gradle 8.13, JDK 17):
+- `nexus-android-debug.yml` — все unit-тесты (`:app:testDebugUnitTest`) и debug APK;
+- `android-build.yml` — валидация сборки;
+- `nexus-android-emulator.yml` — приложение на Android-эмуляторе с Ollama на раннере: настройка ядра, реальный ответ модели, совет, вкладки, модели на устройстве, сквозной тест NEXUS Mesh; скриншоты, видео, logcat;
+- `nexus-android-release.yml` — подписанная сборка (см. документ о подписи).
 
-**Важно:** Gradle Wrapper пока не включён. Пока не подтверждены чистая CI-сборка, unit tests и установка на реальное Android-устройство, приложение не считается проверенным APK. Не считать текущий scaffold готовым приложением.
+Локально (Gradle Wrapper в репозитории нет — нужен установленный Gradle 8.13):
+1. Android SDK Platform 36, NDK 27.0.12077973, CMake 3.22.1, JDK 17.
+2. `cd android/OllamaHybrid`
+3. `gradle :app:testDebugUnitTest :app:assembleDebug`
 
-## Реализовано в Genesis runtime
+Нативная часть (llama.cpp, закреплённая версия) собирается через CMake/NDK
+под arm64-v8a; для эмулятора — `-Pnexus.emulatorAbi=true` (x86_64).
 
-- **AI Studio:** Compose-экран настройки провайдера, endpoint, модели и потокового запроса.
-- **OpenAI-compatible gateway:** Chat Completions SSE через OkHttp; подходит для endpoint, которые действительно поддерживают этот протокол, включая OpenAI-compatible сервисы и локальные Ollama/LM Studio/vLLM серверы.
-- **Anthropic gateway:** нативный Messages API, потоковые content_block_delta события.
-- **Gemini gateway:** нативный streamGenerateContent с SSE.
-- **Provider registry:** отдельные профили OpenAI, DeepSeek, OpenRouter, Groq, Mistral, Together AI, Fireworks AI, xAI Grok, Cerebras, NVIDIA API Catalog, Ollama local и Custom OpenAI-compatible, а также нативные Anthropic Claude и Google Gemini. Endpoint, model и ключи раздельны для каждого профиля.
-- **Model discovery:** проверка соединения и загрузка списка моделей через /models, /v1/models, Anthropic /v1/models или Gemini /v1beta/models; найденную модель можно выбрать в UI.
-- **Credential vault:** API-ключи шифруются AES-GCM ключом Android Keystore; в обычных настройках хранятся только endpoint и имя модели.
-- **Remote Council:** восемь преднастроенных ролей; одновременно работают максимум три агента; для каждой роли можно назначить отдельный провайдер и собственный model ID override. Активная Evolution routing policy имеет приоритет над сохранёнными маршрутами ролей.
-- **Local-first Council runtime:** AI Studio подключён к локальному Manager на активной модели Model Center. Manager формирует типизированные решения `delegate` / `ask_user` / `finish` / `yield_control`; action-specific JSON schema отклоняет неизвестные поля, неверные типы и недопустимые поручения. Восемь исполнителей используют ту же активную модель и запускаются последовательно. Модель не может напрямую вызывать инструменты, shell или Android API.
-- **Mission Journal:** локальный SQLite-журнал миссий, результатов агентов и событий; фиксируются состояния и ошибки. Цели миссий, ответы, ошибки и детали событий шифруются AES-GCM через Android Keystore; старые plaintext-записи остаются читаемыми.
-- **NEXUS CHAT:** локальные многоходовые диалоги, сохранение сообщений, восстановление последнего разговора, создание нового диалога; последние сообщения передаются выбранной модели как контекст. Для Council передаётся ограниченный транскрипт последних реплик.
-- **Recovery marker:** при запуске незавершённые RUNNING/VERIFYING миссии помечаются INTERRUPTED; они не повторяются автоматически.
-- **Mission lifecycle:** запрос Manager на уточнение сохраняется как `AWAITING_INPUT`, пауза/лимит ходов — как `INTERRUPTED`, реальные ошибки — как `FAILED`. Для `AWAITING_INPUT` доступно явное создание follow-up миссии с исходной задачей и вопросом Manager; прерванные миссии автоматически не повторяются. Ограничения времени и отмена сохраняются.
+## Что есть в приложении
 
-## Ограничения текущей реализации
+Полный и проверяемый список — в [матрице реализации](docs/NEXUS_IMPLEMENTATION_MATRIX_RU.md). Коротко:
 
-Это **первый runtime slice**, а не законченная экосистема:
-- Локальный Manager и восемь локальных executor adapters подключены к AI Studio, но on-device inference, model loading, ABI и производительность ещё не проверены на физическом устройстве.
-- Remote Council использует настроенные provider gateways; локальный Council использует активную on-device модель Model Center. Ollama на домашнем ПК остаётся отдельным сетевым профилем и не считается on-device Manager.
-- Для каждой роли Council поддерживается выбор провайдера. Конфигурация endpoint/model хранится на уровне профиля провайдера, поэтому индивидуальный выбор разных моделей одного и того же провайдера для каждой роли ещё не реализован.
-- OpenAI-compatible сервер должен поддерживать Chat Completions и SSE. Совместимость по одному лишь названию провайдера не гарантируется.
-- Добавлены on-device адаптеры LiteRT-LM и llama.cpp. Их сборка, загрузка модели и генерация на физическом устройстве ещё не проверялись. llama.cpp сейчас собирается под arm64-v8a и CPU, его встроенный chat template ориентирован на Qwen3 ChatML.
-- Бесплатные ИИ через WebView — целевой транспорт. У каждого сервиса отдельная сессия, пользователь самостоятельно проходит вход. Доступность автоматизации зависит от сайта и его правил; CAPTCHA/OTP и защитные проверки не обходятся. До production реализации используется assisted/manual сценарий.
-- Desktop Link пока только архитектурное направление. Текущий Android runtime не управляет ПК и не требует купленного сервера. Работа над desktop AI Consilium не меняется этой Android-веткой.
-- NEXUS FORGE пока архитектурный этап: встроенная среда разработки и сборка APK на Android ещё не реализованы.
-- Mission Journal и NEXUS CHAT шифруют содержимое миссий, результаты агентов, заголовки и тексты сообщений на уровне полей с помощью AES-GCM/Android Keystore. Идентификаторы, статусы, временные метки, endpoint и названия моделей остаются метаданными SQLite. Вложения, полнотекстовый индекс, семантический поиск и поиск по архиву ещё не реализованы.
-- Recovery фиксирует прерванное состояние; автоматический безопасный resume и WorkManager orchestration ещё не реализованы. Тайм-ауты агентов и синтезатора покрыты unit-тестами. SQLite-операции экрана выполняются вне главного UI-потока.
-- Tool Gateway, MCP client, production browser automation, Material Library processing, Voice, Android Bridge executor, Shizuku/Root и часть исполнительных механизмов Evolution остаются будущими этапами. Evolution применяет одобренные prompt/skill-конфигурации и строгую routing policy v1. `TOOL_DESCRIPTION` и `MODEL_CONFIGURATION` пока только версионируются и не управляют runtime.
-- Каталог моделей запрашивает первую страницу ответа провайдера; постраничная загрузка и расширенная диагностика лимитов/прав доступа пока не реализованы.
-- Unit tests добавлены, но прохождение тестов и Android APK build должны быть подтверждены GitHub Actions.
-- UI не сообщает об успешном действии Android Bridge, пока bridge не реализован.
+- **Чат NEX** с потоковым ответом, голосом (распознавание и синтез), командами без ИИ (время, дата, заряд, точный калькулятор, будильник и таймер с подтверждением), питомцем NEX и тремя темами оформления.
+- **Ядро ИИ на выбор:** модель на телефоне (LiteRT-LM или llama.cpp, каталог из 12 моделей до 9B с закреплёнными ревизиями и SHA-256, поиск уже скачанных файлов), Ollama на ПК в локальной сети (с загрузкой моделей на ПК), облачные API (OpenAI-совместимые, Anthropic, Gemini). Ключи — в Android Keystore.
+- **Council** — совет агентов с журналом миссий и защитой синтеза от инъекций.
+- **Архив** (PDF, DOCX, XLSX, текст, OCR), **браузер** с политикой адресов, **MCP-коннекторы**, **Android Bridge** (Accessibility, снимок экрана, Shizuku, Root — только фиксированные команды и с подтверждением).
+- **NEXUS Mesh** — сопряжение своих телефонов и задачи между ними по взаимному TLS.
+- **Журнал ошибок** и предложение исправлений через ветку и PR (main не трогается).
 
-## Подключение AI Studio (существующий дополнительный механизм)
+## Ограничения
 
-1. Откройте **AI Studio** или **Council**.
-2. Выберите профиль: OpenAI, DeepSeek, OpenRouter, Groq, Mistral, Together AI, Fireworks AI, xAI Grok, Cerebras, NVIDIA API Catalog, Ollama, Custom OpenAI-compatible, Anthropic или Gemini.
-3. Введите базовый endpoint и точное имя модели.
-4. API-ключ требуется только для выбранного облачного API-провайдера. Ключ хранится через Android Keystore.
-5. Для локального OpenAI-compatible сервера без авторизации ключ можно оставить пустым.
-
-Эта функция остаётся дополнительным вариантом. Целевая базовая схема NEXUS — on-device Local Manager + сменяемые участники Council, а не обязательные платные API.
+- **Ничего не проверено на физическом телефоне** — это обязательный шаг
+  приёмки владельцем. Проверки сейчас: unit-тесты на JVM (Robolectric),
+  JVM-рендер экранов и сквозные сценарии на Android-эмуляторе в CI.
+- Скорость и расход батареи моделей на телефоне не измерялись на устройствах.
+- Desktop Agent для NEXUS LINK и NEXUS FORGE не реализованы.
+- NEXUS Mesh: фазы 3–6 (WebRTC, планировщик для 3+ узлов, Council на
+  нескольких телефонах, распределение одной модели) не реализованы.
+- OCR кириллицы ограничен возможностями ML Kit.
 
 ## Сохранность проекта
 

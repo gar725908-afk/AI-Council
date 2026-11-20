@@ -146,3 +146,53 @@ class ThemeGalleryTest {
         compose.onRoot().captureRoboImage(shot("t05_camera_rings"))
     }
 }
+
+/** Mesh Center with a real pairing in progress between two in-process nodes (screenshots only). */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [35], application = NexusApplication::class, qualifiers = RobolectricDeviceQualifiers.Pixel7)
+class MeshGalleryTest {
+    @get:Rule
+    val compose = createComposeRule()
+
+    private val app: NexusApplication get() = ApplicationProvider.getApplicationContext()
+
+    @Before
+    fun setUp() {
+        assumeTrue(System.getProperty("roborazzi.test.record") == "true")
+        FakeAndroidKeyStore.install()
+        app.getSharedPreferences("nexus_profile", 0).edit().putBoolean("setup_prompted", true).commit()
+        EffectsSettings.save(app, EffectsMode.STATIC)
+    }
+
+    @After
+    fun reset() {
+        ai.hybrid.commandcenter.mesh.MeshRuntime.install(null)
+    }
+
+    @Test
+    fun m01MeshPairing() = kotlinx.coroutines.runBlocking {
+        val worker = object : ai.hybrid.commandcenter.mesh.MeshWorker {
+            override fun status() = org.json.JSONObject().put("core", "на телефоне: Qwen3.5 2B").put("ramFreeMb", 3120).put("battery", 76).put("profile", "BALANCED")
+            override fun deviceState(running: Int) = ai.hybrid.commandcenter.mesh.MeshPolicy.DeviceState(76, true, true, 0, running)
+            override suspend fun run(op: ai.hybrid.commandcenter.mesh.MeshOp, params: org.json.JSONObject, progress: (String) -> Unit) = "ok"
+        }
+        val policy = ai.hybrid.commandcenter.mesh.MeshPolicy.of(ai.hybrid.commandcenter.mesh.MeshProfile.BALANCED)
+        val phone = ai.hybrid.commandcenter.mesh.MeshNode(
+            ai.hybrid.commandcenter.mesh.SoftwareIdentity.generate(), ai.hybrid.commandcenter.mesh.InMemoryTrustStore(), worker, { "Pixel Али" }, { policy }
+        )
+        val other = ai.hybrid.commandcenter.mesh.MeshNode(
+            ai.hybrid.commandcenter.mesh.SoftwareIdentity.generate(), ai.hybrid.commandcenter.mesh.InMemoryTrustStore(), worker, { "Galaxy в Москве" }, { policy }
+        )
+        ai.hybrid.commandcenter.mesh.MeshRuntime.install(phone)
+        ai.hybrid.commandcenter.mesh.MeshRuntime.saveDeviceName(app, "Pixel Али")
+        val port = phone.start(0)
+        other.join(phone.createInvite(listOf("127.0.0.1:$port")))
+        kotlinx.coroutines.withTimeout(10_000) { while (phone.pairing.value == null) kotlinx.coroutines.delay(20) }
+        compose.setContent { NexusApp(startModule = ai.hybrid.commandcenter.ModulePage.MESH) }
+        compose.waitUntil(20_000) { compose.onAllNodesWithTag("mesh-sas", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/gallery/m01_mesh_pairing.png")
+        other.shutdown()
+    }
+}

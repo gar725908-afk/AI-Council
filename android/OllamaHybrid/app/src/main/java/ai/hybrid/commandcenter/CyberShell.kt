@@ -94,6 +94,7 @@ enum class ModulePage(val title: String, val subtitle: String, @DrawableRes val 
     BROWSER("Браузер", "Сайты и агент в браузере", NexIcons.Globe, Cyber.Cyan),
     ARCHIVE("Архив", "Файлы, PDF и поиск по материалам", NexIcons.Archive, Cyber.Violet),
     MODELS("Модели", "ИИ прямо на телефоне", NexIcons.Boxes, Cyber.Cyan),
+    MESH("Mesh", "Сеть своих телефонов", NexIcons.Network, Cyber.Magenta),
     DEVICE("Устройство", "Состояние и управление телефоном", NexIcons.Smartphone, Cyber.Green),
     REPAIRS("Ремонт", "Журнал ошибок и самоисправление", NexIcons.Wrench, Cyber.Amber),
     CONNECTORS("Коннекторы", "MCP-серверы и сервисы", NexIcons.Plug, Cyber.Magenta),

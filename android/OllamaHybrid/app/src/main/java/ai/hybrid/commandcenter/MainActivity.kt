@@ -184,6 +184,7 @@ private fun ModuleContent(page: ModulePage, chat: ChatController, onToChat: (Str
         ModulePage.BROWSER -> BrowserScreen(fill, onSendToStudio = { onToChat(it, false) }, onSendToCouncil = { onToChat(it, true) })
         ModulePage.ARCHIVE -> ArchiveScreen(fill, onSendToStudio = { onToChat(it, false) }, onSendToCouncil = { onToChat(it, true) })
         ModulePage.MODELS -> ModelCenterScreen(fill, chat)
+        ModulePage.MESH -> MeshCenterScreen(fill)
         ModulePage.DEVICE -> DeviceCoreScreen(fill)
         ModulePage.REPAIRS -> RepairPanel(fill, onSendToCouncil = { onToChat(it, true) })
         ModulePage.CONNECTORS -> McpConnectorsPanel(fill)
