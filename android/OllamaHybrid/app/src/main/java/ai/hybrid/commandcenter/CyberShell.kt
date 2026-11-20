@@ -155,6 +155,9 @@ private fun DockItem(tab: AppTab, active: Boolean, modifier: Modifier, onClick: 
         NexIcon(tab.icon, tint = color, size = 21.dp)
         Spacer(Modifier.height(4.dp))
         Text(tab.label.uppercase(), style = CyberText.Label.copy(fontSize = 9.5.sp, letterSpacing = 0.8.sp), color = color, maxLines = 1)
+        ai.hybrid.commandcenter.ui.ThemeCaptions.tab(tab.label)?.let { caption ->
+            Text(caption, style = ai.hybrid.commandcenter.ui.JpLabel.copy(fontSize = 7.5.sp, letterSpacing = 0.5.sp), color = color.copy(alpha = 0.7f), maxLines = 1)
+        }
     }
 }
 
@@ -192,8 +195,18 @@ private fun CoreButton(state: NexState, onClick: () -> Unit, modifier: Modifier 
                     style = Stroke(2.dp.toPx(), cap = StrokeCap.Butt)
                 )
             }
-            drawCircle(Brush.linearGradient(listOf(c1, c2)), radius = r * 0.66f)
-            drawCircle(Color.White.copy(alpha = 0.18f), radius = r * 0.66f, style = Stroke(1.dp.toPx()))
+            // reactor-style inner ring: ten segments turning against the outer dashes
+            val inner = r * 0.80f
+            for (i in 0 until 10) {
+                drawArc(
+                    c2.copy(alpha = 0.75f), startAngle = -spin.value * 1.5f + i * 36f + 4f, sweepAngle = 26f,
+                    useCenter = false, topLeft = Offset(size.width / 2f - inner, size.height / 2f - inner),
+                    size = Size(inner * 2f, inner * 2f), style = Stroke(3.dp.toPx(), cap = StrokeCap.Butt)
+                )
+            }
+            drawCircle(Brush.linearGradient(listOf(c1, c2)), radius = r * 0.62f)
+            drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.45f), Color.Transparent), radius = r * 0.62f), radius = r * 0.62f)
+            drawCircle(Color.White.copy(alpha = 0.22f), radius = r * 0.62f, style = Stroke(1.dp.toPx()))
         }
         NexIcon(NexIcons.Mic, tint = Cyber.OnNeon, size = 26.dp)
     }

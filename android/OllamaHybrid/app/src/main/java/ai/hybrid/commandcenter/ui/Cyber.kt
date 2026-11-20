@@ -64,30 +64,36 @@ import androidx.compose.ui.unit.sp
  */
 
 object Cyber {
-    val Void = Color(0xFF02040A)
-    val Night = Color(0xFF050A16)
-    val Panel = Color(0xFF09101F)
-    val PanelHigh = Color(0xFF0F1830)
+    private val p: ThemePalette get() = ThemeState.palette
 
-    val Cyan = Color(0xFF00E5FF)
-    val CyanSoft = Color(0xFF8AF5FF)
-    val Magenta = Color(0xFFFF2E97)
-    val Violet = Color(0xFF8F6BFF)
-    val Yellow = Color(0xFFFCEE0A)
+    val Void: Color get() = p.void
+    val Night: Color get() = p.night
+    val Panel: Color get() = p.panel
+    val PanelHigh: Color get() = p.panelHigh
+
+    /** Primary accent slot (cyan in «Неон-город», ice blue in «Космос», NERV orange in «Аниме»). */
+    val Cyan: Color get() = p.primary
+    val CyanSoft: Color get() = p.primarySoft
+    /** Secondary slot: the owner's voice and messages. */
+    val Magenta: Color get() = p.secondary
+    val Violet: Color get() = p.tertiary
+    val Yellow: Color get() = p.highlight
+
+    // Signals mean the same in every theme.
     val Green = Color(0xFF2BFF9A)
     val Amber = Color(0xFFFFB547)
     val Red = Color(0xFFFF3B5C)
 
-    val Text = Color(0xFFEAF6FF)
-    val TextDim = Color(0xFF93A7C4)
-    val TextFaint = Color(0xFF56667F)
-    val Line = Color(0x2900E5FF)
+    val Text: Color get() = p.text
+    val TextDim: Color get() = p.textDim
+    val TextFaint: Color get() = p.textFaint
+    val Line: Color get() = p.primary.copy(alpha = 0.16f)
 
     /** Ink for text that sits on a bright neon fill. */
-    val OnNeon = Color(0xFF00141A)
+    val OnNeon: Color get() = p.onNeon
 
-    val Signature = Brush.linearGradient(listOf(Cyan, Violet, Magenta))
-    val Wordmark = Brush.horizontalGradient(listOf(Color(0xFFCFFCFF), Cyan, Color(0xFFB98CFF), Magenta))
+    val Signature: Brush get() = Brush.linearGradient(listOf(Cyan, Violet, Magenta))
+    val Wordmark: Brush get() = Brush.horizontalGradient(p.wordmark)
 }
 
 val Exo2Family = FontFamily(
@@ -103,11 +109,11 @@ val MonoFamily = FontFamily(
 )
 
 object CyberText {
-    val Wordmark = TextStyle(
+    val Wordmark: TextStyle get() = TextStyle(
         fontFamily = Exo2Family, fontWeight = FontWeight.ExtraBold,
         fontSize = 22.sp, letterSpacing = 6.sp, brush = Cyber.Wordmark
     )
-    val Hero = TextStyle(
+    val Hero: TextStyle get() = TextStyle(
         fontFamily = Exo2Family, fontWeight = FontWeight.Bold,
         fontSize = 30.sp, lineHeight = 34.sp, letterSpacing = 2.sp, brush = Cyber.Wordmark
     )
@@ -243,7 +249,7 @@ fun HudPanel(
                 } else {
                     Spacer(Modifier.weight(1f))
                 }
-                if (index != null) Text(index, style = CyberText.Label, color = accent.copy(alpha = 0.6f))
+                if (index != null) Text(cjkAware(index), style = CyberText.Label, color = accent.copy(alpha = 0.6f))
             }
         }
         content()
@@ -253,7 +259,7 @@ fun HudPanel(
 @Composable
 fun HudLabel(text: String, modifier: Modifier = Modifier, color: Color = Cyber.TextDim, maxLines: Int = 1) {
     Text(
-        text.uppercase(), style = CyberText.Label, color = color, modifier = modifier,
+        cjkAware(text.uppercase()), style = CyberText.Label, color = color, modifier = modifier,
         maxLines = maxLines, overflow = TextOverflow.Ellipsis
     )
 }
@@ -280,7 +286,11 @@ fun HudSectionTitle(text: String, modifier: Modifier = Modifier, accent: Color =
         )
         if (trailing != null) {
             Spacer(Modifier.width(8.dp))
-            Text(trailing.uppercase(), style = CyberText.Label, color = accent.copy(alpha = 0.7f))
+            Text(
+                trailing.uppercase(),
+                style = if (trailing.hasCjk()) JpLabel.copy(fontSize = 11.sp) else CyberText.Label,
+                color = accent.copy(alpha = 0.75f)
+            )
         }
     }
 }
@@ -416,7 +426,7 @@ fun HudChip(text: String, color: Color, modifier: Modifier = Modifier, onClick: 
         horizontalArrangement = Arrangement.spacedBy(7.dp)
     ) {
         Box(Modifier.size(6.dp).background(color))
-        Text(text.uppercase(), style = CyberText.Label, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(cjkAware(text.uppercase()), style = CyberText.Label, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

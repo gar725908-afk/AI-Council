@@ -168,6 +168,10 @@ fun NexusApp(
                     VoiceOverlay(chat, onClose = { voiceOpen = false }, onNeedSetup = { setupOpen = true })
                 }
             }
+            // NEX's state around the front camera, above everything (draws nothing without a punch hole)
+            if (ai.hybrid.commandcenter.ui.ThemeState.cameraRing) {
+                ai.hybrid.commandcenter.ui.CameraRing(chat.nexState, chat.speaking)
+            }
         }
     }
 }

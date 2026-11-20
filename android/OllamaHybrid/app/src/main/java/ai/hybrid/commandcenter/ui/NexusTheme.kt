@@ -22,49 +22,49 @@ import androidx.compose.ui.unit.dp
  * for colour, shape, spacing and motion so every screen speaks one language.
  */
 object NexusColors {
-    // Base: night city
-    val Void = Color(0xFF02040A)
-    val DeepSurface = Color(0xFF070D1A)
-    val RaisedSurface = Color(0xFF0C1427)
-    val ElevatedSurface = Color(0xFF121C34)
+    // Base follows the current theme (see ThemeState)
+    val Void: Color get() = Cyber.Void
+    val DeepSurface: Color get() = Cyber.Night
+    val RaisedSurface: Color get() = Cyber.Panel
+    val ElevatedSurface: Color get() = Cyber.PanelHigh
 
-    // HUD layers (cyan-tinted, translucent over the backdrop)
-    val GlassFillTop = Color(0x1400E5FF)
+    // HUD layers (accent-tinted, translucent over the backdrop)
+    val GlassFillTop: Color get() = Cyber.Cyan.copy(alpha = 0.08f)
     val GlassFillBottom = Color(0x05000000)
-    val GlassBorderTop = Color(0x6600E5FF)
-    val GlassBorderBottom = Color(0x1400E5FF)
-    val Hairline = Color(0x2400E5FF)
+    val GlassBorderTop: Color get() = Cyber.Cyan.copy(alpha = 0.40f)
+    val GlassBorderBottom: Color get() = Cyber.Cyan.copy(alpha = 0.08f)
+    val Hairline: Color get() = Cyber.Cyan.copy(alpha = 0.14f)
 
     // Text
-    val TextPrimary = Color(0xFFEAF6FF)
-    val TextSecondary = Color(0xFF93A7C4)
-    val TextMuted = Color(0xFF56667F)
+    val TextPrimary: Color get() = Cyber.Text
+    val TextSecondary: Color get() = Cyber.TextDim
+    val TextMuted: Color get() = Cyber.TextFaint
 
     // Neon accents
-    val NeonCyan = Color(0xFF00E5FF)
-    val NeonViolet = Color(0xFF8F6BFF)
-    val NeonMagenta = Color(0xFFFF2E97)
-    val NeonYellow = Color(0xFFFCEE0A)
+    val NeonCyan: Color get() = Cyber.Cyan
+    val NeonViolet: Color get() = Cyber.Violet
+    val NeonMagenta: Color get() = Cyber.Magenta
+    val NeonYellow: Color get() = Cyber.Yellow
     val SignalGreen = Color(0xFF2BFF9A)
     val SignalAmber = Color(0xFFFFB547)
     val SignalRed = Color(0xFFFF3B5C)
 
     /** Kept for older call sites; now a hairline rather than a slab. */
-    val Divider = Color(0xFF15203A)
+    val Divider: Color get() = Cyber.PanelHigh
 }
 
 object NexusBrushes {
-    /** Primary action: cyan through violet into magenta. */
-    val Primary = Brush.linearGradient(listOf(Color(0xFF00E5FF), Color(0xFF8F6BFF), Color(0xFFFF2E97)))
+    /** Primary action: primary through tertiary into secondary. */
+    val Primary: Brush get() = Brush.linearGradient(listOf(Cyber.Cyan, Cyber.Violet, Cyber.Magenta))
 
-    /** Cool accent: cyan into violet. */
-    val Cool = Brush.linearGradient(listOf(Color(0xFF00E5FF), Color(0xFF8F6BFF)))
+    /** Cool accent: primary into tertiary. */
+    val Cool: Brush get() = Brush.linearGradient(listOf(Cyber.Cyan, Cyber.Violet))
 
-    /** Wordmark: ice into cyan into magenta. */
-    val Wordmark = Brush.horizontalGradient(listOf(Color(0xFFCFFCFF), Color(0xFF00E5FF), Color(0xFFB98CFF), Color(0xFFFF2E97)))
+    /** Wordmark of the current theme. */
+    val Wordmark: Brush get() = Cyber.Wordmark
 
-    val GlassFill = Brush.verticalGradient(listOf(NexusColors.GlassFillTop, NexusColors.GlassFillBottom))
-    val GlassBorder = Brush.linearGradient(listOf(NexusColors.GlassBorderTop, NexusColors.GlassBorderBottom, Color(0x4000E5FF)))
+    val GlassFill: Brush get() = Brush.verticalGradient(listOf(NexusColors.GlassFillTop, NexusColors.GlassFillBottom))
+    val GlassBorder: Brush get() = Brush.linearGradient(listOf(NexusColors.GlassBorderTop, NexusColors.GlassBorderBottom, Cyber.Cyan.copy(alpha = 0.25f)))
 
     fun accentBorder(accent: Color) =
         Brush.linearGradient(listOf(accent.copy(alpha = 0.6f), accent.copy(alpha = 0.12f), accent.copy(alpha = 0.4f)))

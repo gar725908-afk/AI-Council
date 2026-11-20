@@ -24,6 +24,9 @@ struct NexusLlamaState {
     llama_context * context = nullptr;
     const llama_vocab * vocab = nullptr;
     FILE * file = nullptr; // owned when the model was opened from a descriptor
+    // Tokens whose keys/values are in the KV cache (sequence 0): the next turn
+    // re-uses the longest common prefix instead of re-reading the whole chat.
+    std::vector<llama_token> cached;
     std::mutex generation_mutex;
     std::atomic<bool> cancelled{false};
 };
@@ -254,9 +257,6 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeGenerate(
         return;
     }
 
-    // Reset KV state between independent requests. The Android gateway supplies the full chat history.
-    llama_memory_clear(llama_get_memory(state->context), false);
-
     const int32_t token_count = -llama_tokenize(
         state->vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
         nullptr, 0, true, true
@@ -305,19 +305,37 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeGenerate(
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(std::max(0.0f, temperature)));
     llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
+    // Prefix cache: the gateway sends the whole chat every turn, but everything up
+    // to the last answer is already in the KV cache. Keep the common prefix and
+    // decode only the new tail. Recurrent/hybrid memories cannot drop a partial
+    // sequence; then llama_memory_seq_rm refuses and the cache is rebuilt.
+    llama_memory_t memory = llama_get_memory(state->context);
+    size_t keep = 0;
+    const size_t max_keep = prompt_tokens.size() - 1; // at least one token is decoded for fresh logits
+    while (keep < state->cached.size() && keep < max_keep && state->cached[keep] == prompt_tokens[keep]) ++keep;
+    if (keep == 0 || !llama_memory_seq_rm(memory, 0, static_cast<llama_pos>(keep), -1)) {
+        llama_memory_clear(memory, false);
+        keep = 0;
+    }
+    state->cached.assign(prompt_tokens.begin(), prompt_tokens.begin() + static_cast<long>(keep));
+
     // Long prompts are decoded in n_batch-sized slices.
     const int32_t n_batch = 512;
     bool prompt_ok = true;
-    for (size_t offset = 0; offset < prompt_tokens.size() && prompt_ok; offset += n_batch) {
+    for (size_t offset = keep; offset < prompt_tokens.size() && prompt_ok; offset += n_batch) {
         const int32_t count = static_cast<int32_t>(std::min<size_t>(n_batch, prompt_tokens.size() - offset));
         prompt_ok = set_batch(batch, prompt_tokens.data() + offset, count, static_cast<llama_pos>(offset)) &&
             llama_process(state->context, LLAMA_PROCESS_TYPE_DECODE, batch) == 0;
+        if (prompt_ok) state->cached.insert(state->cached.end(), prompt_tokens.begin() + static_cast<long>(offset),
+                                            prompt_tokens.begin() + static_cast<long>(offset) + count);
         if (state->cancelled.load()) break;
     }
-    if (!prompt_ok) {
+    if (!prompt_ok || state->cancelled.load()) {
+        llama_memory_clear(memory, false);
+        state->cached.clear();
         llama_sampler_free(sampler);
         llama_batch_ext_free(batch);
-        throw_java(env, "llama.cpp завершил ошибкой обработку входного запроса.");
+        if (!prompt_ok) throw_java(env, "llama.cpp завершил ошибкой обработку входного запроса.");
         return;
     }
 
@@ -356,8 +374,11 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeGenerate(
         if (!set_batch(batch, &token, 1, position) ||
             llama_process(state->context, LLAMA_PROCESS_TYPE_DECODE, batch) != 0) {
             LOGE("llama_process failed while decoding");
+            llama_memory_clear(memory, false);
+            state->cached.clear();
             break;
         }
+        state->cached.push_back(token);
         ++position;
     }
     if (keep_going && !env->ExceptionCheck()) emit(true);

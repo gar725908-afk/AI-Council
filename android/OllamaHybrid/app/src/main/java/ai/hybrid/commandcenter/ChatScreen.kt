@@ -74,6 +74,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -140,10 +141,11 @@ fun ChatTab(
     // last layout, so a long history opens at its end even before the first frame.
     val empty = chat.messages.isEmpty() && !chat.isRunning
     val itemCount = chat.messages.takeLast(60).size +
+        (if (chat.pendingAction != null) 1 else 0) +
         (if (chat.isRunning && chat.councilMode) 1 else 0) +
         (if (chat.isRunning) 1 else 0) +
         (if (chat.lastRunFailed && !chat.isRunning) 1 else 0)
-    LaunchedEffect(chat.conversationId, chat.messages.size, chat.streamingAnswer.length, chat.isRunning, chat.lastRunFailed, empty) {
+    LaunchedEffect(chat.conversationId, chat.messages.size, chat.streamingAnswer.length, chat.isRunning, chat.lastRunFailed, chat.pendingAction, empty) {
         if (!empty && itemCount > 0) listState.scrollToItem(itemCount - 1, 100_000)
     }
     LaunchedEffect(focusRequested) {
@@ -182,6 +184,17 @@ fun ChatTab(
         }
     }
 
+    // The text a send cleared. If that request fails and the field is still
+    // untouched, the exact text comes back; a new draft, Stop, success or a new
+    // chat forget it.
+    var sentDraft by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(chat.isRunning, chat.lastRunFailed) {
+        if (chat.isRunning) return@LaunchedEffect
+        val original = sentDraft
+        if (chat.lastRunFailed && original != null && draft.isEmpty()) onDraftChange(original)
+        sentDraft = null
+    }
+
     fun send() {
         if (draft.isBlank() && attachment == null) return
         if (!chat.send(draft, attachment)) {
@@ -189,6 +202,7 @@ fun ChatTab(
             return
         }
         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        sentDraft = draft
         onDraftChange("")
         attachment = null
     }
@@ -199,7 +213,7 @@ fun ChatTab(
             compact = !empty,
             mode = effects.effective,
             onHistory = { historyOpen = true },
-            onNewChat = { chat.newChat(); attachment = null },
+            onNewChat = { chat.newChat(); attachment = null; sentDraft = null },
             onStatus = onOpenSetup
         )
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -238,6 +252,11 @@ fun ChatTab(
                             )
                         } else {
                             UserTransmission(message.content)
+                        }
+                    }
+                    chat.pendingAction?.let { pending ->
+                        item(key = "pending-action") {
+                            PendingActionCard(pending.summary, pending.createdAt, onConfirm = { chat.confirmPending() }, onCancel = { chat.cancelPending() })
                         }
                     }
                     if (chat.isRunning && chat.councilMode) {
@@ -366,13 +385,17 @@ private fun HomeHero(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        NexHoloStage(
-            state = chat.nexState,
-            mode = mode,
-            size = if (chat.needsSetup) 214.dp else 262.dp,
-            speaking = chat.speaking,
-            modifier = Modifier.clickable(onClick = onVoice)
-        )
+        if (chat.needsSetup) {
+            NexHoloStage(
+                state = chat.nexState,
+                mode = mode,
+                size = 214.dp,
+                speaking = chat.speaking,
+                modifier = Modifier.clickable(onClick = onVoice)
+            )
+        } else {
+            PetStage(chat, mode, 250.dp)
+        }
         val name = chat.userName
         Text(
             if (name.isNotBlank()) "ПРИВЕТ, " + name.uppercase() else "NEXUS НА СВЯЗИ",
@@ -383,7 +406,7 @@ private fun HomeHero(
             when {
                 chat.needsSetup -> "Я — NEX. Подключи мне ядро, и я начну отвечать."
                 chat.councilMode -> "Совет из восьми агентов готов. Опиши задачу."
-                else -> "Я — NEX, твой ИИ. Спроси что угодно или нажми на меня, чтобы говорить голосом."
+                else -> "Я — NEX, твой ИИ. Спроси что угодно. Нажми на меня — отвечу, удержи — мой профиль."
             },
             style = NexusTypography.bodyMedium,
             color = Cyber.TextDim,
@@ -604,9 +627,37 @@ private fun UserTransmission(content: String) {
     }
 }
 
+/** An alarm/timer heard by voice: nothing happens until the owner presses «Подтвердить». */
+@Composable
+private fun PendingActionCard(summary: String, createdAt: Long, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    fun left() = (((createdAt + ai.hybrid.commandcenter.nexus.PendingLocalAction.TTL_MS) - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
+    var secondsLeft by remember(createdAt) { mutableStateOf(left()) }
+    LaunchedEffect(createdAt) {
+        while (secondsLeft > 0) {
+            delay(1_000)
+            secondsLeft = left()
+        }
+        onCancel()
+    }
+    HudPanel(Modifier.fillMaxWidth().testTag("pending-action"), accent = Cyber.Yellow, title = "Нужно подтверждение", index = "${secondsLeft}с") {
+        Text(summary, style = CyberText.Title, color = Cyber.Text)
+        Text("Команду понял телефон сам, без ИИ. Выполню только после нажатия.", style = NexusTypography.bodySmall, color = Cyber.TextDim)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HudButton("Подтвердить", onConfirm, Modifier.weight(1f).testTag("pending-confirm"), icon = NexIcons.Check, accent = Cyber.Yellow, height = 44.dp)
+            HudButton("Отмена", onCancel, Modifier.testTag("pending-cancel"), style = HudButtonStyle.Ghost, height = 44.dp)
+        }
+    }
+}
+
 @Composable
 private fun ErrorTransmission(message: String, onRetry: () -> Unit, onSetup: () -> Unit) {
-    HudPanel(Modifier.fillMaxWidth().testTag("error-panel"), accent = Cyber.Red, title = "Сбой передачи", index = "ERR") {
+    val anime = ai.hybrid.commandcenter.ui.ThemeState.theme == ai.hybrid.commandcenter.ui.NexusTheme.ANIME
+    HudPanel(Modifier.fillMaxWidth().testTag("error-panel"), accent = Cyber.Red, title = "Сбой передачи", index = if (anime) "警告" else "ERR") {
+        Box(
+            Modifier.fillMaxWidth().height(6.dp).drawBehind {
+                with(ai.hybrid.commandcenter.ui.HazardPainter) { band(Cyber.Red) }
+            }
+        )
         Text(message, style = NexusTypography.bodyMedium, color = Cyber.Text)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HudButton("Повторить", onRetry, icon = NexIcons.RotateCcw, accent = Cyber.Red, height = 42.dp)
@@ -617,7 +668,8 @@ private fun ErrorTransmission(message: String, onRetry: () -> Unit, onSetup: () 
 
 @Composable
 private fun CouncilLiveCard(chat: ChatController, mode: EffectsMode) {
-    HudPanel(Modifier.fillMaxWidth(), accent = Cyber.Magenta, title = "Совет работает", index = "8 АГЕНТОВ") {
+    val anime = ai.hybrid.commandcenter.ui.ThemeState.theme == ai.hybrid.commandcenter.ui.NexusTheme.ANIME
+    HudPanel(Modifier.fillMaxWidth(), accent = Cyber.Magenta, title = "Совет работает", index = if (anime) "審議中 · 8" else "8 АГЕНТОВ") {
         val nodes = ConstellationModel.fromLive(chat.councilAgents, chat.liveAgentEvents)
         CouncilConstellation(
             nodes = nodes,

@@ -177,4 +177,23 @@ class ShellFlowTest {
         awaitTag("settings-core")
         awaitText("КАК К ТЕБЕ ОБРАЩАТЬСЯ")
     }
+
+    @Test
+    fun phoneAnswersExactMathAndAlarmsWithoutAnyCore() {
+        NexusProfile.markSetupPrompted(app)
+        compose.setContent { NexusApp() }
+        awaitTag("composer")
+        compose.onNodeWithTag("composer").performTextInput("сколько будет 0,1 + 0,2")
+        awaitTag("send")
+        compose.onNodeWithTag("send").performClick()
+        awaitText("= 0,3")
+        compose.onNodeWithTag("composer").performTextInput("поставь будильник на 7:30")
+        awaitTag("send")
+        compose.onNodeWithTag("send").performClick()
+        awaitText("Передано Android: будильник на 07:30")
+        val started = org.robolectric.Shadows.shadowOf(app).nextStartedActivity
+        assertTrue(started.action == android.provider.AlarmClock.ACTION_SET_ALARM)
+        // no model was configured, and the setup did not pop up
+        assertTrue(compose.onAllNodesWithTag("core-setup").fetchSemanticsNodes().isEmpty())
+    }
 }

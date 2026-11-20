@@ -18,13 +18,24 @@ import ai.hybrid.commandcenter.nexus.MissionStatus
 import ai.hybrid.commandcenter.nexus.ModelRuntimeKind
 import ai.hybrid.commandcenter.nexus.NexusEngineRegistry
 import ai.hybrid.commandcenter.nexus.NexusEvolutionExecutor
+import ai.hybrid.commandcenter.nexus.LocalCommandExecutor
+import ai.hybrid.commandcenter.nexus.LocalCommandText
+import ai.hybrid.commandcenter.nexus.LocalIntentParser
+import ai.hybrid.commandcenter.nexus.NexPetStore
+import ai.hybrid.commandcenter.nexus.PendingLocalAction
+import ai.hybrid.commandcenter.nexus.isAction
+import ai.hybrid.commandcenter.nexus.needsConfirmation
 import ai.hybrid.commandcenter.nexus.NexusModelStorage
+import ai.hybrid.commandcenter.nexus.PetEvent
+import ai.hybrid.commandcenter.nexus.PetRules
+import ai.hybrid.commandcenter.nexus.PetSnapshot
 import ai.hybrid.commandcenter.nexus.ProviderKind
 import ai.hybrid.commandcenter.nexus.ProviderMessage
 import ai.hybrid.commandcenter.nexus.ProviderModelCatalog
 import ai.hybrid.commandcenter.nexus.ProviderSettings
 import ai.hybrid.commandcenter.nexus.ProviderSettingsStore
 import ai.hybrid.commandcenter.nexus.ResourceGovernor
+import ai.hybrid.commandcenter.nexus.SentenceChunker
 import ai.hybrid.commandcenter.nexus.VoiceOutput
 import ai.hybrid.commandcenter.nexus.defaultProviderEndpoint
 import ai.hybrid.commandcenter.nexus.requiresApiKey
@@ -120,6 +131,20 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
     var status by mutableStateOf(""); private set
     var lastLatencyMs by mutableStateOf<Long?>(null); private set
     var successFlash by mutableStateOf(false); private set
+
+    // ---- NEX the pet: level, mood and achievements from real events ----
+    private val petStore = NexPetStore(appContext)
+    var pet by mutableStateOf(PetSnapshot()); private set
+    /** One-shot news for the home screen: level-ups and new achievements. */
+    var petNews by mutableStateOf<String?>(null); private set
+    /** Last moment the owner did something (sent, tapped NEX); drives the pet's sleep. */
+    var lastActivityAt by mutableStateOf(System.currentTimeMillis()); private set
+    private var lastFromVoice = false
+
+    // ---- local commands: answered by the phone itself, no model involved ----
+    private val localExecutor = LocalCommandExecutor(appContext)
+    /** An alarm/timer understood from speech, waiting for the owner's explicit confirmation. */
+    var pendingAction by mutableStateOf<PendingLocalAction?>(null); private set
     var speaking by mutableStateOf(false); private set
     var speakError by mutableStateOf<String?>(null); private set
     var councilMode by mutableStateOf(false)
@@ -206,6 +231,44 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
             recentMissions = withContext(Dispatchers.IO) { journal.getRecentMissions(8) }
         }.onFailure { status = "Журнал чатов недоступен: " + (it.message ?: it::class.java.simpleName) }
         runCatching { loadRoutes() }
+        pet = runCatching { withContext(Dispatchers.IO) { petStore.load() } }.getOrDefault(PetSnapshot())
+        prewarmOnDevice()
+    }
+
+    /**
+     * Loads the on-device model in the background right after start (or after
+     * switching to it), so the first answer does not include model loading.
+     * Failures are silent here: a real request reports them honestly.
+     */
+    private fun prewarmOnDevice() {
+        if (!usesOnDeviceModel || activeOnDeviceModel == null) return
+        val kind = providerKind
+        scope.launch(Dispatchers.IO) {
+            delay(1_200)
+            runCatching { (engineRegistry.gateway(kind) as? ai.hybrid.commandcenter.nexus.Prewarmable)?.prewarm() }
+        }
+    }
+
+    /** Applies a real event to the pet and persists it. */
+    fun petEvent(event: PetEvent, onDevice: Boolean = false, modelId: String? = null) {
+        val result = PetRules.apply(
+            pet, event, System.currentTimeMillis(), NexPetStore.hourNow(), NexPetStore.epochDayNow(), onDevice, modelId
+        )
+        pet = result.snapshot
+        val news = buildList {
+            result.leveledUpTo?.let { add("NEX вырос до уровня $it!") }
+            result.unlocked.forEach { add("Достижение: «" + it.title + "»") }
+        }
+        if (news.isNotEmpty()) petNews = news.joinToString(" · ")
+        scope.launch(Dispatchers.IO) { runCatching { petStore.save(result.snapshot) } }
+    }
+
+    fun touchActivity() {
+        lastActivityAt = System.currentTimeMillis()
+    }
+
+    fun consumePetNews() {
+        petNews = null
     }
 
     suspend fun reloadConfig() {
@@ -258,6 +321,7 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
         lastRunFailed = false
         lastError = null
         status = "Ядро подключено: " + model
+        petEvent(PetEvent.MODEL_ACTIVATED, modelId = kind.name + ":" + model.trim())
     }
 
     /** Activates an installed on-device model as the core. */
@@ -275,6 +339,8 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
         lastRunFailed = false
         lastError = null
         status = "Ядро на телефоне: " + record.displayName
+        petEvent(PetEvent.MODEL_ACTIVATED, onDevice = true, modelId = record.id)
+        prewarmOnDevice()
     }
 
     suspend fun storedKey(kind: ProviderKind): String =
@@ -317,6 +383,7 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
             streamingAnswer = ""
             lastRunFailed = false
             lastError = null
+            pendingAction = null
             status = "Новый чат"
         }
     }
@@ -337,9 +404,91 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
         activeRun?.cancel()
     }
 
+    private fun isYes(text: String) = text.lowercase().trim('.', '!', ' ') in setOf("да", "ага", "угу", "давай", "конечно", "подтверждаю", "yes")
+    private fun isNo(text: String) = text.lowercase().trim('.', '!', ' ') in setOf("нет", "отмена", "не надо", "отмени", "стоп", "no")
+
+    /** Returns true when the phone answered (or queued a confirmation) without any model. */
+    private fun handleLocally(text: String, fromVoice: Boolean): Boolean {
+        val now = System.currentTimeMillis()
+        pendingAction?.let { pending ->
+            if (pending.expired(now)) {
+                pendingAction = null
+            } else if (isYes(text)) {
+                // A bare «да» repeats the parameters; only the button performs the action.
+                replyLocally(text, pending.summary + ". Чтобы выполнить, нажми «Подтвердить» на карточке.", fromVoice)
+                return true
+            } else if (isNo(text)) {
+                pendingAction = null
+                replyLocally(text, "Отменил: " + pending.summary.replaceFirstChar { it.lowercase() } + ".", fromVoice)
+                return true
+            }
+        }
+        val intent = LocalIntentParser.parse(text) ?: return false
+        val answer = if (intent.isAction() && intent.needsConfirmation(fromVoice)) {
+            val summary = LocalCommandText.summary(intent)
+            pendingAction = PendingLocalAction(intent, summary, now)
+            "$summary? Подтверди кнопкой ниже — без подтверждения ничего не произойдёт. Жду минуту."
+        } else {
+            localExecutor.answer(intent)
+        }
+        replyLocally(text, answer, fromVoice)
+        return true
+    }
+
+    private fun replyLocally(question: String, answer: String, fromVoice: Boolean) {
+        touchActivity()
+        lastRunFailed = false
+        lastError = null
+        scope.launch {
+            val chatId = conversationId ?: return@launch
+            messages = withContext(Dispatchers.IO) {
+                journal.appendChatMessage(chatId, "user", question)
+                journal.appendChatMessage(chatId, "assistant", answer)
+                journal.getChatMessages(chatId, 100)
+            }
+            status = "Ответил сам телефон — без ИИ"
+            if (fromVoice && NexusProfile.speakVoiceAnswers(appContext)) speak(answer)
+            petEvent(if (fromVoice) PetEvent.VOICE_ANSWER else PetEvent.ANSWER)
+        }
+    }
+
+    /** The owner pressed «Подтвердить» on the pending alarm/timer card. */
+    fun confirmPending() {
+        val pending = pendingAction ?: return
+        pendingAction = null
+        val result = if (pending.expired(System.currentTimeMillis())) {
+            "Время на подтверждение вышло — повтори команду."
+        } else localExecutor.perform(pending.intent)
+        scope.launch {
+            val chatId = conversationId ?: return@launch
+            messages = withContext(Dispatchers.IO) {
+                journal.appendChatMessage(chatId, "assistant", result)
+                journal.getChatMessages(chatId, 100)
+            }
+        }
+    }
+
+    fun cancelPending() {
+        val pending = pendingAction ?: return
+        pendingAction = null
+        scope.launch {
+            val chatId = conversationId ?: return@launch
+            messages = withContext(Dispatchers.IO) {
+                journal.appendChatMessage(chatId, "assistant", "Отменил: " + pending.summary.replaceFirstChar { it.lowercase() } + ".")
+                journal.getChatMessages(chatId, 100)
+            }
+        }
+    }
+
     fun speak(text: String): String? = voiceOutput.speak(MarkdownParser.plain(text)).also { speakError = it }
 
     fun stopSpeaking() = voiceOutput.stop()
+
+    fun voices() = voiceOutput.voices()
+    val selectedVoice: String? get() = voiceOutput.selectedVoice
+    val speechRate: Float get() = voiceOutput.speechRate
+    fun selectVoice(name: String?) = voiceOutput.selectVoice(name)
+    fun setSpeechRate(rate: Float) = voiceOutput.setRate(rate)
 
     /**
      * Sends the owner's message. Returns false when the core is not set up yet,
@@ -349,11 +498,15 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
         val text = question.trim()
         if (text.isBlank() && attachment == null) return true
         if (!settingsLoaded || conversationId == null || isRunning) return true
+        // Time, date, battery, exact arithmetic, alarms and timers work even before an AI core is connected.
+        if (attachment == null && handleLocally(text, fromVoice)) return true
         if (needsSetup) return false
         val prompt = if (attachment != null) {
             MaterialContext.buildPrompt(attachment.name, attachment.text) + text.ifBlank { "Кратко перескажи этот материал." }
         } else text
         speakNextAnswer = fromVoice && NexusProfile.speakVoiceAnswers(appContext)
+        lastFromVoice = fromVoice
+        touchActivity()
         lastSubmitted = prompt to councilMode
         run(prompt.take(32_000), councilMode)
         return true
@@ -366,7 +519,17 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
         run(prompt, council, appendUser = false)
     }
 
+    private var spokeEarly = false
+
+    private fun speakSentence(sentence: String) {
+        val plain = MarkdownParser.plain(sentence)
+        if (plain.isBlank()) return
+        speakError = voiceOutput.speak(plain, queue = spokeEarly)
+        spokeEarly = true
+    }
+
     private fun run(submittedPrompt: String, council: Boolean, appendUser: Boolean = true) {
+        spokeEarly = false
         activeRun = scope.launch {
             isRunning = true
             lastRunFailed = false
@@ -474,6 +637,8 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
                         ).filter { it.isNotBlank() }.joinToString("\n\n")
                     }
                     val history = buildProviderConversationMessages(chatState.second, instructions, userName)
+                    // Voice questions: start speaking after the first finished sentence, not after the whole answer.
+                    val chunker = if (speakNextAnswer) SentenceChunker() else null
                     engineRegistry.gateway(providerKind).stream(
                         CompletionRequest(
                             endpoint = endpoint,
@@ -481,7 +646,11 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
                             apiKey = activeKey.orEmpty(),
                             messages = history
                         )
-                    ).collect { chunk -> streamingAnswer += chunk }
+                    ).collect { chunk ->
+                        streamingAnswer += chunk
+                        chunker?.add(chunk)?.forEach { sentence -> speakSentence(sentence) }
+                    }
+                    chunker?.flush()?.let { speakSentence(it) }
                     require(streamingAnswer.isNotBlank()) { "Модель завершила ответ без текста." }
                     val answer = streamingAnswer
                     messages = withContext(Dispatchers.IO) {
@@ -494,8 +663,16 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
                 }
                 lastLatencyMs = System.currentTimeMillis() - started
                 val final = messages.lastOrNull()?.takeIf { it.role == "assistant" }?.content
-                if (speakNextAnswer && final != null) speak(final)
+                if (speakNextAnswer && final != null && !spokeEarly) speak(final)
                 flashSuccess()
+                petEvent(
+                    when {
+                        council -> PetEvent.COUNCIL_DONE
+                        lastFromVoice -> PetEvent.VOICE_ANSWER
+                        else -> PetEvent.ANSWER
+                    },
+                    onDevice = usesOnDeviceModel
+                )
             } catch (cancelled: CancellationException) {
                 withContext(NonCancellable + Dispatchers.IO) {
                     missionId?.let { id ->
@@ -518,6 +695,7 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
                 lastRunFailed = true
                 lastError = friendlyError(error)
                 status = lastError.orEmpty()
+                petEvent(PetEvent.ERROR)
             } finally {
                 if (council) lastCouncilStatus = recentMissions.firstOrNull { it.id == missionId }?.status
                 speakNextAnswer = false

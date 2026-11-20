@@ -20,7 +20,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.pow
 import kotlin.random.Random
 
@@ -66,9 +70,9 @@ private fun skyline(seed: Int = 7): List<Building> {
 }
 
 /**
- * The night city behind NEXUS: deep blue-black, two neon pools, a skyline
- * with lit windows on the horizon and a perspective grid running to it.
- * The grid drifts only in the bright effects mode; Static stays still.
+ * The world behind NEXUS, chosen by the theme: the neon night city, deep space
+ * with a ringed planet, or the anime sunset HQ. Motion (grid drift, twinkling
+ * stars, petals) runs only in the bright effects mode; Static stays still.
  */
 @Composable
 fun CyberBackdrop(
@@ -78,21 +82,32 @@ fun CyberBackdrop(
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val mode = LocalEffects.current.effective
+    val theme = ThemeState.theme
+    val vivid = mode == EffectsMode.EXPERIMENTAL
     val cityAlpha by animateFloatAsState(
         when (scene) { BackdropScene.CITY -> 1f; BackdropScene.DIM -> 0.38f; BackdropScene.PLAIN -> 0.0f },
         tween(NexusMotion.PANEL * 2), label = "city"
     )
-    val drift = if (mode == EffectsMode.EXPERIMENTAL) {
-        rememberInfiniteTransition(label = "grid").animateFloat(
-            0f, 1f, infiniteRepeatable(tween(6_000, easing = LinearEasing)), label = "grid-drift"
+    val clock = if (vivid) {
+        rememberInfiniteTransition(label = "scene").animateFloat(
+            0f, 1f, infiniteRepeatable(tween(60_000, easing = LinearEasing)), label = "scene-clock"
         )
-    } else remember { mutableFloatStateOf(0.35f) }
-    val buildings = remember { skyline() }
+    } else remember { mutableFloatStateOf(0.035f) }
+    val buildings = remember(theme) { skyline() }
+    val stars = remember { starfield() }
+    val petalList = remember { petals() }
+    val measurer = rememberTextMeasurer()
+    val watermark = remember(theme) {
+        if (theme != NexusTheme.ANIME) null
+        else measurer.measure(
+            "ネ\nク\nサ\nス",
+            TextStyle(fontFamily = JpFamily, fontWeight = FontWeight.Bold, fontSize = 64.sp, lineHeight = 70.sp, color = Cyber.Cyan)
+        )
+    }
     Box(
         modifier.drawWithCache {
             val w = size.width
             val h = size.height
-            val horizon = h * 0.70f
             val base = Brush.verticalGradient(
                 0f to Color(0xFF02040A),
                 0.45f to Color(0xFF040A18),
@@ -104,16 +119,30 @@ fun CyberBackdrop(
                 val step = 3.dp.toPx()
                 while (y < h) { moveTo(0f, y); lineTo(w, y); y += step }
             }
+            val hexes = if (theme == NexusTheme.ANIME) buildHexLattice(w, h * 0.66f, 20.dp.toPx()) else null
             onDrawBehind {
-                drawRect(base)
-                pool(Offset(w * 0.08f, h * 0.06f), w * 0.95f, accent, 0.13f)
-                pool(Offset(w * 0.98f, h * 0.30f), w * 0.70f, Cyber.Violet, 0.12f)
-                pool(Offset(w * 0.75f, h * 0.98f), w * 0.95f, Cyber.Magenta, 0.12f)
-                if (cityAlpha > 0.01f) {
-                    drawCity(buildings, horizon, cityAlpha)
-                    drawGrid(horizon, cityAlpha, drift.value)
+                val t = clock.value
+                val drift = (t * 10f) % 1f
+                when (theme) {
+                    NexusTheme.NEON_CITY -> {
+                        drawRect(base)
+                        pool(Offset(w * 0.08f, h * 0.06f), w * 0.95f, accent, 0.13f)
+                        pool(Offset(w * 0.98f, h * 0.30f), w * 0.70f, Cyber.Violet, 0.12f)
+                        pool(Offset(w * 0.75f, h * 0.98f), w * 0.95f, Cyber.Magenta, 0.12f)
+                        if (cityAlpha > 0.01f) {
+                            drawCity(buildings, h * 0.70f, cityAlpha)
+                            drawGrid(h * 0.70f, cityAlpha, drift)
+                        }
+                    }
+                    NexusTheme.COSMOS -> drawSpaceScene(stars, cityAlpha, t, vivid)
+                    NexusTheme.ANIME -> drawAnimeScene(
+                        skylineDraw = { horizon, a -> drawCity(buildings, horizon, a, silhouette = true) },
+                        gridDraw = { horizon, a -> drawGrid(horizon, a, drift, haze = Color(0xFF1C0709)) },
+                        petalList = petalList, watermark = watermark, hexLattice = hexes,
+                        sceneAlpha = cityAlpha, t = t, vivid = vivid
+                    )
                 }
-                drawPath(scan, Color.Black.copy(alpha = 0.10f), style = androidx.compose.ui.graphics.drawscope.Stroke(1f))
+                drawPath(scan, Color.Black.copy(alpha = if (theme == NexusTheme.COSMOS) 0.05f else 0.10f), style = androidx.compose.ui.graphics.drawscope.Stroke(1f))
                 drawRect(
                     Brush.radialGradient(
                         0.55f to Color.Transparent,
@@ -142,7 +171,7 @@ private fun DrawScope.pool(center: Offset, radius: Float, color: Color, alpha: F
     )
 }
 
-private fun DrawScope.drawCity(buildings: List<Building>, horizon: Float, alpha: Float) {
+private fun DrawScope.drawCity(buildings: List<Building>, horizon: Float, alpha: Float, silhouette: Boolean = false) {
     val w = size.width
     val d = 1.dp.toPx()
     // glow behind the skyline
@@ -161,7 +190,12 @@ private fun DrawScope.drawCity(buildings: List<Building>, horizon: Float, alpha:
         val bw = b.w * w
         val bh = b.h * d
         val top = horizon - bh
-        val body = if (b.far) Color(0xFF0C1433) else Color(0xFF050915)
+        val body = when {
+            silhouette && b.far -> Color(0xFF2A0C12)
+            silhouette -> Color(0xFF0A0305)
+            b.far -> Color(0xFF0C1433)
+            else -> Color(0xFF050915)
+        }
         drawRect(body.copy(alpha = alpha * (if (b.far) 0.9f else 1f)), topLeft = Offset(left, top), size = Size(bw, bh))
         if (b.far) {
             // haze: far towers fade into the glow
@@ -178,7 +212,7 @@ private fun DrawScope.drawCity(buildings: List<Building>, horizon: Float, alpha:
         val wh = if (b.far) 1.6f * d else 2.4f * d
         for (win in b.windows) {
             drawRect(
-                win.color.copy(alpha = (if (b.far) 0.30f else 0.62f) * alpha),
+                win.color.copy(alpha = (if (b.far) 0.30f else 0.62f) * alpha * (if (silhouette) 0.45f else 1f)),
                 topLeft = Offset(left + win.dx * bw - ww / 2f, top + win.dy * bh),
                 size = Size(ww, wh)
             )
@@ -202,7 +236,7 @@ private fun DrawScope.drawCity(buildings: List<Building>, horizon: Float, alpha:
     )
 }
 
-private fun DrawScope.drawGrid(horizon: Float, alpha: Float, drift: Float) {
+private fun DrawScope.drawGrid(horizon: Float, alpha: Float, drift: Float, haze: Color = Color(0xFF0A0A22)) {
     val w = size.width
     val h = size.height
     val vp = Offset(w / 2f, horizon)
@@ -226,8 +260,8 @@ private fun DrawScope.drawGrid(horizon: Float, alpha: Float, drift: Float) {
     // fade the grid into the horizon haze
     drawRect(
         Brush.verticalGradient(
-            0f to Color(0xFF0A0A22).copy(alpha = 0.95f * alpha),
-            0.35f to Color(0xFF0A0A22).copy(alpha = 0.0f),
+            0f to haze.copy(alpha = 0.95f * alpha),
+            0.35f to haze.copy(alpha = 0.0f),
             startY = horizon, endY = h
         ),
         topLeft = Offset(0f, horizon), size = Size(w, depth)

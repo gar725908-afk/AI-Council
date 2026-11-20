@@ -20,6 +20,8 @@ class NexusApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         installCrashHandler()
+        // The owner's chosen world (Неон-город / Космос / Аниме) before the first frame.
+        runCatching { ai.hybrid.commandcenter.ui.ThemeState.load(this) }
         // Fonts/resources for PDF text extraction (Archive); cheap, one-time.
         PDFBoxResourceLoader.init(applicationContext)
         missionJournal = MissionJournal(this)

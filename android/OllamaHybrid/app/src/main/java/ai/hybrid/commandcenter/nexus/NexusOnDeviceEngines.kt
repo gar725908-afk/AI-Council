@@ -32,7 +32,12 @@ import kotlinx.coroutines.withContext
  * One serialized owner for LiteRT-LM's Engine and Conversation lifecycle.
  * All SDK operations are serialized. Model initialization is performed off the main thread.
  */
-class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
+/** Engines that can load their model ahead of the first question. */
+interface Prewarmable {
+    suspend fun prewarm()
+}
+
+class LiteRtLmGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
     private val appContext = context.applicationContext
     private val storage = NexusModelStorage(appContext)
     private val executor = Executors.newSingleThreadExecutor { runnable ->
@@ -89,6 +94,17 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable {
             // Schedule cancellation behind any in-progress SDK operation on the owner executor.
             runCatching {
                 executor.execute { runCatching { conversation?.cancelProcess() } }
+            }
+        }
+    }
+
+    override suspend fun prewarm() {
+        withContext(dispatcher) {
+            lifecycle.withLock {
+                if (closed.get()) return@withLock
+                val record = storage.activeModel() ?: return@withLock
+                if (record.runtime != ModelRuntimeKind.LITERT_LM || record.location == ModelLocation.EXTERNAL_URI) return@withLock
+                ensureEngine(record)
             }
         }
     }
@@ -175,7 +191,7 @@ private fun interface LlamaTokenSink {
  * model's own format (catalog style, or the template stored in the file).
  * CPU inference only; GPU offload is not claimed.
  */
-class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
+class LlamaCppGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
     private val storage = NexusModelStorage(context.applicationContext)
     private val mutex = Mutex()
     private val handleLock = ReentrantReadWriteLock()
@@ -235,6 +251,11 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable {
             }
             job.cancel()
         }
+    }
+
+    /** Maps the model before the first question so the owner does not wait for loading. */
+    override suspend fun prewarm() {
+        if (storage.activeModel()?.runtime == ModelRuntimeKind.LLAMA_CPP) getOrCreateHandle()
     }
 
     private fun buildPrompt(nativeHandle: Long, style: PromptStyle, history: List<ProviderMessage>): String {

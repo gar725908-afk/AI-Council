@@ -74,16 +74,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Void = Color(0xFF02040A)
+private val Void: Color get() = ai.hybrid.commandcenter.ui.Cyber.Void
 private val SurfaceDeep = Color(0x14FFFFFF)
 private val SurfaceRaised = Color(0x0DFFFFFF)
-private val Cyan = Color(0xFF00E5FF)
-private val Violet = Color(0xFF8F6BFF)
+private val Cyan: Color get() = ai.hybrid.commandcenter.ui.Cyber.Cyan
+private val Violet: Color get() = ai.hybrid.commandcenter.ui.Cyber.Violet
 private val SignalGreen = Color(0xFF2BFF9A)
 private val SignalAmber = Color(0xFFFFB547)
 private val SignalRed = Color(0xFFFF3B5C)
-private val PrimaryText = Color(0xFFEAF6FF)
-private val SecondaryText = Color(0xFF93A7C4)
+private val PrimaryText: Color get() = ai.hybrid.commandcenter.ui.Cyber.Text
+private val SecondaryText: Color get() = ai.hybrid.commandcenter.ui.Cyber.TextDim
 
 /**
  * Device Core / NEXUS Bridge: real measured device state and an honest

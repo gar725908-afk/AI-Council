@@ -37,6 +37,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -137,6 +142,33 @@ fun SettingsTab(
                         )
                     )
                 }
+                VoicePicker(chat)
+            }
+
+            // ---- world ----
+            HudPanel(Modifier.fillMaxWidth().testTag("settings-theme"), accent = Cyber.Cyan, title = "Мир NEXUS", index = "テーマ") {
+                Text(
+                    "Тема меняет весь интерфейс: фон, цвета, кольцо вокруг камеры и подписи.",
+                    style = NexusTypography.bodySmall, color = Cyber.TextDim
+                )
+                ai.hybrid.commandcenter.ui.ThemePicker(
+                    selected = ai.hybrid.commandcenter.ui.ThemeState.theme,
+                    onSelect = { ai.hybrid.commandcenter.ui.ThemeState.save(context, it) }
+                )
+                HudRow(
+                    "Кольцо вокруг камеры",
+                    subtitle = "Живой индикатор NEX вокруг фронтальной камеры: крутится, когда он думает, мигает при ошибке.",
+                    icon = NexIcons.ScanFace, accent = Cyber.Cyan
+                ) {
+                    Switch(
+                        checked = ai.hybrid.commandcenter.ui.ThemeState.cameraRing,
+                        onCheckedChange = { ai.hybrid.commandcenter.ui.ThemeState.saveCameraRing(context, it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Cyber.OnNeon, checkedTrackColor = Cyber.Cyan,
+                            uncheckedThumbColor = Cyber.TextDim, uncheckedTrackColor = Cyber.Panel
+                        )
+                    )
+                }
             }
 
             // ---- look ----
@@ -172,7 +204,7 @@ fun SettingsTab(
             }
 
             Text(
-                "NEXUS " + BuildConfig.VERSION_NAME + " · шрифты Exo 2, Inter, JetBrains Mono (OFL) · иконки Lucide (ISC)",
+                "NEXUS " + BuildConfig.VERSION_NAME + " · шрифты Exo 2, Inter, JetBrains Mono, Noto Sans JP (OFL) · иконки Lucide (ISC)",
                 style = CyberText.Label, color = Cyber.TextFaint
             )
             Spacer(Modifier.height(12.dp))
@@ -193,4 +225,66 @@ private fun AdvancedRow(title: String, subtitle: String, icon: Int, onClick: () 
     HudRow(title, subtitle = subtitle, icon = icon, accent = Cyber.Violet, onClick = onClick) {
         NexIcon(NexIcons.ChevronRight, tint = Cyber.TextFaint, size = 18.dp)
     }
+}
+
+/**
+ * Picks the system voice NEX speaks with. Offline voices come first; a voice
+ * marked «через интернет» sends the spoken text to the synthesiser's server.
+ */
+@Composable
+private fun VoicePicker(chat: ChatController) {
+    var voices by remember { mutableStateOf(emptyList<ai.hybrid.commandcenter.nexus.VoiceOption>()) }
+    var selected by remember { mutableStateOf(chat.selectedVoice) }
+    var rate by remember { mutableStateOf(chat.speechRate) }
+    var note by remember { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        repeat(10) {
+            voices = chat.voices()
+            if (voices.isNotEmpty()) return@LaunchedEffect
+            kotlinx.coroutines.delay(500)
+        }
+    }
+    ai.hybrid.commandcenter.ui.HudDivider(accent = Cyber.Violet)
+    ai.hybrid.commandcenter.ui.HudLabel("Голос синтезатора", color = Cyber.Violet)
+    if (voices.isEmpty()) {
+        Text(
+            "Русских голосов в синтезаторе Android не найдено. Установи их: Настройки → Специальные возможности → Синтез речи.",
+            style = NexusTypography.bodySmall, color = Cyber.TextDim
+        )
+    } else {
+        val options = listOf<ai.hybrid.commandcenter.nexus.VoiceOption?>(null) + voices.take(8)
+        options.forEach { voice ->
+            val active = voice?.name == selected
+            Row(
+                Modifier.fillMaxWidth().clickable {
+                    selected = voice?.name
+                    chat.selectVoice(voice?.name)
+                    note = chat.speak("Я на связи. Так звучит мой голос.") ?: null
+                }.padding(vertical = 6.dp).testTag("voice-" + (voice?.name ?: "default")),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier.size(12.dp).border(1.dp, Cyber.Violet, CircleShape)
+                        .then(if (active) Modifier.background(Cyber.Violet, CircleShape) else Modifier)
+                )
+                Text(voice?.label ?: "Системный по умолчанию", style = NexusTypography.bodyMedium, color = Cyber.Text, modifier = Modifier.weight(1f))
+                if (voice != null) {
+                    ai.hybrid.commandcenter.ui.HudChip(if (voice.offline) "Офлайн" else "Через интернет", if (voice.offline) Cyber.Green else Cyber.Amber)
+                }
+            }
+        }
+        Text("Нажми на голос — NEX скажет фразу, чтобы было слышно, как он звучит.", style = NexusTypography.bodySmall, color = Cyber.TextFaint)
+    }
+    val rates = listOf(0.85f to "Медленно", 1.0f to "Обычно", 1.2f to "Быстро")
+    ai.hybrid.commandcenter.ui.SegmentedTabs(
+        options = rates.map { it.second },
+        selected = rates.indexOfFirst { kotlin.math.abs(it.first - rate) < 0.05f }.coerceAtLeast(1),
+        onSelect = {
+            rate = rates[it].first
+            chat.setSpeechRate(rate)
+            note = chat.speak("Скорость речи изменена.")
+        }
+    )
+    note?.let { Text(it, style = NexusTypography.bodySmall, color = Cyber.Amber) }
 }
