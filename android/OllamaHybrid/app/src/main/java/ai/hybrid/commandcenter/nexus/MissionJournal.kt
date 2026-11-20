@@ -181,6 +181,36 @@ class MissionJournal(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    fun countMissions(): Int = countRows("missions")
+    fun countConversations(): Int = countRows("chat_conversations")
+    fun countToolAudit(): Int = countRows("tool_audit")
+
+    private fun countRows(table: String): Int =
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM $table", null).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+
+    /** User-initiated wipe of missions, agent results, events and chats. */
+    fun clearMissionsAndChats() {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM chat_messages")
+            db.execSQL("DELETE FROM chat_conversations")
+            db.execSQL("DELETE FROM agent_results")
+            db.execSQL("DELETE FROM mission_events")
+            db.execSQL("DELETE FROM missions")
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** User-initiated wipe of the tool audit trail. */
+    fun clearToolAudit() {
+        writableDatabase.execSQL("DELETE FROM tool_audit")
+    }
+
     fun createConversation(title: String = "Новый чат"): String {
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()

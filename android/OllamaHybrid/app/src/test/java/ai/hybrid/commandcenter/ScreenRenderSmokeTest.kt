@@ -36,6 +36,18 @@ class ScreenRenderSmokeTest {
     }
 
     @Test
+    fun systemSpaceRendersDeviceTab() {
+        compose.setContent { SystemScreen(initialTab = SystemTab.DEVICE.ordinal) }
+        compose.onRoot().assertExists()
+    }
+
+    @Test
+    fun settingsPanelRendersRealCounts() {
+        compose.setContent { SettingsPanel() }
+        compose.onRoot().assertExists()
+    }
+
+    @Test
     fun archiveRendersWithEmptyLibrary() {
         compose.setContent { ArchiveScreen() }
         compose.onRoot().assertExists()

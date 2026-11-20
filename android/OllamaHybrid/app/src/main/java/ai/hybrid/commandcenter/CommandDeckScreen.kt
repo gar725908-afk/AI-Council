@@ -79,8 +79,8 @@ private data class DeckState(
  */
 @Composable
 fun CommandDeckScreen(
-    onNavigate: (Int) -> Unit,
-    onCompose: (String, Int) -> Unit = { _, destination -> onNavigate(destination) },
+    onNavigate: (DeckTarget) -> Unit,
+    onCompose: (String, DeckTarget) -> Unit = { _, destination -> onNavigate(destination) },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -138,7 +138,7 @@ fun CommandDeckScreen(
 }
 
 @Composable
-private fun ComposerCard(onCompose: (String, Int) -> Unit) {
+private fun ComposerCard(onCompose: (String, DeckTarget) -> Unit) {
     var task by remember { mutableStateOf("") }
     DeckCard(title = "COMMAND COMPOSER", accent = Violet) {
         OutlinedTextField(
@@ -152,11 +152,11 @@ private fun ComposerCard(onCompose: (String, Int) -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (task.isNotBlank()) {
                 DeckButton("В AI Studio", Cyan) {
-                    onCompose(task, 1)
+                    onCompose(task, DeckTarget.STUDIO)
                     task = ""
                 }
                 DeckButton("В Council", Violet) {
-                    onCompose(task, 2)
+                    onCompose(task, DeckTarget.COUNCIL)
                     task = ""
                 }
             } else {
@@ -170,7 +170,7 @@ private fun ComposerCard(onCompose: (String, Int) -> Unit) {
 }
 
 @Composable
-private fun ModelProfileCard(deck: DeckState, onNavigate: (Int) -> Unit) {
+private fun ModelProfileCard(deck: DeckState, onNavigate: (DeckTarget) -> Unit) {
     val settings = deck.providerSettings
     val providerLabel = runCatching { ProviderKind.valueOf(settings.providerKind).displayName }
         .getOrDefault(settings.providerKind)
@@ -217,8 +217,8 @@ private fun ModelProfileCard(deck: DeckState, onNavigate: (Int) -> Unit) {
         )
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            DeckButton("Модели", Cyan) { onNavigate(3) }
-            DeckButton("AI Studio", Cyan) { onNavigate(1) }
+            DeckButton("Модели", Cyan) { onNavigate(DeckTarget.MODELS) }
+            DeckButton("AI Studio", Cyan) { onNavigate(DeckTarget.STUDIO) }
             if (cloudConfigured && settings.endpoint.isNotBlank() && !checking) {
                 DeckButton("Проверить", SignalGreen) {
                     checking = true
@@ -233,7 +233,7 @@ private fun ModelProfileCard(deck: DeckState, onNavigate: (Int) -> Unit) {
 }
 
 @Composable
-private fun MissionsCard(deck: DeckState, onNavigate: (Int) -> Unit) {
+private fun MissionsCard(deck: DeckState, onNavigate: (DeckTarget) -> Unit) {
     DeckCard(title = "МИССИИ И COUNCIL", accent = Violet) {
         if (deck.recentMissions.isEmpty()) {
             Text(
@@ -247,7 +247,7 @@ private fun MissionsCard(deck: DeckState, onNavigate: (Int) -> Unit) {
             }
         }
         Spacer(Modifier.height(6.dp))
-        DeckButton("Открыть Council", Violet) { onNavigate(2) }
+        DeckButton("Открыть Council", Violet) { onNavigate(DeckTarget.COUNCIL) }
     }
 }
 
@@ -280,7 +280,7 @@ private fun MissionRow(mission: MissionRecord) {
 }
 
 @Composable
-private fun StudioCard(deck: DeckState, onNavigate: (Int) -> Unit) {
+private fun StudioCard(deck: DeckState, onNavigate: (DeckTarget) -> Unit) {
     DeckCard(title = "AI STUDIO", accent = Cyan) {
         val lastChat = deck.recentConversations.firstOrNull()
         if (lastChat == null) {
@@ -290,16 +290,16 @@ private fun StudioCard(deck: DeckState, onNavigate: (Int) -> Unit) {
             ValueRow("Обновлён", timeLabel(lastChat.updatedAt))
         }
         Spacer(Modifier.height(6.dp))
-        DeckButton("Продолжить в AI Studio", Cyan) { onNavigate(1) }
+        DeckButton("Продолжить в AI Studio", Cyan) { onNavigate(DeckTarget.STUDIO) }
     }
 }
 
 @Composable
-private fun DeviceHealthCard(diag: DeviceDiagnostics, onNavigate: (Int) -> Unit) {
+private fun DeviceHealthCard(diag: DeviceDiagnostics, onNavigate: (DeckTarget) -> Unit) {
     DeckCard(
         title = "DEVICE HEALTH",
         accent = Cyan,
-        modifier = Modifier.clickable { onNavigate(4) }
+        modifier = Modifier.clickable { onNavigate(DeckTarget.DEVICE) }
     ) {
         val battery = diag.batteryPercent?.let { "$it%" } ?: "Нет данных"
         val ram = diag.ramFreeBytes?.let { formatGb(it) + " свободно" } ?: "Нет данных"

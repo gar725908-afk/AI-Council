@@ -107,6 +107,10 @@ class MaterialLibrary(context: Context) : SQLiteOpenHelper(
             }
         }
 
+    fun clearAll() {
+        writableDatabase.execSQL("DELETE FROM library_items")
+    }
+
     fun delete(itemId: String) {
         writableDatabase.execSQL("DELETE FROM library_items WHERE id = ?", arrayOf(itemId))
     }
