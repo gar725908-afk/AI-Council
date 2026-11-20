@@ -7,7 +7,7 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 - Ветка: `nexus/genesis-foundation`
 - Базовый HEAD передачи: `ff35fbca9a331e832b81378e25b4c45499d0a92c`
 - Обновлено: 2026-11-20, после серии срезов (см. журнал ниже)
-- Юнит-тестов: 107, локальный прогон и CI зелёные
+- Юнит-тестов: 123 (включая JVM-рендер экранов), локальный прогон и CI зелёные
 - CI: `nexus-android-debug.yml` (тесты + debug APK), `android-build.yml` (валидация)
 
 Шкала статусов (по разделу 14 ТЗ), показывается только реально достигнутый:
@@ -41,11 +41,15 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 | Нативный Ollama: /api/tags discovery (10.3) | `ProviderModelCatalog.kt` | Unit Tested | `OllamaApiTest` |
 | About / build information (4.9) | `DeviceCoreScreen.kt` (СБОРКА И СРЕДА) | CI Build | — |
 | Локальный Manager/Council, журнал миссий (10.1) | до передачи: `LocalFirstCouncil`, `MissionJournal` | CI Build | `LocalFirstCouncilTest`, `MissionStateMachineTest` |
+| Tool Gateway: конвейер, одобрения, аудит (6.5) | `androidbridge/BridgeGateway.kt`, journal v3 `tool_audit` | Unit Tested | `BridgeGatewayTest` (13) |
+| Первый типизированный инструмент device.diagnostics (6.5, 7) | `DeviceDiagnosticsTool.kt` + карточка на Device Core | CI Build | через `BridgeGatewayTest` |
+| JVM-рендер каждого основного экрана (14.2 UI regression) | `ScreenRenderSmokeTest.kt` (Robolectric offline) | Unit Tested | 3 рендер-теста |
 
 ## Не реализовано (честный список, по 13.3 с поправками)
 
 - Cyber Browser целиком: сессии, вкладки, история, загрузки, Agent Dock (4.4).
-- Универсальный Tool Gateway / MCP и верификатор постусловий (6.5).
+- MCP-адаптеры поверх Gateway и верификатор постусловий сверх типизированного
+  результата (6.5): сам конвейер Gateway с одобрениями и аудитом уже реализован.
 - Интегрированный Android Bridge: каталог типизированных инструментов,
   Shizuku Binder, Direct Root executor, Permission Center (7). Сейчас есть
   контракты, политика, Root-проба и честная матрица возможностей.
@@ -73,6 +77,9 @@ handoff-документ (разделы 3.4, 13, 16.7). Обновляется 
 8. `2465dd2` Нативный Ollama (/api/chat, /api/tags) + защита синтеза от инъекций (+19)
 9. `60e993b` Докачка загрузок моделей (Range + повторное хэширование) (+16)
 10. `50de74f` Карточка сборки на Device Core + повтор миссии в Council
+11. `5aed120` Матрица реализации (этот документ)
+12. `ad9078f` Tool Gateway: конвейер исполнения, аудит в журнале v3, device.diagnostics (+13)
+13. `2b030c2` Robolectric: JVM-рендер smoke-тесты всех основных экранов (+3)
 
 ## Расхождения документации
 
