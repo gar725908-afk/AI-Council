@@ -63,6 +63,12 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -70,7 +76,28 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 
+// Robolectric offline: the android-all jar arrives as a normal Gradle
+// dependency (proxy-friendly, deterministic in CI) instead of Robolectric's
+// own runtime fetcher.
+val robolectricAndroidAll: Configuration by configurations.creating
+
+tasks.withType<Test>().configureEach {
+    val jars = robolectricAndroidAll
+    val targetDir = layout.buildDirectory.dir("robolectric-android-all")
+    doFirst {
+        val dir = targetDir.get().asFile
+        dir.mkdirs()
+        jars.files.forEach { jar ->
+            val copy = File(dir, jar.name)
+            if (!copy.exists()) jar.copyTo(copy, overwrite = false)
+        }
+        systemProperty("robolectric.offline", "true")
+        systemProperty("robolectric.dependency.dir", dir.absolutePath)
+    }
+}
+
 dependencies {
+    robolectricAndroidAll("org.robolectric:android-all-instrumented:15-robolectric-12650502-i7")
     implementation(platform("androidx.compose:compose-bom:2025.05.00"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.core:core:1.16.0")
@@ -87,6 +114,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
+    // JVM screen render smoke tests: every screen must compose without crashing.
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     // Real JVM JSON implementation; Android's unit-test stubs throw "Method not mocked".
     testImplementation("org.json:json:20260814")
     // Use a real JVM JSON implementation in local unit tests instead of android.jar mock stubs.
