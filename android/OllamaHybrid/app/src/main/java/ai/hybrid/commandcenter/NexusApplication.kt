@@ -1,6 +1,7 @@
 package ai.hybrid.commandcenter
 
 import android.app.Application
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import ai.hybrid.commandcenter.nexus.MissionJournal
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +18,8 @@ class NexusApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Fonts/resources for PDF text extraction (Archive); cheap, one-time.
+        PDFBoxResourceLoader.init(applicationContext)
         missionJournal = MissionJournal(this)
         applicationScope.launch {
             val result = runCatching {

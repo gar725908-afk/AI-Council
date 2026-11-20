@@ -3,8 +3,8 @@ package ai.hybrid.commandcenter.nexus
 /**
  * Honest text extraction for the Material Library (handoff section 4.7):
  * only formats with a real parser are imported; everything else is refused
- * with a reason instead of being silently mangled. PDF/DOCX parsing is a
- * separate future step and is not pretended here.
+ * with a reason instead of being silently mangled. PDF goes through
+ * PDFBox-Android (text layer only, no OCR); DOCX is not pretended yet.
  */
 object MaterialTextExtractor {
 
@@ -14,9 +14,9 @@ object MaterialTextExtractor {
     }
 
     const val MAX_TEXT_CHARS = 2_000_000
-    private val supported = setOf("txt", "md", "markdown", "json", "log", "csv")
+    private val supported = setOf("txt", "md", "markdown", "json", "log", "csv", "pdf")
 
-    fun supportedFormatsLabel(): String = "TXT, MD, JSON, LOG, CSV"
+    fun supportedFormatsLabel(): String = "PDF (текстовый слой), TXT, MD, JSON, LOG, CSV"
 
     fun extract(fileName: String, bytes: ByteArray): Extraction {
         val extension = fileName.substringAfterLast('.', "").lowercase()
@@ -28,6 +28,12 @@ object MaterialTextExtractor {
         }
         if (bytes.isEmpty()) {
             return Extraction.Unsupported("Файл пуст.")
+        }
+        if (extension == "pdf") {
+            return when (val result = PdfTextExtractor.extract(bytes)) {
+                is PdfTextExtractor.Result.Text -> Extraction.Text(result.text, "pdf")
+                is PdfTextExtractor.Result.Failed -> Extraction.Unsupported(result.reason)
+            }
         }
         if (looksBinary(bytes)) {
             return Extraction.Unsupported("Файл выглядит бинарным, а не текстовым.")
