@@ -3,6 +3,7 @@ package ai.hybrid.commandcenter
 import ai.hybrid.commandcenter.nexus.LibraryImportResult
 import ai.hybrid.commandcenter.nexus.LibraryItem
 import ai.hybrid.commandcenter.nexus.LibrarySearch
+import ai.hybrid.commandcenter.nexus.MaterialContext
 import ai.hybrid.commandcenter.nexus.MaterialLibrary
 import ai.hybrid.commandcenter.nexus.MaterialTextExtractor
 import android.net.Uri
@@ -65,7 +66,10 @@ private const val MAX_IMPORT_BYTES = 8_000_000
  * result is an exact quote with its source and character position.
  */
 @Composable
-fun ArchiveScreen(modifier: Modifier = Modifier) {
+fun ArchiveScreen(
+    modifier: Modifier = Modifier,
+    onSendToStudio: (String) -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val library = remember { MaterialLibrary(context.applicationContext) }
@@ -265,6 +269,21 @@ fun ArchiveScreen(modifier: Modifier = Modifier) {
                             timeLabel(item.importedAtEpochMillis),
                         color = SecondaryText, fontSize = 10.sp
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                val text = withContext(Dispatchers.IO) { library.getText(item.id) }
+                                if (text != null) {
+                                    onSendToStudio(MaterialContext.buildPrompt(item.displayName, text))
+                                } else {
+                                    statusLine = "Не удалось прочитать материал."
+                                    statusIsError = true
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                    ) { Text("В AI Studio", fontSize = 11.sp) }
                     OutlinedButton(
                         onClick = {
                             scope.launch {
@@ -278,6 +297,7 @@ fun ArchiveScreen(modifier: Modifier = Modifier) {
                         },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = SignalRed)
                     ) { Text("Удалить", fontSize = 11.sp) }
+                    }
                 }
             }
         }

@@ -101,7 +101,13 @@ private fun NexusApp() {
                 )
                 3 -> ModelCenterScreen(Modifier.padding(padding))
                 4 -> DeviceCoreScreen(Modifier.padding(padding))
-                6 -> ArchiveScreen(Modifier.padding(padding))
+                6 -> ArchiveScreen(
+                    modifier = Modifier.padding(padding),
+                    onSendToStudio = { text ->
+                        pendingPrompt = text
+                        selected = 1
+                    }
+                )
                 else -> PlatformCenterScreen(Modifier.padding(padding))
             }
         }
