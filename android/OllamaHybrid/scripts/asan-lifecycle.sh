@@ -19,7 +19,9 @@ curl -fsSL --retry 3 -o /tmp/gemma-3-270m-it-Q8_0.gguf \
   "https://huggingface.co/ggml-org/gemma-3-270m-it-GGUF/resolve/e7647be17ae1108f2f605ed061ca0608b171afff/gemma-3-270m-it-Q8_0.gguf"
 adb push /tmp/gemma-3-270m-it-Q8_0.gguf "$MODEL" >/dev/null
 adb shell appops set "$PKG" MANAGE_EXTERNAL_STORAGE allow || true
-adb shell run-as "$PKG" ls -la lib 2>/dev/null | tee "$OUT/native-libs.txt" || true
+# what Android extracted: wrap.sh must sit next to the sanitizer runtime and be executable
+APK_DIR=$(adb shell pm path "$PKG" | head -1 | tr -d '\r' | sed 's/^package://; s#/base.apk$##')
+adb shell ls -la "$APK_DIR/lib/x86_64/" 2>&1 | tee "$OUT/native-libs.txt" || true
 
 echo "== lifecycle under AddressSanitizer"
 adb logcat -c || true

@@ -23,8 +23,13 @@ Android-эмуляторе в GitHub Actions (каждый push в ветку) �
 | `onlyLocalCoresServeOtherPhonesByDefault` | Облачное ядро для чужих задач запрещено по умолчанию; частные адреса Ollama/LM Studio — локальные, DNS-имена — нет |
 | `taskHistorySurvivesARestartAndUnfinishedTasksAreMarkedInterrupted` | История переживает перезапуск, «зависшие» задачи помечаются «Прервано» |
 | `storedHistoryIsTrimmedAndRoundTrips` | Хранимая история обрезается и устойчива к испорченным данным |
-| `framesRoundTripAndUnknownTypesOrOpsAreRejected` | Закрытая схема: неизвестные типы/операции, лишняя длина — отказ |
-| `proofBindsBothKeysAndSasIsSymmetric` | HMAC-доказательство зависит от обоих ключей; SAS одинаков на обеих сторонах |
+| `aRevealThatBreaksItsCommitmentIsRefused` | «Ручной» клиент на настоящем проводе знает секрет, но после `pair_nonce` раскрывает другое число — отказ «Проверка кода», код не показывается, событие в журнале |
+| `aCopiedInviteCannotTakeOverAPairingInProgress` | Второе устройство с той же ссылкой (и секретом) не может перехватить идущее сопряжение; исходное сопряжение завершается |
+| `simultaneousConfirmationsNeverLoseEachOther` | 12 раз подряд оба владельца нажимают «Код совпадает» одновременно — ни одно подтверждение не теряется |
+| `theCiHostFlowWorksAgainstALocalPhone` | Тот же код второго узла, что в сквозном тесте CI, против локального «телефона» |
+| `framesRoundTripAndUnknownTypesOrOpsAreRejected` | Закрытая схема: неизвестные типы/операции, чужая версия (`v` 1 и 3), не-hex `proof`/`commit`/`nonce`, лишняя длина — отказ |
+| `proofBindsKeysAndCommitmentAndTheCodeNeedsBothNonces` | HMAC-доказательство зависит от обоих ключей и обязательства; код одинаков на обеих сторонах |
+| `v1CodesCouldBeSteeredByTryingKeysV2CodesCannot` | Демонстрация, зачем v2: для формулы v1 ключ с тем же кодом находится перебором (2,7 млн попыток, ≈3 с на одном ядре в CI-окружении); в v2 код для одного ключа разный при каждой паре чисел, а обязательство не даёт сменить число |
 | `invitesSurviveMessengersAndExpire` | Ссылка переживает переносы строк мессенджеров, истекает через 10 минут |
 | `privateAddressRules` | Частные/Tailscale/loopback адреса — да, публичные — нет |
 | `governorProfiles` | Пороги профилей |

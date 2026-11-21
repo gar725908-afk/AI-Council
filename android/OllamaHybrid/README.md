@@ -4,6 +4,7 @@
 
 ## Документы
 - [Матрица реализации](docs/NEXUS_IMPLEMENTATION_MATRIX_RU.md) — **источник правды**: требование → код → статус → тесты, журнал срезов и честный список того, что не сделано.
+- [Ответ на технический аудит](docs/NEXUS_AUDIT_RESPONSE_RU.md) — каждое замечание проверено по коду: что подтвердилось и исправлено (сопряжение LINK и Mesh, JNI-обёртка llama.cpp, фоновая служба), что неприменимо и почему.
 - [NEXUS Mesh](docs/NEXUS_MESH_README_RU.md) — закрытая сеть своих телефонов: сопряжение, защищённый канал, задачи; [протокол](docs/NEXUS_MESH_PROTOCOL_RU.md), [безопасность](docs/NEXUS_MESH_SECURITY_MODEL_RU.md), [архитектура](docs/NEXUS_MESH_ARCHITECTURE_RU.md), [тесты](docs/NEXUS_MESH_TEST_PLAN_RU.md).
 - [Исследование Android AI](docs/research/README_RU.md) — 24 проекта, 66 моделей, движки, агенты, интеграция, дорожная карта, лицензии.
 - [NEXUS CODEX](docs/NEXUS_CODEX_RU.md) — история, канон, имена и визуальный язык.
@@ -14,14 +15,15 @@
 - [Local-first Council и Android execution](docs/LOCAL_FIRST_COUNCIL_AND_ANDROID_EXECUTION_RU.md).
 - [Ollama LAN Node](docs/NEXUS_LAN_OLLAMA_NODE_RU.md) — модель на домашнем ПК через Ollama по Wi-Fi/LAN.
 - [NEXUS MODEL CENTER и EVOLUTION](docs/NEXUS_MODEL_CENTER_AND_EVOLUTION_RU.md) — LiteRT-LM и llama.cpp, загрузчик весов, Model Center.
-- [NEXUS LINK v1](docs/NEXUS_LINK_PROTOCOL_V1_RU.md), [Extension API](docs/NEXUS_EXTENSION_API_V1_RU.md), [подпись релизов](docs/NEXUS_ANDROID_RELEASE_SIGNING_RU.md), [дизайн-система](docs/UI_DESIGN_SYSTEM_RU.md).
+- [NEXUS LINK v2](docs/NEXUS_LINK_PROTOCOL_RU.md), [Extension API](docs/NEXUS_EXTENSION_API_V1_RU.md), [подпись релизов](docs/NEXUS_ANDROID_RELEASE_SIGNING_RU.md), [дизайн-система](docs/UI_DESIGN_SYSTEM_RU.md).
 
 ## Сборка
 
 CI (GitHub Actions, Gradle 8.13, JDK 17):
 - `nexus-android-debug.yml` — все unit-тесты (`:app:testDebugUnitTest`) и debug APK;
 - `android-build.yml` — валидация сборки;
-- `nexus-android-emulator.yml` — приложение на Android-эмуляторе с Ollama на раннере: настройка ядра, реальный ответ модели, совет, вкладки, модели на устройстве, сквозной тест NEXUS Mesh; скриншоты, видео, logcat;
+- `nexus-android-emulator.yml` — приложение на Android-эмуляторе с Ollama на раннере: настройка ядра, реальный ответ модели, совет, вкладки, модели на устройстве, жизненный цикл движка llama.cpp под CheckJNI, сквозной тест NEXUS Mesh; скриншоты, видео, logcat;
+- `nexus-android-asan.yml` — движок llama.cpp, собранный с AddressSanitizer, на эмуляторе: загрузка, ответ, отмена и освобождение из нескольких потоков; контрольная ошибка памяти обязана быть поймана;
 - `nexus-android-release.yml` — подписанная сборка (см. документ о подписи).
 
 Локально (Gradle Wrapper в репозитории нет — нужен установленный Gradle 8.13):
@@ -30,7 +32,9 @@ CI (GitHub Actions, Gradle 8.13, JDK 17):
 3. `gradle :app:testDebugUnitTest :app:assembleDebug`
 
 Нативная часть (llama.cpp, закреплённая версия) собирается через CMake/NDK
-под arm64-v8a; для эмулятора — `-Pnexus.emulatorAbi=true` (x86_64).
+под arm64-v8a; для эмулятора — `-Pnexus.emulatorAbi=true` (x86_64); сборка с
+AddressSanitizer только для CI — `-Pnexus.asan=true` (x86_64, в телефонные APK
+не попадает).
 
 ## Что есть в приложении
 

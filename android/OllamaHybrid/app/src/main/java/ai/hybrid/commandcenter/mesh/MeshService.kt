@@ -2,6 +2,7 @@ package ai.hybrid.commandcenter.mesh
 
 import ai.hybrid.commandcenter.MainActivity
 import ai.hybrid.commandcenter.R
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -28,17 +29,37 @@ class MeshService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val port = runCatching { MeshRuntime.start(this) }.getOrElse {
+        // Foreground first: Android expects it promptly after startForegroundService(), even if starting the node fails.
+        if (!enterForeground(notification(null))) {
+            MeshRuntime.stop(this)
             stopSelf()
             return START_NOT_STICKY
         }
-        val notification = notification(port)
+        val port = runCatching { MeshRuntime.start(this) }.getOrElse {
+            stopForegroundCompat()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification(port))
+        return START_STICKY
+    }
+
+    /**
+     * The owner switches the node on from the open app, which Android always allows.
+     * When the system later restarts the sticky service with the app in the
+     * background, Android 12+ may refuse the foreground start
+     * (ForegroundServiceStartNotAllowedException). Then the node simply stays off
+     * until NEXUS is opened again — no crash, no hidden background work.
+     */
+    private fun enterForeground(notification: Notification): Boolean = try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-        return START_STICKY
+        true
+    } catch (error: Exception) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && error is ForegroundServiceStartNotAllowedException) false else throw error
     }
 
     override fun onDestroy() {
@@ -50,7 +71,7 @@ class MeshService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
     }
 
-    private fun notification(port: Int): Notification {
+    private fun notification(port: Int?): Notification {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(
@@ -71,7 +92,7 @@ class MeshService : Service() {
         return builder
             .setSmallIcon(R.drawable.lu_network)
             .setContentTitle("NEXUS Mesh: узел активен")
-            .setContentText("Порт $port · задачи только от сопряжённых телефонов")
+            .setContentText(if (port == null) "Запуск узла…" else "Порт $port · задачи только от сопряжённых телефонов")
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(null, "Остановить", stop).build())

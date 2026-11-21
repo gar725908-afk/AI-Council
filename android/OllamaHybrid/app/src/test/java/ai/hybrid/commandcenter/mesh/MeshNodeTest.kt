@@ -256,6 +256,81 @@ class MeshNodeTest {
         assertNull(trustA.trusted(b.identity.fingerprint))
         assertNull(trustB.trusted(a.identity.fingerprint))
     }
+
+    @Test fun aRevealThatBreaksItsCommitmentIsRefused() = runBlocking {
+        val (a, trustA) = node("A")
+        val port = a.start(0)
+        val invite = a.createInvite(listOf("127.0.0.1:$port"))
+        RawPeer(port).use { evil ->
+            val promised = MeshProtocol.newNonce()
+            val commit = MeshProtocol.commitment(invite.id, invite.fingerprint, evil.identity.fingerprint, promised)
+            val proof = MeshProtocol.pairingProof(invite.secret, invite.id, invite.fingerprint, evil.identity.fingerprint, commit)
+            evil.send(MeshProtocol.message("pair_request", "invite" to invite.id, "proof" to proof, "commit" to commit))
+            assertEquals("pair_nonce", evil.read().getString("t"))
+            // having seen the inviter's nonce, it tries to swap its own
+            evil.send(MeshProtocol.message("pair_reveal", "nonce" to MeshProtocol.newNonce()))
+            val answer = evil.read()
+            assertEquals("pair_reject", answer.getString("t"))
+            assertTrue(answer.optString("reason"), answer.optString("reason").contains("Проверка кода"))
+        }
+        assertNull("no code is ever shown for a broken commitment", a.pairing.value)
+        assertTrue(trustA.auditLog().any { it.kind == "pair-denied" })
+    }
+
+    @Test fun aCopiedInviteCannotTakeOverAPairingInProgress() = runBlocking {
+        val (a, _) = node("A")
+        val (b, trustB) = node("B")
+        val port = a.start(0)
+        val invite = MeshInvite.parse(a.createInvite(listOf("127.0.0.1:$port")).toLink())
+        val joining = b.join(invite)
+        assertEquals(joining.sas, await { a.pairing.value }.sas)
+        // someone else has a copy of the link (a photo of the QR) and the secret in it
+        RawPeer(port).use { copy ->
+            val nonce = MeshProtocol.newNonce()
+            val commit = MeshProtocol.commitment(invite.id, invite.fingerprint, copy.identity.fingerprint, nonce)
+            val proof = MeshProtocol.pairingProof(invite.secret, invite.id, invite.fingerprint, copy.identity.fingerprint, commit)
+            copy.send(MeshProtocol.message("pair_request", "invite" to invite.id, "proof" to proof, "commit" to commit))
+            val answer = copy.read()
+            assertEquals("pair_reject", answer.getString("t"))
+            assertTrue(answer.optString("reason"), answer.optString("reason").contains("другое устройство"))
+        }
+        assertEquals("the pairing in progress is untouched", b.identity.fingerprint, a.pairing.value!!.peerFingerprint)
+        a.confirmPairing()
+        b.confirmPairing()
+        await { a.pairing.value?.takeIf { it.status == PairingState.Status.PAIRED } }
+        assertNotNull(await { trustB.trusted(a.identity.fingerprint) })
+    }
+}
+
+/** A hand-driven client on the real wire, for moves the real node never makes. */
+private class RawPeer(port: Int) : AutoCloseable {
+    val identity = SoftwareIdentity.generate()
+    private val socket: javax.net.ssl.SSLSocket
+    private val input: DataInputStream
+    private val output: DataOutputStream
+
+    init {
+        val acceptAny = object : javax.net.ssl.X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) = Unit
+            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) = Unit
+            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+        }
+        val context = javax.net.ssl.SSLContext.getInstance("TLS")
+        context.init(identity.keyManagers(), arrayOf(acceptAny), java.security.SecureRandom())
+        socket = context.socketFactory.createSocket("127.0.0.1", port) as javax.net.ssl.SSLSocket
+        socket.soTimeout = 15_000
+        socket.startHandshake()
+        input = DataInputStream(socket.inputStream.buffered())
+        output = DataOutputStream(socket.outputStream.buffered())
+        send(MeshProtocol.message("hello", "device" to identity.deviceId, "name" to "raw", "app" to "test", "port" to 0))
+        check(read().getString("t") == "hello")
+    }
+
+    fun send(message: JSONObject) = MeshProtocol.write(output, message)
+    fun read(): JSONObject = MeshProtocol.read(input)
+    override fun close() {
+        runCatching { socket.close() }
+    }
 }
 
 class MeshProtocolTest {
@@ -272,10 +347,15 @@ class MeshProtocolTest {
             return DataInputStream(ByteArrayInputStream(out.toByteArray()))
         }
         for (bad in listOf(
-            """{"v":1,"t":"shell","cmd":"rm -rf /"}""",
-            """{"v":1,"t":"task","id":"1","op":"shell.exec"}""",
-            """{"v":2,"t":"ping"}""",
-            """{"v":1,"t":"hello","device":"x"}"""
+            """{"v":2,"t":"shell","cmd":"rm -rf /"}""",
+            """{"v":2,"t":"task","id":"1","op":"shell.exec"}""",
+            """{"v":1,"t":"ping"}""",
+            """{"v":3,"t":"ping"}""",
+            """{"v":2,"t":"hello","device":"x"}""",
+            """{"v":2,"t":"pair_request","invite":"i","proof":"${"z".repeat(64)}","commit":"${"a".repeat(64)}"}""",
+            """{"v":2,"t":"pair_request","invite":"i","proof":"${"a".repeat(64)}"}""",
+            """{"v":2,"t":"pair_reveal","nonce":"abc"}""",
+            """{"v":2,"t":"pair_nonce","nonce":"${"A".repeat(32)}"}"""
         )) {
             try {
                 MeshProtocol.read(frame(bad))
@@ -291,14 +371,71 @@ class MeshProtocolTest {
         }
     }
 
-    @Test fun proofBindsBothKeysAndSasIsSymmetric() {
+    @Test fun proofBindsKeysAndCommitmentAndTheCodeNeedsBothNonces() {
         val secret = ByteArray(16) { it.toByte() }
-        val p1 = MeshProtocol.pairingProof(secret, "inv", "a".repeat(64), "b".repeat(64))
-        val p2 = MeshProtocol.pairingProof(secret, "inv", "a".repeat(64), "c".repeat(64))
+        val commit = "c".repeat(64)
+        val p1 = MeshProtocol.pairingProof(secret, "inv", "a".repeat(64), "b".repeat(64), commit)
+        val p2 = MeshProtocol.pairingProof(secret, "inv", "a".repeat(64), "e".repeat(64), commit)
+        val p3 = MeshProtocol.pairingProof(secret, "inv", "a".repeat(64), "b".repeat(64), "d".repeat(64))
         assertNotEquals("another key in the middle changes the proof", p1, p2)
+        assertNotEquals("another commitment changes the proof", p1, p3)
         assertTrue(MeshProtocol.proofMatches(p1, p1.uppercase()))
-        assertEquals(MeshProtocol.sas("a".repeat(64), "b".repeat(64), "inv"), MeshProtocol.sas("b".repeat(64), "a".repeat(64), "inv"))
-        assertTrue(MeshProtocol.sas("a".repeat(64), "b".repeat(64), "inv").matches(Regex("\\d{3} \\d{3}")))
+        val ni = MeshProtocol.newNonce()
+        val nj = MeshProtocol.newNonce()
+        assertTrue(ni.matches(Regex("[0-9a-f]{32}")))
+        val code = MeshProtocol.sas("a".repeat(64), "b".repeat(64), "inv", ni, nj)
+        assertTrue(code.matches(Regex("\\d{3} \\d{3}")))
+        assertEquals("both phones compute the same code", code, MeshProtocol.sas("a".repeat(64), "b".repeat(64), "inv", ni, nj))
+    }
+
+    /**
+     * Why protocol v2. With the v1 formula the six digits depended on the two keys
+     * and the invite only, so someone holding a leaked invite who saw the joiner's
+     * code could try certificates until one gave the same digits — about a million
+     * tries, seconds on one core. In v2 the code also needs both phones' fresh
+     * nonces, and the joiner's nonce is fixed by a commitment before the
+     * inviter's is sent: nothing can be tried in advance.
+     */
+    @Test fun v1CodesCouldBeSteeredByTryingKeysV2CodesCannot() {
+        val hex = "0123456789abcdef".toCharArray()
+        fun fingerprint(random: java.util.Random): String {
+            val bytes = ByteArray(32).also(random::nextBytes)
+            val out = CharArray(64)
+            bytes.forEachIndexed { i, b -> out[2 * i] = hex[(b.toInt() shr 4) and 15]; out[2 * i + 1] = hex[b.toInt() and 15] }
+            return String(out)
+        }
+        val sha = java.security.MessageDigest.getInstance("SHA-256")
+        fun v1(a: String, b: String, invite: String): Int {
+            val (low, high) = if (a < b) a to b else b to a
+            val d = sha.digest("nexus-mesh-sas-v1|$low|$high|$invite".toByteArray())
+            return (((d[0].toLong() and 0xFF) shl 24 or ((d[1].toLong() and 0xFF) shl 16) or
+                ((d[2].toLong() and 0xFF) shl 8) or (d[3].toLong() and 0xFF)) % 1_000_000).toInt()
+        }
+        val random = java.util.Random(20261121)
+        val inviter = fingerprint(random)
+        val joiner = fingerprint(random)
+        val shownOnTheJoiner = v1(inviter, joiner, "invite")
+        val started = System.nanoTime()
+        var tries = 0
+        var forged: String? = null
+        while (forged == null && tries < 8_000_000) {
+            tries++
+            val candidate = fingerprint(random)
+            if (v1(inviter, candidate, "invite") == shownOnTheJoiner) forged = candidate
+        }
+        val millis = (System.nanoTime() - started) / 1_000_000
+        println("v1: a key giving the joiner's code found after $tries tries in $millis ms")
+        assertNotNull("v1 codes can be steered: a matching key exists within reach", forged)
+
+        // v2: the very same key yields a different code for every fresh pair of nonces…
+        val codes = (1..2_000).map { MeshProtocol.sas(inviter, forged!!, "invite", MeshProtocol.newNonce(), MeshProtocol.newNonce()) }.toSet()
+        assertTrue("v2 codes are not tied to the key (${codes.size} distinct of 2000)", codes.size > 1_950)
+        // …and the joiner cannot change its nonce after seeing the inviter's: the commitment binds it.
+        val nonce = MeshProtocol.newNonce()
+        val commit = MeshProtocol.commitment("invite", inviter, joiner, nonce)
+        assertTrue(MeshProtocol.commitmentMatches(commit, "invite", inviter, joiner, nonce))
+        assertFalse(MeshProtocol.commitmentMatches(commit, "invite", inviter, joiner, MeshProtocol.newNonce()))
+        assertFalse("bound to the keys", MeshProtocol.commitmentMatches(commit, "invite", inviter, forged!!, nonce))
     }
 
     @Test fun invitesSurviveMessengersAndExpire() {

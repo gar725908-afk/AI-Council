@@ -213,7 +213,7 @@ class NativeLifecycleTest {
 
     /** The app's own path: the gateway closed (app leaving, model switch) in the middle of an answer. */
     @Test
-    fun gatewayClosedMidAnswerEndsTheStream() = runBlocking {
+    fun gatewayClosedMidAnswerEndsTheStream(): Unit = runBlocking {
         val storage = NexusModelStorage(context)
         assumeTrue("no llama.cpp model is active", storage.activeModel()?.runtime == ModelRuntimeKind.LLAMA_CPP)
         val request = CompletionRequest(

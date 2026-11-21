@@ -162,7 +162,10 @@ class MeshNode(
     private val runningIncoming = AtomicInteger(0)
     private val recentUntrusted = ArrayDeque<Long>()
 
-    private class InviteState(val invite: MeshInvite, var used: Boolean = false, var failures: Int = 0)
+    /** [claimed]: a phone proved the secret and its pairing is in progress — one per invite. */
+    private class InviteState(
+        val invite: MeshInvite, var used: Boolean = false, var failures: Int = 0, var claimed: Boolean = false
+    )
 
     private inner class Session(val socket: SSLSocket, val address: String, val outgoing: Boolean) {
         val fingerprint: String = MeshFingerprint.of(socket.session.peerCertificates[0] as X509Certificate)
@@ -273,7 +276,7 @@ class MeshNode(
     // ------------------------------------------------------------------ pairing
 
     fun createInvite(addresses: List<String>): MeshInvite {
-        invites.entries.removeIf { it.value.invite.expired(clock()) || it.value.used }
+        invites.entries.removeIf { it.value.invite.expired(clock()) || it.value.used || it.value.claimed }
         val invite = MeshInvite.create(identity, name(), addresses, clock())
         invites[invite.id] = InviteState(invite)
         audit("invite", "Создано приглашение ${invite.id.take(6)} на ${MeshInvite.TTL_SEC / 60} мин")
@@ -287,15 +290,42 @@ class MeshNode(
         require(!invite.expired(clock())) { "Срок приглашения истёк — создай новое на том телефоне." }
         require(invite.fingerprint != identity.fingerprint) { "Это приглашение этого же телефона." }
         val session = openTo(invite.addresses, invite.fingerprint)
-        val peer = exchangeHello(session)
-        require(peer.optString("device") == MeshFingerprint.deviceId(invite.fingerprint)) { "Устройство представилось чужим именем." }
-        val proof = MeshProtocol.pairingProof(invite.secret, invite.id, invite.fingerprint, identity.fingerprint)
+        val inviterNonce: String
+        val joinerNonce = MeshProtocol.newNonce()
+        try {
+            val peer = exchangeHello(session)
+            require(peer.optString("device") == MeshFingerprint.deviceId(invite.fingerprint)) { "Устройство представилось чужим именем." }
+            // Commit to our nonce first; the inviter answers with its own, then ours is revealed.
+            val commit = MeshProtocol.commitment(invite.id, invite.fingerprint, identity.fingerprint, joinerNonce)
+            val proof = MeshProtocol.pairingProof(invite.secret, invite.id, invite.fingerprint, identity.fingerprint, commit)
+            session.send(MeshProtocol.message("pair_request", "invite" to invite.id, "proof" to proof, "commit" to commit))
+            val answer = MeshProtocol.read(session.input)
+            when (answer.optString("t")) {
+                "pair_nonce" -> inviterNonce = answer.getString("nonce")
+                "pair_reject" -> {
+                    val reason = answer.optString("reason").ifBlank { "Другой телефон отклонил сопряжение." }
+                    session.close(reason)
+                    audit("pair-fail", reason)
+                    val failed = PairingState(
+                        invite.id, incoming = false, peerName = session.peerName, peerDeviceId = session.peerDeviceId,
+                        peerFingerprint = session.fingerprint, sas = "", status = PairingState.Status.FAILED, error = reason
+                    )
+                    _pairing.value = failed
+                    return@withContext failed
+                }
+                else -> throw MeshProtocol.ProtocolException("Ожидался ответ на запрос сопряжения.")
+            }
+            session.send(MeshProtocol.message("pair_reveal", "nonce" to joinerNonce))
+        } catch (error: Exception) {
+            session.close(error.message)
+            throw error
+        }
         session.pairingInvite = invite.id
         session.socket.soTimeout = (PAIRING_TIMEOUT_MS + 10_000).toInt()
-        session.send(MeshProtocol.message("pair_request", "invite" to invite.id, "proof" to proof))
         val state = PairingState(
             invite.id, incoming = false, peerName = session.peerName, peerDeviceId = session.peerDeviceId,
-            peerFingerprint = session.fingerprint, sas = MeshProtocol.sas(identity.fingerprint, session.fingerprint, invite.id)
+            peerFingerprint = session.fingerprint,
+            sas = MeshProtocol.sas(invite.fingerprint, identity.fingerprint, invite.id, inviterNonce, joinerNonce)
         )
         _pairing.value = state
         pendingPairings[invite.id] = session
@@ -474,24 +504,44 @@ class MeshNode(
             val request = MeshProtocol.read(current.input)
             if (request.optString("t") != "pair_request") throw MeshProtocol.ProtocolException("Устройство не сопряжено.")
             val inviteId = request.getString("invite")
+            val commit = request.getString("commit")
             val state = invites[inviteId]
-            val reason = when {
-                state == null -> "Приглашение не найдено — создай новое."
-                state.used -> "Приглашение уже использовано."
-                state.invite.expired(clock()) -> "Срок приглашения истёк."
-                !MeshProtocol.proofMatches(
-                    MeshProtocol.pairingProof(state.invite.secret, inviteId, identity.fingerprint, current.fingerprint),
-                    request.getString("proof")
-                ) -> {
-                    state.failures++
-                    if (state.failures >= 3) invites.remove(inviteId)
-                    "Неверная ссылка сопряжения."
+            val reason = if (state == null) "Приглашение не найдено — создай новое." else synchronized(state) {
+                when {
+                    state.used -> "Приглашение уже использовано."
+                    // One pairing per invite: a copied link cannot take over a pairing in progress.
+                    state.claimed -> "Приглашение уже использует другое устройство — создай новое."
+                    state.invite.expired(clock()) -> "Срок приглашения истёк."
+                    !MeshProtocol.proofMatches(
+                        MeshProtocol.pairingProof(state.invite.secret, inviteId, identity.fingerprint, current.fingerprint, commit),
+                        request.getString("proof")
+                    ) -> {
+                        state.failures++
+                        if (state.failures >= 3) invites.remove(inviteId)
+                        "Неверная ссылка сопряжения."
+                    }
+                    else -> {
+                        state.claimed = true
+                        null
+                    }
                 }
-                else -> null
             }
             if (reason != null) {
                 audit("pair-denied", reason + " (" + current.peerName + ", " + current.address + ")")
                 current.send(MeshProtocol.message("pair_reject", "reason" to reason))
+                current.close()
+                return
+            }
+            // Our nonce goes out only now, after the joiner is bound to its own by the commitment.
+            val inviterNonce = MeshProtocol.newNonce()
+            current.send(MeshProtocol.message("pair_nonce", "nonce" to inviterNonce))
+            val reveal = MeshProtocol.read(current.input)
+            if (reveal.optString("t") != "pair_reveal") throw MeshProtocol.ProtocolException("Ожидалось раскрытие кода сопряжения.")
+            val joinerNonce = reveal.getString("nonce")
+            if (!MeshProtocol.commitmentMatches(commit, inviteId, identity.fingerprint, current.fingerprint, joinerNonce)) {
+                val refused = "Проверка кода сопряжения не прошла."
+                audit("pair-denied", refused + " (" + current.peerName + ", " + current.address + ")")
+                current.send(MeshProtocol.message("pair_reject", "reason" to refused))
                 current.close()
                 return
             }
@@ -500,7 +550,8 @@ class MeshNode(
             pendingPairings[inviteId] = current
             _pairing.value = PairingState(
                 inviteId, incoming = true, peerName = current.peerName, peerDeviceId = current.peerDeviceId,
-                peerFingerprint = current.fingerprint, sas = MeshProtocol.sas(identity.fingerprint, current.fingerprint, inviteId)
+                peerFingerprint = current.fingerprint,
+                sas = MeshProtocol.sas(identity.fingerprint, current.fingerprint, inviteId, inviterNonce, joinerNonce)
             )
             audit("pair", "Запрос сопряжения от ${current.peerName} (${current.peerDeviceId})")
             armPairingTimeout(inviteId, current)

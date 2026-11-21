@@ -1,34 +1,39 @@
 package ai.hybrid.commandcenter.nexus
 
-import java.security.MessageDigest
-import java.security.SecureRandom
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * NEXUS LINK protocol core (handoff section 10.4 / LFC-4).
+ * NEXUS LINK v2 — what a paired desktop agent lets this phone do
+ * (handoff section 10.4 / LFC-4).
  *
- * Design rules taken straight from the specification and enforced here:
- * - **deny-by-default**: a peer may invoke nothing until the user grants a
- *   named scope; arbitrary shell, cookies and the home directory have no
- *   scope at all and can never be requested;
- * - **mutual pairing**: a short code is shown on both devices and must match;
- *   the resulting secret is derived from the code plus both nonces, so a
- *   passive listener cannot replay it;
- * - **LAN only**: no public relay, no cloud account;
- * - every decision is a pure function, so the whole handshake is testable
- *   without two physical devices.
+ * LINK has no pairing and no cryptography of its own. Version 1 derived a session
+ * key from a six-digit code with a single SHA-256; anyone who recorded that
+ * exchange could try all 10^6 codes offline in about a second (LinkProtocolTest
+ * shows it). v1 never had a transport or a desktop agent, so nothing was exposed,
+ * and it is removed rather than patched.
  *
- * The desktop agent is a separate program; this file is the phone side plus
- * the shared message formats both sides must agree on.
+ * In v2 a desktop agent is simply a device in NEXUS Mesh, the one private network
+ * all NEXUS services share: it pairs exactly like a phone (128-bit invite secret,
+ * mutual TLS with pinned keys, HMAC proof, commit–reveal six-digit code confirmed
+ * on both screens). LINK is only the authorisation layer on top of that channel:
+ * - **deny-by-default**: nothing until the agent grants a named scope; shell,
+ *   cookies, the home directory and credentials have no scope and can never be
+ *   requested or invoked;
+ * - **identity comes from the channel**: a grant belongs to the pinned Mesh key
+ *   of the session it arrived on, never to a fingerprint written in the message,
+ *   and it is worthless on any other device's session;
+ * - an agent can only narrow what the phone asked for; dangerous scopes are asked
+ *   for only after a separate confirmation in the UI;
+ * - every decision is a pure function, testable without two devices.
+ *
+ * The desktop agent is a separate program and is not written yet; this file is
+ * the phone side plus the message formats both sides must agree on.
  */
 object LinkProtocol {
 
-    const val VERSION = 1
-    const val SERVICE_TYPE = "_nexus-link._tcp"
-    const val PAIRING_CODE_DIGITS = 6
-    const val PAIRING_WINDOW_MILLIS = 120_000L
-    const val NONCE_BYTES = 16
+    const val VERSION = 2
+    const val PROTOCOL = "nexus-link"
 
     /** Capabilities a desktop agent may publish. Nothing outside this list exists. */
     enum class Scope(val id: String, val title: String, val dangerous: Boolean) {
@@ -50,33 +55,18 @@ object LinkProtocol {
         }
     }
 
-    data class PairingRequest(
-        val deviceName: String,
-        val phoneNonce: String,
-        val requestedScopes: Set<Scope>
-    )
+    /** What the phone asks a paired agent for. */
+    data class ScopeRequest(val deviceName: String, val requestedScopes: Set<Scope>)
 
-    data class PairingOffer(
-        val agentName: String,
-        val agentNonce: String,
-        val grantedScopes: Set<Scope>,
-        val certificateFingerprint: String
-    )
+    /** What an agent granted, bound to the pinned NEXUS Mesh key of the session it came on. */
+    data class Grant(val agentName: String, val agentFingerprint: String, val scopes: Set<Scope>, val receivedAt: Long)
 
-    sealed class PairingResult {
-        data class Paired(val sessionKey: String, val scopes: Set<Scope>) : PairingResult()
-        data class Rejected(val reason: String) : PairingResult()
+    sealed class GrantResult {
+        data class Accepted(val grant: Grant) : GrantResult()
+        data class Rejected(val reason: String) : GrantResult()
     }
 
-    private val random = SecureRandom()
-
-    fun newNonce(): String = ByteArray(NONCE_BYTES)
-        .also(random::nextBytes)
-        .joinToString("") { "%02x".format(it) }
-
-    /** A short code the user compares on both screens. */
-    fun newPairingCode(): String = (0 until PAIRING_CODE_DIGITS)
-        .joinToString("") { random.nextInt(10).toString() }
+    private val FINGERPRINT = Regex("[0-9a-f]{64}")
 
     /** Only known, non-forbidden scope ids survive parsing. */
     fun parseScopes(ids: Collection<String>): Set<Scope> = ids
@@ -85,80 +75,66 @@ object LinkProtocol {
         .mapNotNull(Scope::byId)
         .toSet()
 
+    /** Scopes the owner must confirm one by one before the phone asks for them. */
+    fun needsConfirmation(scopes: Set<Scope>): Set<Scope> = scopes.filter { it.dangerous }.toSet()
+
+    fun requestJson(request: ScopeRequest): String = JSONObject()
+        .put("protocol", PROTOCOL)
+        .put("version", VERSION)
+        .put("device", request.deviceName.take(64))
+        .put("scopes", JSONArray().apply { request.requestedScopes.forEach { put(it.id) } })
+        .toString()
+
     /**
-     * Completes pairing. Everything must line up: matching codes, a fresh
-     * window, both nonces, a certificate fingerprint and at least one scope
-     * the user actually granted.
+     * An agent's answer as it arrived on the Mesh session whose pinned key is
+     * [sessionFingerprint]. Any fingerprint written inside the message is ignored:
+     * the identity is the channel's. Null for another protocol or version, or garbage.
      */
-    fun completePairing(
-        request: PairingRequest,
-        offer: PairingOffer,
-        localCode: String,
-        remoteCode: String,
-        startedAtMillis: Long,
-        nowMillis: Long
-    ): PairingResult = when {
-        localCode.length != PAIRING_CODE_DIGITS || !localCode.all(Char::isDigit) ->
-            PairingResult.Rejected("Код сопряжения имеет неверный формат.")
-        localCode != remoteCode ->
-            PairingResult.Rejected("Коды на телефоне и компьютере не совпадают — сопряжение отклонено.")
-        nowMillis - startedAtMillis > PAIRING_WINDOW_MILLIS ->
-            PairingResult.Rejected("Время сопряжения истекло. Начните заново.")
-        nowMillis < startedAtMillis ->
-            PairingResult.Rejected("Некорректное время сопряжения.")
-        request.phoneNonce.length < NONCE_BYTES * 2 || offer.agentNonce.length < NONCE_BYTES * 2 ->
-            PairingResult.Rejected("Недостаточно случайности в рукопожатии.")
-        request.phoneNonce == offer.agentNonce ->
-            PairingResult.Rejected("Обе стороны прислали одинаковый nonce — возможна атака повтора.")
-        offer.certificateFingerprint.length < 32 ->
-            PairingResult.Rejected("ПК не предъявил отпечаток сертификата.")
-        offer.grantedScopes.isEmpty() ->
-            PairingResult.Rejected("ПК не выдал ни одной разрешённой возможности.")
-        !request.requestedScopes.containsAll(offer.grantedScopes) ->
-            PairingResult.Rejected("ПК выдал возможности, которые телефон не запрашивал.")
-        else -> PairingResult.Paired(
-            sessionKey = deriveSessionKey(localCode, request.phoneNonce, offer.agentNonce, offer.certificateFingerprint),
-            scopes = offer.grantedScopes
-        )
+    fun parseGrant(json: String, sessionFingerprint: String, nowMillis: Long): Grant? = try {
+        val parsed = JSONObject(json)
+        if (parsed.optString("protocol") != PROTOCOL || parsed.optInt("version") != VERSION) null
+        else {
+            val ids = parsed.optJSONArray("scopes")?.let { array ->
+                (0 until array.length()).map { array.optString(it) }
+            }.orEmpty()
+            Grant(
+                agentName = parsed.optString("agent").take(64),
+                agentFingerprint = sessionFingerprint.lowercase(),
+                scopes = parseScopes(ids),
+                receivedAt = nowMillis
+            )
+        }
+    } catch (_: Exception) {
+        null
     }
 
-    /** Session key binds the code, both nonces and the peer certificate. */
-    fun deriveSessionKey(code: String, phoneNonce: String, agentNonce: String, fingerprint: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(("nexus-link:v$VERSION:$code:$phoneNonce:$agentNonce:$fingerprint").toByteArray())
-            .joinToString("") { "%02x".format(it) }
+    /**
+     * Accepts a grant only from a device the owner paired through NEXUS Mesh,
+     * and only if it narrows what the phone asked for.
+     */
+    fun acceptGrant(request: ScopeRequest, grant: Grant, meshTrusted: Boolean): GrantResult = when {
+        !meshTrusted ->
+            GrantResult.Rejected("ПК не сопряжён через NEXUS Mesh — сначала сверь код на обоих экранах.")
+        !FINGERPRINT.matches(grant.agentFingerprint) ->
+            GrantResult.Rejected("У ПК нет закреплённого ключа NEXUS Mesh.")
+        grant.scopes.isEmpty() ->
+            GrantResult.Rejected("ПК не выдал ни одной разрешённой возможности.")
+        !request.requestedScopes.containsAll(grant.scopes) ->
+            GrantResult.Rejected("ПК выдал возможности, которые телефон не запрашивал.")
+        else -> GrantResult.Accepted(grant)
+    }
 
-    /** Deny-by-default check performed before every invocation. */
+    /** Deny-by-default check before every call to the agent behind the session with [sessionFingerprint]. */
+    fun isAllowed(grant: Grant?, sessionFingerprint: String, requestedScopeId: String): Boolean {
+        if (grant == null || grant.agentFingerprint != sessionFingerprint.lowercase()) return false
+        return isAllowed(grant.scopes, requestedScopeId)
+    }
+
+    /** The scope-only part of the check: forbidden and unknown ids never pass. */
     fun isAllowed(grantedScopes: Set<Scope>, requestedScopeId: String): Boolean {
         val normalized = requestedScopeId.trim().lowercase()
         if (normalized in Scope.FORBIDDEN_IDS) return false
         val scope = Scope.byId(normalized) ?: return false
         return scope in grantedScopes
-    }
-
-    fun pairingRequestJson(request: PairingRequest): String = JSONObject()
-        .put("protocol", "nexus-link")
-        .put("version", VERSION)
-        .put("device", request.deviceName.take(64))
-        .put("nonce", request.phoneNonce)
-        .put("scopes", JSONArray().apply { request.requestedScopes.forEach { put(it.id) } })
-        .toString()
-
-    fun parseOffer(json: String): PairingOffer? = try {
-        val parsed = JSONObject(json)
-        if (parsed.optInt("version") != VERSION) null
-        else {
-            val ids = parsed.optJSONArray("scopes")?.let { array ->
-                (0 until array.length()).map { array.optString(it) }
-            }.orEmpty()
-            PairingOffer(
-                agentName = parsed.optString("agent").take(64),
-                agentNonce = parsed.optString("nonce"),
-                grantedScopes = parseScopes(ids),
-                certificateFingerprint = parsed.optString("fingerprint")
-            )
-        }
-    } catch (_: Exception) {
-        null
     }
 }

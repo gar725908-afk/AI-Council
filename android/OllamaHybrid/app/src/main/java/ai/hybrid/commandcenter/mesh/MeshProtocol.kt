@@ -13,19 +13,27 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * NEXUS Mesh protocol v1. Every message is a small JSON object inside a
+ * NEXUS Mesh protocol v2. Every message is a small JSON object inside a
  * length-prefixed frame on a mutually authenticated TLS connection. The
  * schema is closed: unknown types, unknown operations and oversized fields are
  * rejected, nothing is deserialised into arbitrary objects.
+ *
+ * v2 changed pairing only: the six-digit code now mixes in a fresh nonce from
+ * each phone, and the joining phone commits to its nonce before it sees the
+ * inviter's (commit–reveal, as in Bluetooth numeric comparison and ZRTP). In v1
+ * the code depended on the two keys and the invite alone, so someone holding a
+ * leaked invite who saw the code could try certificates until one gave the same
+ * code. In v2 the code does not exist until both nonces are out, and the nonce
+ * that comes last was fixed in advance: one blind guess in a million per attempt.
  */
 object MeshProtocol {
-    const val VERSION = 1
+    const val VERSION = 2
     const val DEFAULT_PORT = 47811
     const val SERVICE_TYPE = "_nexus-mesh._tcp."
     const val MAX_FRAME = 256 * 1024
 
     val TYPES = setOf(
-        "hello", "pair_request", "pair_confirm", "pair_reject", "ping", "pong",
+        "hello", "pair_request", "pair_nonce", "pair_reveal", "pair_confirm", "pair_reject", "ping", "pong",
         "status_request", "status", "task", "task_accept", "task_reject", "task_progress",
         "task_result", "task_cancel", "error", "bye"
     )
@@ -71,6 +79,12 @@ object MeshProtocol {
             val value = json.opt(key) as? String ?: throw ProtocolException("Поле «$key» должно быть строкой.")
             if (value.length > max) throw ProtocolException("Поле «$key» длиннее $max символов.")
         }
+        fun hex(key: String, length: Int) {
+            val value = json.opt(key) as? String ?: throw ProtocolException("Нет поля «$key» в «$type».")
+            if (value.length != length || !value.all { it in '0'..'9' || it in 'a'..'f' }) {
+                throw ProtocolException("Поле «$key» должно быть $length шестнадцатеричными символами.")
+            }
+        }
         when (type) {
             "hello" -> {
                 str("device", 32); str("name", 40); str("app", 24, required = false)
@@ -78,7 +92,8 @@ object MeshProtocol {
                     throw ProtocolException("Поле «port» должно быть числом 0…65535.")
                 }
             }
-            "pair_request" -> { str("invite", 32); str("proof", 64) }
+            "pair_request" -> { str("invite", 32); hex("proof", 64); hex("commit", 64) }
+            "pair_nonce", "pair_reveal" -> hex("nonce", NONCE_BYTES * 2)
             "pair_reject", "error", "bye" -> str("reason", 300, required = false)
             "task" -> {
                 str("id", 40); str("op", 40)
@@ -101,30 +116,57 @@ object MeshProtocol {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(data)
     }
 
+    const val NONCE_BYTES = 16
+
+    /** 128 fresh random bits, hex: one per phone per pairing attempt. */
+    fun newNonce(): String = ByteArray(NONCE_BYTES).also(random::nextBytes).toHex()
+
     /**
      * Proof that the joining phone knows the invite secret, bound to the two
-     * TLS identities actually seen on this connection: a relay in the middle
-     * presents different keys, so its proof can never match.
+     * TLS identities actually seen on this connection (a relay in the middle
+     * presents different keys, so its proof can never match) and to the
+     * joiner's commitment.
      */
-    fun pairingProof(secret: ByteArray, inviteId: String, inviterFingerprint: String, joinerFingerprint: String): String {
+    fun pairingProof(
+        secret: ByteArray, inviteId: String, inviterFingerprint: String, joinerFingerprint: String, commit: String
+    ): String {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(secret, "HmacSHA256"))
-        val data = "nexus-mesh-pair-v1|$inviteId|$inviterFingerprint|$joinerFingerprint".toByteArray(Charsets.UTF_8)
-        return mac.doFinal(data).joinToString("") { "%02x".format(it) }
+        val data = "nexus-mesh-pair-v2|$inviteId|$inviterFingerprint|$joinerFingerprint|$commit".toByteArray(Charsets.UTF_8)
+        return mac.doFinal(data).toHex()
     }
 
     fun proofMatches(expected: String, actual: String): Boolean =
         MessageDigest.isEqual(expected.toByteArray(), actual.lowercase(Locale.ROOT).toByteArray())
 
-    /** Six digits both owners compare on their screens («Bluetooth-style» numeric comparison). */
-    fun sas(fingerprintA: String, fingerprintB: String, inviteId: String): String {
-        val (low, high) = listOf(fingerprintA, fingerprintB).sorted()
-        val digest = MessageDigest.getInstance("SHA-256").digest("nexus-mesh-sas-v1|$low|$high|$inviteId".toByteArray())
+    /** The joiner's commitment to its nonce, sent before it sees the inviter's nonce. */
+    fun commitment(inviteId: String, inviterFingerprint: String, joinerFingerprint: String, joinerNonce: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest("nexus-mesh-commit-v2|$inviteId|$inviterFingerprint|$joinerFingerprint|$joinerNonce".toByteArray(Charsets.UTF_8))
+            .toHex()
+
+    fun commitmentMatches(
+        commit: String, inviteId: String, inviterFingerprint: String, joinerFingerprint: String, joinerNonce: String
+    ): Boolean = proofMatches(commitment(inviteId, inviterFingerprint, joinerFingerprint, joinerNonce), commit)
+
+    /**
+     * Six digits both owners compare on their screens (numeric comparison). Inputs:
+     * both keys in their roles, the invite and both phones' nonces — the joiner's
+     * one fixed by its commitment before the inviter's was sent.
+     */
+    fun sas(
+        inviterFingerprint: String, joinerFingerprint: String, inviteId: String, inviterNonce: String, joinerNonce: String
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(
+            "nexus-mesh-sas-v2|$inviterFingerprint|$joinerFingerprint|$inviteId|$inviterNonce|$joinerNonce".toByteArray(Charsets.UTF_8)
+        )
         val number = ((digest[0].toLong() and 0xFF) shl 24 or ((digest[1].toLong() and 0xFF) shl 16) or
             ((digest[2].toLong() and 0xFF) shl 8) or (digest[3].toLong() and 0xFF)) % 1_000_000
         val text = String.format(Locale.ROOT, "%06d", number)
         return text.substring(0, 3) + " " + text.substring(3)
     }
+
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 }
 
 /** The closed list of things one phone may ask another to do. There is no shell. */
