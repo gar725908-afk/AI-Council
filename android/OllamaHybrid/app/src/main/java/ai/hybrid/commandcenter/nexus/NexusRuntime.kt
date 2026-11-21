@@ -64,6 +64,11 @@ data class CompletionRequest(
 }
 
 interface ModelGateway {
+    /**
+     * Must be main-safe: the chat collects it on the main thread, so network and
+     * engine work belong on a background dispatcher (`flowOn`, `withContext`, an
+     * engine thread or OkHttp's own threads) — never on the collector's thread.
+     */
     fun stream(request: CompletionRequest): Flow<String>
 }
 

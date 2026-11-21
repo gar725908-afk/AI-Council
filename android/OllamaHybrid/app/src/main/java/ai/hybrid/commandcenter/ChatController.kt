@@ -59,6 +59,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
 /** A file attached to the next message: its extracted text travels as cited context. */
@@ -654,7 +655,7 @@ class ChatController(context: Context, private val scope: CoroutineScope) {
                             apiKey = activeKey.orEmpty(),
                             messages = history
                         )
-                    ).collect { chunk ->
+                    ).flowOn(Dispatchers.IO).collect { chunk ->
                         streamingAnswer += chunk
                         chunker?.add(chunk)?.forEach { sentence -> speakSentence(sentence) }
                     }

@@ -2,8 +2,10 @@ package ai.hybrid.commandcenter.nexus
 
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -107,4 +109,7 @@ class OllamaNativeGateway(
             }
         }
     }
+        // The blocking HTTP call must never run on the collector's thread: the chat
+        // collects on the main thread, where Android throws NetworkOnMainThreadException.
+        .flowOn(Dispatchers.IO)
 }

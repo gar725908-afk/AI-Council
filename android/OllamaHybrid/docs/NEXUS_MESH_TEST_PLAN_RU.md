@@ -84,6 +84,25 @@ answer: NexUS Mesh — это личная сеть, которая исполь
 (Gemma 3 270M через llama.cpp) и отмечена «Готово» в истории (`OK (1 test)`,
 55 с). Снимки 30–33 — в артефакте прогона.
 
+**Прогон `44884844749`, коммит `6a5b974` (2026-11-21) — протокол v2 (commit–reveal), сквозной тест Mesh зелёный:**
+
+```
+invite from Google sdk_gphone64_x86_64 NX-3C93-6884, pinned key 3c936884b55917dd
+pairing started, SAS 133 639
+paired; channel TLSv1.3 · AES_128_GCM_SHA256
+ping 207, 41, 11, 1, 11 ms
+status ok=true in 75 ms: {"android": 34, "abi": "x86_64", "llamaCpu": "CPU: SSE3 SSSE3 AVX F16C REPACK",
+  "core": "на телефоне: Gemma 3 270m It", "profile": "BALANCED", "acceptsTasks": true, …}
+benchmark ok=true in 1275 ms: {"core":"на телефоне: Gemma 3 270m It","seconds":"1.26","chars":95,"charsPerSecond":"75.1"}
+task ok=true in 516 ms
+```
+
+Код появился на обоих концах только после обмена `pair_nonce`/`pair_reveal`;
+`OK (1 test)` на эмуляторе за 57 с. Основной сценарий этого прогона упал по
+другой причине — `NetworkOnMainThreadException` в чате через Ollama (см.
+[ответ на аудит](NEXUS_AUDIT_RESPONSE_RU.md), «Результаты прогонов»); исправлено
+следующим коммитом.
+
 **Что нашли предыдущие прогоны (и что исправлено):**
 
 | Прогон | Что случилось | Исправление |
