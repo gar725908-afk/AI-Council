@@ -180,7 +180,7 @@ class LiteRtLmGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
     }
 }
 
-private fun interface LlamaTokenSink {
+internal fun interface LlamaTokenSink {
     /** Receives complete UTF-8 characters; returning false stops generation. */
     fun onToken(value: ByteArray): Boolean
 }
@@ -208,7 +208,11 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
         require(request.apiKey.isBlank()) { "Локальный llama.cpp не использует API-ключ." }
         val nativeHandle = getOrCreateHandle()
         val history = PromptFormats.fitHistory(request.messages)
-        val prompt = buildPrompt(nativeHandle, loadedStyle, history)
+        // The template is read from the engine, so the engine must not be freed
+        // meanwhile: a model switch or close() takes the write lock first.
+        val prompt = withContext(Dispatchers.IO) {
+            withHandle(nativeHandle) { buildPrompt(it, loadedStyle, history) }
+        }
         val requestGeneration = generation.incrementAndGet()
         val sanitizer = StreamSanitizer()
         val job = launch(Dispatchers.IO) {
@@ -251,6 +255,18 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
                 readLock.unlock()
             }
             job.cancel()
+        }
+    }
+
+    /** Runs [block] while [nativeHandle] is guaranteed to stay loaded. */
+    private inline fun <T> withHandle(nativeHandle: Long, block: (Long) -> T): T {
+        val readLock = handleLock.readLock()
+        readLock.lock()
+        try {
+            check(!closed.get() && handle == nativeHandle) { "llama.cpp gateway closed before generation started." }
+            return block(nativeHandle)
+        } finally {
+            readLock.unlock()
         }
     }
 
@@ -299,7 +315,7 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
                     }
                 } else {
                     check(File(verified.path).isFile) { "Файл GGUF-модели не найден." }
-                    NativeLlamaBridge.nativeCreate(verified.path, CONTEXT_SIZE, threads)
+                    NativeLlamaBridge.nativeCreate(verified.path.toByteArray(Charsets.UTF_8), CONTEXT_SIZE, threads)
                 }
                 check(created != 0L) { "llama.cpp не смог открыть GGUF-модель." }
                 if (closed.get()) {
@@ -362,7 +378,13 @@ class LlamaCppGateway(context: Context) : ModelGateway, Closeable, Prewarmable {
 fun llamaCpuBackends(context: Context): String? =
     runCatching { NativeLlamaBridge.backends(context.applicationContext.applicationInfo.nativeLibraryDir.orEmpty()) }.getOrNull()
 
-private object NativeLlamaBridge {
+/**
+ * The JNI surface of llama.cpp. Handles are opaque ids, not pointers: a stale or
+ * unknown id is refused by the native side instead of being dereferenced, and
+ * [nativeDestroy] waits for calls in flight before it frees the engine.
+ * Internal only so the instrumented lifecycle tests can drive it directly.
+ */
+internal object NativeLlamaBridge {
     init { System.loadLibrary("nexus_llama_jni") }
 
     @Volatile private var loaded: String? = null
@@ -373,7 +395,8 @@ private object NativeLlamaBridge {
 
     private external fun nativeInitBackends(libDir: String): String
 
-    external fun nativeCreate(modelPath: String, contextSize: Int, threads: Int): Long
+    /** [modelPath] is UTF-8 bytes, so any file name reaches fopen intact. */
+    external fun nativeCreate(modelPath: ByteArray, contextSize: Int, threads: Int): Long
     external fun nativeCreateFromFd(fd: Int, contextSize: Int, threads: Int): Long
     external fun nativeMetadata(handle: Long, key: String): ByteArray?
     external fun nativeChatTemplate(handle: Long): ByteArray?
@@ -381,4 +404,7 @@ private object NativeLlamaBridge {
     external fun nativeGenerate(handle: Long, prompt: ByteArray, maxTokens: Int, temperature: Float, sink: LlamaTokenSink)
     external fun nativeCancel(handle: Long)
     external fun nativeDestroy(handle: Long)
+
+    /** Exists only in the CI AddressSanitizer build: a planted use-after-free the sanitizer must report. */
+    external fun nativeAsanCanary(): Int
 }

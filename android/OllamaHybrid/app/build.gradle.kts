@@ -14,6 +14,11 @@ val nexusSigningConfigured = listOf(
     nexusSigningStoreFile, nexusSigningStorePassword, nexusSigningKeyAlias, nexusSigningKeyPassword
 ).all { !it.isNullOrBlank() }
 
+// CI memory-safety job only (`-Pnexus.asan=true`): an x86_64 engine built with
+// AddressSanitizer, the sanitizer runtime from the same NDK and the wrap.sh that
+// preloads it. Android runs wrap.sh for debuggable apps only; phone APKs never set this.
+val nexusAsan = providers.gradleProperty("nexus.asan").orNull == "true"
+
 android {
     namespace = "ai.hybrid.commandcenter"
     compileSdk = 36
@@ -26,10 +31,16 @@ android {
         versionName = nexusVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            abiFilters += "arm64-v8a"
-            // CI emulator only: an x86_64 copy of the native engine so the on-device
-            // model path runs natively on the x86_64 emulator. Phone APKs stay arm64.
-            if (providers.gradleProperty("nexus.emulatorAbi").orNull == "true") abiFilters += "x86_64"
+            if (nexusAsan) {
+                abiFilters += "x86_64"
+            } else {
+                // Phones: arm64 only. 32-bit armeabi-v7a is not built on purpose — the
+                // smallest useful models need more address space and NEON dot products.
+                abiFilters += "arm64-v8a"
+                // CI emulator only: an x86_64 copy of the native engine so the on-device
+                // model path runs natively on the x86_64 emulator. Phone APKs stay arm64.
+                if (providers.gradleProperty("nexus.emulatorAbi").orNull == "true") abiFilters += "x86_64"
+            }
         }
         externalNativeBuild {
             cmake {
@@ -39,6 +50,7 @@ android {
                 arguments += "-DCMAKE_BUILD_TYPE=Release"
                 // 16 KB page devices (Android 15+) refuse 4 KB-aligned libraries.
                 arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                if (nexusAsan) arguments += "-DNEXUS_ASAN=ON"
             }
         }
     }
@@ -74,6 +86,13 @@ android {
         jniLibs { useLegacyPackaging = true }
     }
 
+    if (nexusAsan) {
+        sourceSets.getByName("debug") {
+            jniLibs.srcDir(layout.buildDirectory.dir("asan/jniLibs").get().asFile)
+            resources.srcDir("src/asan/resources")
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -100,6 +119,21 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+}
+
+if (nexusAsan) {
+    // The sanitizer runtime must come from the NDK that compiled the engine.
+    val copyAsanRuntime by tasks.registering(Copy::class) {
+        from(androidComponents.sdkComponents.ndkDirectory.map { ndk ->
+            ndk.asFileTree.matching {
+                include("toolchains/llvm/prebuilt/*/lib/clang/*/lib/linux/libclang_rt.asan-x86_64-android.so")
+            }
+        })
+        into(layout.buildDirectory.dir("asan/jniLibs/x86_64"))
+        eachFile { path = name }
+        includeEmptyDirs = false
+    }
+    tasks.named("preBuild") { dependsOn(copyAsanRuntime) }
 }
 
 // Robolectric offline: the android-all jar arrives as a normal Gradle
@@ -169,8 +203,6 @@ dependencies {
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     // Real JVM JSON implementation; Android's unit-test stubs throw "Method not mocked".
-    testImplementation("org.json:json:20260814")
-    // Use a real JVM JSON implementation in local unit tests instead of android.jar mock stubs.
     testImplementation("org.json:json:20260814")
     debugImplementation("androidx.compose.ui:ui-tooling")
 

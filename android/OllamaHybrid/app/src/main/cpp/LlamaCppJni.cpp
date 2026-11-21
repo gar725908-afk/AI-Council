@@ -8,9 +8,12 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <unistd.h>
+#include <unordered_map>
 #include <vector>
 
 #define NEXUS_TAG "NexusLlama"
@@ -21,6 +24,18 @@
 // "modified UTF-8" and aborts under CheckJNI on 4-byte characters (emoji) or on a
 // multi-byte Cyrillic letter split between two tokens, so it is never used here.
 
+// Lifetime rules. The bug class behind CVE-2026-70640 (llama.cpp's old Android
+// example freed a context while another thread still used it) is ruled out by
+// construction, not by the Kotlin caller being careful:
+//  * Java holds an opaque id, never a pointer. Ids are never reused, so a stale id
+//    finds nothing instead of freed memory.
+//  * Every call that touches the model or the context holds `lifecycle` shared.
+//    nativeDestroy unregisters the id, raises `closing`, then takes `lifecycle`
+//    exclusively: it waits for the calls in flight and frees the memory before it
+//    returns, so the next model never shares RAM with the old one.
+//  * The state is reference-counted, so its mutexes outlive every thread waiting on them.
+//  * JNIEnv is never stored and llama.cpp's worker threads never call into Java:
+//    the token callback runs on the thread that called nativeGenerate.
 struct NexusLlamaState {
     llama_model * model = nullptr;
     llama_context * context = nullptr;
@@ -29,17 +44,78 @@ struct NexusLlamaState {
     // Tokens whose keys/values are in the KV cache (sequence 0): the next turn
     // re-uses the longest common prefix instead of re-reading the whole chat.
     std::vector<llama_token> cached;
-    std::mutex generation_mutex;
+    std::shared_mutex lifecycle;      // shared: any use; exclusive: release
+    std::mutex generation_mutex;      // one generation at a time: the KV cache is per context
     std::atomic<bool> cancelled{false};
+    std::atomic<bool> closing{false};
+    bool released = false;            // guarded by lifecycle
+
+    // The caller holds `lifecycle` exclusively, or is the last owner.
+    void release() {
+        if (released) return;
+        released = true;
+        if (context != nullptr) llama_free(context);
+        if (model != nullptr) llama_model_free(model);
+        if (file != nullptr) fclose(file);
+        context = nullptr;
+        model = nullptr;
+        vocab = nullptr;
+        file = nullptr;
+        cached.clear();
+    }
+
+    ~NexusLlamaState() { release(); }
+};
+
+using StatePtr = std::shared_ptr<NexusLlamaState>;
+
+static std::mutex g_registry_mutex;
+static std::unordered_map<jlong, StatePtr> g_registry;
+static jlong g_next_handle = 1; // guarded by g_registry_mutex; 0 means "no engine" on the Kotlin side
+
+static jlong register_state(StatePtr state) {
+    std::lock_guard<std::mutex> lock(g_registry_mutex);
+    const jlong id = g_next_handle++;
+    g_registry.emplace(id, std::move(state));
+    return id;
+}
+
+static StatePtr find_state(jlong handle) {
+    std::lock_guard<std::mutex> lock(g_registry_mutex);
+    auto it = g_registry.find(handle);
+    return it == g_registry.end() ? nullptr : it->second;
+}
+
+static StatePtr unregister_state(jlong handle) {
+    std::lock_guard<std::mutex> lock(g_registry_mutex);
+    auto it = g_registry.find(handle);
+    if (it == g_registry.end()) return nullptr;
+    StatePtr state = std::move(it->second);
+    g_registry.erase(it);
+    return state;
+}
+
+// Keeps a state alive and blocks its release while one call works with it.
+class StateUse {
+public:
+    explicit StateUse(jlong handle) : state_(find_state(handle)) {
+        if (state_) lock_ = std::shared_lock<std::shared_mutex>(state_->lifecycle);
+    }
+    // False for unknown ids and for engines released while this call was waiting.
+    bool ok() const { return state_ && !state_->released && state_->model != nullptr; }
+    NexusLlamaState * operator->() const { return state_.get(); }
+
+private:
+    StatePtr state_;
+    std::shared_lock<std::shared_mutex> lock_;
 };
 
 static void throw_java(JNIEnv * env, const char * message) {
+    if (env->ExceptionCheck()) return; // an exception is already on its way to Kotlin
     jclass type = env->FindClass("java/lang/IllegalStateException");
-    if (type != nullptr) env->ThrowNew(type, message);
-}
-
-static NexusLlamaState * state_from(jlong handle) {
-    return reinterpret_cast<NexusLlamaState *>(static_cast<intptr_t>(handle));
+    if (type == nullptr) return; // NoClassDefFoundError is pending
+    env->ThrowNew(type, message);
+    env->DeleteLocalRef(type);
 }
 
 static std::string bytes_to_string(JNIEnv * env, jbyteArray value) {
@@ -93,10 +169,10 @@ static bool set_batch(
     return count > 0 && llama_batch_ext_set_output_logits(batch, count - 1, true);
 }
 
-static jlong finish_create(JNIEnv * env, NexusLlamaState * state, jint context_size, jint threads) {
+// Creates the context for a loaded model and hands Kotlin an id for it.
+// On failure the state (and with it the model and the file) is freed by its owner.
+static jlong finish_create(JNIEnv * env, StatePtr state, jint context_size, jint threads) {
     if (state->model == nullptr) {
-        if (state->file != nullptr) fclose(state->file);
-        delete state;
         throw_java(env, "llama.cpp не смог загрузить GGUF-файл.");
         return 0;
     }
@@ -109,15 +185,12 @@ static jlong finish_create(JNIEnv * env, NexusLlamaState * state, jint context_s
     context_params.n_batch = 512;
     state->context = llama_init_from_model(state->model, context_params);
     if (state->context == nullptr) {
-        llama_model_free(state->model);
-        if (state->file != nullptr) fclose(state->file);
-        delete state;
         throw_java(env, "llama.cpp не смог создать контекст модели (не хватает памяти?).");
         return 0;
     }
     const int n_threads = std::max(1, static_cast<int>(threads));
     llama_set_n_threads(state->context, n_threads, n_threads);
-    return static_cast<jlong>(reinterpret_cast<intptr_t>(state));
+    return register_state(std::move(state));
 }
 
 static std::once_flag g_backends_once;
@@ -127,9 +200,13 @@ static std::string g_backends;
 // app's native library folder) and describes what was loaded, e.g. "CPU: NEON DOTPROD FP16".
 extern "C" JNIEXPORT jstring JNICALL
 Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeInitBackends(JNIEnv * env, jobject, jstring lib_dir) {
-    const char * dir = lib_dir == nullptr ? nullptr : env->GetStringUTFChars(lib_dir, nullptr);
-    std::string path = dir == nullptr ? std::string() : std::string(dir);
-    if (dir != nullptr) env->ReleaseStringUTFChars(lib_dir, dir);
+    std::string path;
+    if (lib_dir != nullptr) {
+        const char * dir = env->GetStringUTFChars(lib_dir, nullptr);
+        if (dir == nullptr) return nullptr; // OutOfMemoryError is pending
+        path = dir;
+        env->ReleaseStringUTFChars(lib_dir, dir);
+    }
     std::call_once(g_backends_once, [&path]() {
         if (!path.empty()) ggml_backend_load_all_from_path(path.c_str());
         llama_backend_init();
@@ -165,21 +242,23 @@ static llama_model_params cpu_model_params() {
     return model_params;
 }
 
+// The path arrives as UTF-8 bytes: GetStringUTFChars would hand fopen "modified
+// UTF-8", which spells characters outside the BMP (emoji in a folder name) wrongly.
 extern "C" JNIEXPORT jlong JNICALL
 Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeCreate(
-    JNIEnv * env, jobject, jstring model_path, jint context_size, jint threads
+    JNIEnv * env, jobject, jbyteArray model_path, jint context_size, jint threads
 ) {
-    const char * path = env->GetStringUTFChars(model_path, nullptr);
-    if (path == nullptr) return 0;
-    llama_backend_init();
-    if (!has_cpu_backend(env)) {
-        env->ReleaseStringUTFChars(model_path, path);
+    const std::string path = bytes_to_string(env, model_path);
+    if (env->ExceptionCheck()) return 0;
+    if (path.empty() || path.find('\0') != std::string::npos) {
+        throw_java(env, "Неверный путь к файлу модели.");
         return 0;
     }
-    auto state = new NexusLlamaState();
-    state->model = llama_model_load_from_file(path, cpu_model_params());
-    env->ReleaseStringUTFChars(model_path, path);
-    return finish_create(env, state, context_size, threads);
+    llama_backend_init();
+    if (!has_cpu_backend(env)) return 0;
+    auto state = std::make_shared<NexusLlamaState>();
+    state->model = llama_model_load_from_file(path.c_str(), cpu_model_params());
+    return finish_create(env, std::move(state), context_size, threads);
 }
 
 // Opens a model the owner picked in the system file picker, without copying it:
@@ -204,20 +283,21 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeCreateFromFd(
         fclose(file);
         return 0;
     }
-    auto state = new NexusLlamaState();
+    auto state = std::make_shared<NexusLlamaState>();
     state->file = file;
     state->model = llama_model_load_from_file_ptr(file, cpu_model_params());
-    return finish_create(env, state, context_size, threads);
+    return finish_create(env, std::move(state), context_size, threads);
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeMetadata(
     JNIEnv * env, jobject, jlong handle, jstring key_value
 ) {
-    auto state = state_from(handle);
-    if (state == nullptr || state->model == nullptr) return nullptr;
+    if (key_value == nullptr) return nullptr;
+    StateUse state(handle);
+    if (!state.ok()) return nullptr;
     const char * key = env->GetStringUTFChars(key_value, nullptr);
-    if (key == nullptr) return nullptr;
+    if (key == nullptr) return nullptr; // OutOfMemoryError is pending
     std::vector<char> buffer(256);
     int32_t length = llama_model_meta_val_str(state->model, key, buffer.data(), buffer.size());
     if (length >= static_cast<int32_t>(buffer.size())) {
@@ -233,8 +313,8 @@ extern "C" JNIEXPORT jbyteArray JNICALL
 Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeChatTemplate(
     JNIEnv * env, jobject, jlong handle
 ) {
-    auto state = state_from(handle);
-    if (state == nullptr || state->model == nullptr) return nullptr;
+    StateUse state(handle);
+    if (!state.ok()) return nullptr;
     const char * tmpl = llama_model_chat_template(state->model, nullptr);
     if (tmpl == nullptr) return nullptr;
     return string_to_bytes(env, std::string(tmpl));
@@ -246,8 +326,9 @@ extern "C" JNIEXPORT jbyteArray JNICALL
 Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeFormatChat(
     JNIEnv * env, jobject, jlong handle, jobjectArray roles, jobjectArray contents
 ) {
-    auto state = state_from(handle);
-    if (state == nullptr || state->model == nullptr || roles == nullptr || contents == nullptr) return nullptr;
+    if (roles == nullptr || contents == nullptr) return nullptr;
+    StateUse state(handle);
+    if (!state.ok()) return nullptr;
     const char * tmpl = llama_model_chat_template(state->model, nullptr);
     if (tmpl == nullptr) return nullptr;
     const jsize count = std::min(env->GetArrayLength(roles), env->GetArrayLength(contents));
@@ -262,6 +343,7 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeFormatChat(
         content_values.push_back(bytes_to_string(env, content));
         env->DeleteLocalRef(role);
         env->DeleteLocalRef(content);
+        if (env->ExceptionCheck()) return nullptr;
     }
     std::vector<llama_chat_message> messages;
     messages.reserve(static_cast<size_t>(count));
@@ -288,23 +370,29 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeGenerate(
     JNIEnv * env, jobject, jlong handle, jbyteArray prompt_value,
     jint max_tokens, jfloat temperature, jobject sink
 ) {
-    auto state = state_from(handle);
-    if (state == nullptr) {
-        throw_java(env, "llama.cpp engine не инициализирован.");
-        return;
-    }
-
-    std::lock_guard<std::mutex> guard(state->generation_mutex);
-    state->cancelled.store(false);
-    const std::string prompt = bytes_to_string(env, prompt_value);
-
-    jclass sink_class = env->GetObjectClass(sink);
-    jmethodID on_token = sink_class == nullptr ? nullptr :
-        env->GetMethodID(sink_class, "onToken", "([B)Z");
-    if (on_token == nullptr) {
+    if (sink == nullptr) {
         throw_java(env, "Не найден callback для потока токенов.");
         return;
     }
+    StateUse state(handle);
+    if (!state.ok()) {
+        throw_java(env, "llama.cpp engine закрыт или не инициализирован.");
+        return;
+    }
+    if (state->closing.load()) return;
+
+    std::lock_guard<std::mutex> guard(state->generation_mutex);
+    // A close that arrived while this call waited for the previous generation wins.
+    if (state->closing.load()) return;
+    state->cancelled.store(false);
+    auto stop_requested = [&state]() { return state->cancelled.load() || state->closing.load(); };
+    const std::string prompt = bytes_to_string(env, prompt_value);
+    if (env->ExceptionCheck()) return;
+
+    jclass sink_class = env->GetObjectClass(sink);
+    const jmethodID on_token = env->GetMethodID(sink_class, "onToken", "([B)Z");
+    env->DeleteLocalRef(sink_class);
+    if (on_token == nullptr) return; // NoSuchMethodError is pending
 
     const int32_t token_count = -llama_tokenize(
         state->vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
@@ -377,9 +465,9 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeGenerate(
             llama_process(state->context, LLAMA_PROCESS_TYPE_DECODE, batch) == 0;
         if (prompt_ok) state->cached.insert(state->cached.end(), prompt_tokens.begin() + static_cast<long>(offset),
                                             prompt_tokens.begin() + static_cast<long>(offset) + count);
-        if (state->cancelled.load()) break;
+        if (stop_requested()) break;
     }
-    if (!prompt_ok || state->cancelled.load()) {
+    if (!prompt_ok || stop_requested()) {
         llama_memory_clear(memory, false);
         state->cached.clear();
         llama_sampler_free(sampler);
@@ -395,14 +483,17 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeGenerate(
         if (ready == 0) return;
         jbyteArray value = string_to_bytes(env, pending.substr(0, ready));
         pending.erase(0, ready);
-        if (value == nullptr) return;
+        if (value == nullptr) { // OutOfMemoryError is pending: no more JNI calls
+            keep_going = false;
+            return;
+        }
         const jboolean more = env->CallBooleanMethod(sink, on_token, value);
-        env->DeleteLocalRef(value);
+        env->DeleteLocalRef(value); // one local reference per token would overflow the table
         if (env->ExceptionCheck() || more == JNI_FALSE) keep_going = false;
     };
 
     llama_pos position = static_cast<llama_pos>(prompt_tokens.size());
-    for (int step = 0; step < limit && keep_going && !state->cancelled.load(); ++step) {
+    for (int step = 0; step < limit && keep_going && !stop_requested(); ++step) {
         const llama_token token = llama_sampler_sample(sampler, state->context, -1);
         if (llama_vocab_is_eog(state->vocab, token)) break;
 
@@ -436,24 +527,38 @@ Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeGenerate(
     llama_batch_ext_free(batch);
 }
 
+// Asks a running generation to stop at the next token. Safe with any id, at any time.
 extern "C" JNIEXPORT void JNICALL
 Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeCancel(
     JNIEnv *, jobject, jlong handle
 ) {
-    auto state = state_from(handle);
-    if (state != nullptr) state->cancelled.store(true);
+    const StatePtr state = find_state(handle);
+    if (state) state->cancelled.store(true);
 }
 
+// Stops and frees an engine. Returns only after calls in flight have left and the
+// model and context are freed; a second call, or an unknown id, does nothing.
 extern "C" JNIEXPORT void JNICALL
 Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeDestroy(
     JNIEnv *, jobject, jlong handle
 ) {
-    auto state = state_from(handle);
-    if (state == nullptr) return;
+    const StatePtr state = unregister_state(handle);
+    if (!state) return;
+    state->closing.store(true);
     state->cancelled.store(true);
-    std::lock_guard<std::mutex> guard(state->generation_mutex);
-    if (state->context != nullptr) llama_free(state->context);
-    if (state->model != nullptr) llama_model_free(state->model);
-    if (state->file != nullptr) fclose(state->file);
-    delete state;
+    std::unique_lock<std::shared_mutex> lock(state->lifecycle);
+    state->release();
 }
+
+#ifdef NEXUS_ASAN
+// Sanitizer builds only (never in an APK given to people): a planted
+// use-after-free that proves the CI sanitizer job really reports memory errors,
+// so a clean lifecycle run means something.
+extern "C" JNIEXPORT jint JNICALL
+Java_ai_hybrid_commandcenter_nexus_NativeLlamaBridge_nativeAsanCanary(JNIEnv *, jobject) {
+    auto * planted = new volatile int[8];
+    planted[0] = 42;
+    delete[] planted;
+    return planted[0]; // heap-use-after-free on purpose
+}
+#endif

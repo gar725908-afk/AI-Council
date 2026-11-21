@@ -10,6 +10,18 @@ if (NOT CMAKE_BUILD_TYPE MATCHES "Rel")
     add_compile_options(-O3 -DNDEBUG)
 endif()
 
+# CI memory-safety job only (`gradle -Pnexus.asan=true`): every native library of
+# the engine, llama.cpp and ggml included, is built with AddressSanitizer, so a
+# use-after-free or an overflow in the load / answer / cancel / free cycle crashes
+# the instrumented test with a report instead of passing silently.
+option(NEXUS_ASAN "Build the engine with AddressSanitizer (CI lifecycle job)" OFF)
+if (NEXUS_ASAN)
+    message(STATUS "NEXUS: AddressSanitizer build")
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+    add_compile_definitions(NEXUS_ASAN=1)
+endif()
+
 # ggml's CPU backend is a separate library loaded at runtime from the app's
 # native library folder, in several variants; the best one for this CPU is
 # picked by feature detection — the approach of llama.cpp's own Android example.
@@ -18,7 +30,13 @@ endif()
 # CI exercises the same runtime selection that phones rely on.
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 set(GGML_BACKEND_DL ON CACHE BOOL "" FORCE)
-set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "" FORCE)
+if (NEXUS_ASAN)
+    # one baseline CPU library keeps the sanitizer build short; the runtime
+    # loading path (ggml_backend_load_all_from_path) is the same
+    set(GGML_CPU_ALL_VARIANTS OFF CACHE BOOL "" FORCE)
+else()
+    set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "" FORCE)
+endif()
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)

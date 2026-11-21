@@ -44,6 +44,16 @@ adb shell am instrument -w \
   -e found "$FOUND" \
   "$PKG.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument.txt"
 
+echo "== llama.cpp engine lifecycle: load / answer / cancel / free (debuggable app: CheckJNI is on)"
+if [ "$FOUND" = true ]; then
+  timeout 1500 adb shell am instrument -w -e class "$PKG.nexus.NativeLifecycleTest" \
+    -e model /sdcard/Download/gemma-3-270m-it-Q8_0.gguf \
+    "$PKG.test/androidx.test.runner.AndroidJUnitRunner" > "$OUT/native-lifecycle.txt" 2>&1
+  cat "$OUT/native-lifecycle.txt"
+else
+  echo "skipped: the test model could not be downloaded" > "$OUT/native-lifecycle.txt"
+fi
+
 echo "== NEXUS Mesh: this emulator + a second node on the CI host"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS || true
 adb shell run-as "$PKG" rm -f files/mesh-link.txt files/mesh-done.txt || true
@@ -104,13 +114,22 @@ adb pull /sdcard/nexus-live.mp4 "$OUT/nexus-live.mp4" >/dev/null 2>&1 || true
 
 adb logcat -d > "$OUT/logcat.txt" || true
 grep -E "FATAL EXCEPTION" -A 25 "$OUT/logcat.txt" > "$OUT/crashes.txt" || true
+grep -E "JNI DETECTED ERROR|Late-enabling -Xcheck:jni" "$OUT/logcat.txt" | head -20 > "$OUT/checkjni.txt" || true
 
 if grep -q "FAILURES!!!" "$OUT/instrument.txt" || ! grep -q "^OK (" "$OUT/instrument.txt"; then
   echo "Instrumentation failed — see instrument.txt and logcat.txt"
   exit 1
 fi
+if [ "$FOUND" = true ] && { grep -q "FAILURES!!!" "$OUT/native-lifecycle.txt" || ! grep -q "^OK (" "$OUT/native-lifecycle.txt"; }; then
+  echo "llama.cpp engine lifecycle failed — see native-lifecycle.txt and logcat.txt"
+  exit 1
+fi
 if grep -q "FAILURES!!!" "$OUT/mesh-instrument.txt" || ! grep -q "^OK (" "$OUT/mesh-instrument.txt" || grep -q "HOST PEER FAILED" "$OUT/mesh-host.txt"; then
   echo "NEXUS Mesh journey failed — see mesh-instrument.txt, mesh-host.txt and mesh-result.txt"
+  exit 1
+fi
+if grep -q "JNI DETECTED ERROR" "$OUT/checkjni.txt"; then
+  echo "CheckJNI caught a JNI misuse — see checkjni.txt and logcat.txt"
   exit 1
 fi
 if grep -q "Process: $PKG" "$OUT/crashes.txt"; then

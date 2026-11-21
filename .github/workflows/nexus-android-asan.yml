@@ -1,0 +1,88 @@
+name: NEXUS native ASan lifecycle
+
+# The llama.cpp engine (llama.cpp, ggml and the NEXUS JNI layer) built with
+# AddressSanitizer and driven on an x86_64 emulator: load, answer, cancel and
+# free over and over, from several threads, including freeing an engine while
+# another thread is generating with it (the CVE-2026-70640 shape). The run must
+# be clean, and a planted use-after-free must be reported, which proves the
+# sanitizer is really watching.
+
+on:
+  push:
+    branches:
+      - nexus/genesis-foundation
+    paths:
+      - "android/OllamaHybrid/app/src/main/cpp/**"
+      - "android/OllamaHybrid/app/src/main/java/ai/hybrid/commandcenter/nexus/NexusOnDeviceEngines.kt"
+      - "android/OllamaHybrid/app/src/androidTest/java/ai/hybrid/commandcenter/nexus/NativeLifecycleTest.kt"
+      - "android/OllamaHybrid/app/src/asan/**"
+      - "android/OllamaHybrid/scripts/asan-lifecycle.sh"
+      - ".github/workflows/nexus-android-asan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nexus-android-asan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  asan-lifecycle:
+    name: Engine lifecycle under AddressSanitizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Build the sanitized engine and the test APK
+        working-directory: android/OllamaHybrid
+        run: gradle --no-daemon --stacktrace -Pnexus.asan=true :app:assembleDebug :app:assembleDebugAndroidTest
+
+      - name: The APK carries the sanitizer runtime and wrap.sh
+        working-directory: android/OllamaHybrid
+        run: |
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/x86_64/" | tee /tmp/apk-libs.txt
+          grep -q "lib/x86_64/wrap.sh" /tmp/apk-libs.txt
+          grep -q "lib/x86_64/libclang_rt.asan-x86_64-android.so" /tmp/apk-libs.txt
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the lifecycle tests under AddressSanitizer
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          ram-size: 4096M
+          disk-size: 6000M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          working-directory: android/OllamaHybrid
+          script: bash scripts/asan-lifecycle.sh
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS-asan-lifecycle
+          path: android/OllamaHybrid/build/asan-lifecycle/
+          if-no-files-found: warn
+          retention-days: 14
